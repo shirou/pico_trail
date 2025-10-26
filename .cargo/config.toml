@@ -1,0 +1,40 @@
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+# TODO(2) replace `$CHIP` with your chip's name (see `probe-rs chip list` output)
+runner = ["probe-rs", "run", "--chip", "RP235x", "--log-format=oneline"]
+
+rustflags = [
+  "-C", "linker=flip-link",
+  "-C", "link-arg=-Tlink.x",
+  "-C", "link-arg=-Tdefmt.x",
+  # This is needed if your flash or ram addresses are not aligned to 0x10000 in memory.x
+  # See https://github.com/rust-embedded/cortex-m-quickstart/pull/95
+  "-C", "link-arg=--nmagic",
+]
+
+[build]
+# TODO(3) Adjust the compilation target.
+# Select the correct target for your processor:
+#target = "thumbv6m-none-eabi"    # Cortex-M0 and Cortex-M0+
+# target = "thumbv7m-none-eabi"    # Cortex-M3
+# target = "thumbv7em-none-eabi"   # Cortex-M4 and Cortex-M7 (no FPU)
+# target = "thumbv7em-none-eabihf" # Cortex-M4F and Cortex-M7F (with FPU)
+target = "thumbv8m.main-none-eabihf"
+
+[alias]
+# `cargo rb foo` will expand to `cargo run --bin foo`
+rb = "run --bin"
+# `cargo rrb foo` will expand to `cargo run --release --bin foo`
+rrb = "run --release --bin"
+
+
+# Build arm or riscv
+build-arm = "build --target=thumbv8m.main-none-eabihf"
+build-riscv = "build --target=riscv32imac-unknown-none-elf"
+
+# Run arm or riscv
+run-arm = "run --target=thumbv8m.main-none-eabihf"
+run-riscv = "run --target=riscv32imac-unknown-none-elf"
+
+# Add other custom aliases here, `rrr-blinky` which
+# runs in release mode a riscv version of blinky.
+rrr-blinky = "run-riscv --release --bin=blinky"

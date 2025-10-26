@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "WebFetch(domain:ardupilot.org)",
+      "Bash(./scripts/tdl-new-id.ts)",
+      "Bash(bun format:*)",
+      "Bash(bun lint:*)",
+      "Bash(bun remark:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
