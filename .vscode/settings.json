@@ -5,5 +5,12 @@
     "rust-analyzer.check.allTargets": false,
     "rust-analyzer.check.extraArgs": [
         "--bins"
+    ],
+    "cSpell.words": [
+        "AHRS",
+        "microcontroller",
+        "microcontrollers",
+        "Pico",
+        "UART"
     ]
 }
