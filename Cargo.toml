@@ -11,41 +11,12 @@ keywords = ["embedded", "autopilot", "raspberry-pi-pico", "rover", "mavlink"]
 categories = ["embedded", "no-std"]
 
 
-# To run all the tests via `cargo test` the tests need to be explicitly disabled for the binary targets
-# If you use a standard main.rs file the following is sufficient:
+# Binary targets will be added as needed for platform testing and main autopilot
+# Example:
 # [[bin]]
-# name = "pico_trail"
+# name = "platform_test"
+# path = "src/bin/platform_test.rs"
 # test = false
-
-[[bin]]
-name = "bitfield"
-path = "src/bin/bitfield.rs"
-test = false
-
-[[bin]]
-name = "format"
-path = "src/bin/format.rs"
-test = false
-
-[[bin]]
-name = "hello"
-path = "src/bin/hello.rs"
-test = false
-
-[[bin]]
-name = "levels"
-path = "src/bin/levels.rs"
-test = false
-
-[[bin]]
-name = "overflow"
-path = "src/bin/overflow.rs"
-test = false
-
-[[bin]]
-name = "panic"
-path = "src/bin/panic.rs"
-test = false
 
 [lib]
 harness = false

@@ -8,7 +8,13 @@
       "Bash(bun format:*)",
       "Bash(bun lint:*)",
       "Bash(bun remark:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(find:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo doc:*)"
     ],
     "deny": [],
     "ask": []
