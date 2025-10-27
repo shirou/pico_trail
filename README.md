@@ -228,7 +228,14 @@ Contributions are welcome! Please ensure:
 
 ## License
 
-Licensed under the BSD 2-Clause License. See [LICENSE](LICENSE) for details.
+This project is dual-licensed:
+
+- **Non-commercial use**: Licensed under BSD-style terms (permissive, allowing modification and redistribution with attribution)
+- **Commercial use**: Requires a separate commercial license. Please contact the project maintainer for licensing terms and agreements.
+
+If you intend to use this software for commercial purposes, you must obtain explicit permission and a commercial license before deployment. Commercial use without a proper license is not permitted.
+
+See [LICENSE](LICENSE) for the non-commercial license terms.
 
 ## Acknowledgments
 
