@@ -203,15 +203,15 @@ These requirements apply to ALL documentation templates:
 Use inline code (`` ` ``) for the following cases to ensure proper formatting and readability:
 
 - **Environment Variables**: Always use inline code for environment variable names, especially those containing underscores
-  - Example: `RUST_LOG`, `KOPI_HOME`, `RUST_TEST_THREADS`
+  - Example: `RUST_LOG`, `RUST_TEST_THREADS`
 
 - **Code Identifiers**: Use inline code for all programming language identifiers
-  - Rust structs, traits, functions: `KopiError`, `ErrorContext`, `find_symbol()`
+  - Rust structs, traits, functions: `PicoTrailError`, `ErrorContext`, `find_symbol()`
   - Command names and flags: `cargo test`, `--verbose`, `-D warnings`
-  - File paths and extensions: `src/main.rs`, `.toml`, `~/.kopi/`
+  - File paths and extensions: `src/main.rs`, `.toml`, `~/.local/`
 
 - **Special Characters**: Use inline code when describing text containing special characters
-  - Version strings with special chars: `temurin@21`, `~/.kopi/jdks/`
+  - Version strings with special chars: `temurin@21`, `~/.local/jdks/`
   - Comparison operators: `< 200ms`, `> 8 hours`
   - Shell operators and paths: `&&`, `|`, `./scripts/`
 
@@ -242,9 +242,3 @@ Use inline code (`` ` ``) for the following cases to ensure proper formatting an
 ## Examples
 
 Template-specific example files were removed to reduce maintenance noise. Refer to active or archived project documents for canonical usage patterns.
-
-### Real Project Examples (Archived)
-
-- Error Handling: [`../archive/adr/004-error-handling-strategy.md`](../archive/adr/004-error-handling-strategy.md) - Full ADR with multiple options analyzed
-- Logging Strategy: [`../archive/adr/009-logging-strategy.md`](../archive/adr/009-logging-strategy.md) - Comprehensive platform considerations
-- Configuration: [`../archive/adr/014-configuration-and-version-file-formats.md`](../archive/adr/014-configuration-and-version-file-formats.md) - Focused scope with clear trade-offs

@@ -10,7 +10,6 @@
 - Impacted Requirements:
   - [NFR-nmmu0-platform-code-isolation](../requirements/NFR-nmmu0-platform-code-isolation.md)
   - [NFR-pj11s-no-unsafe-rust](../requirements/NFR-pj11s-no-unsafe-rust.md)
-  - [NFR-006-zero-cost-abstraction](../requirements/NFR-006-zero-cost-abstraction.md) (Phase 2)
 - Supersedes ADRs: N/A
 - Related Tasks: Will be created after approval
 

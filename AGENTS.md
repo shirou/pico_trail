@@ -213,7 +213,6 @@ Both commands must pass successfully before considering the documentation work c
 ## Additional Documentation
 
 - **Architecture & Structure**: [`docs/architecture.md`](docs/architecture.md) - Project structure, components, and storage locations
-- **Error Handling**: [`docs/error_handling.md`](docs/error_handling.md) - Error types, exit codes, and context system
 
 ## Communication Guidelines
 

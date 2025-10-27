@@ -286,7 +286,6 @@ Configurable telemetry rates (default 10Hz):
 ## Related Documentation
 
 - [TDL Process](tdl.md) - Traceable Development Lifecycle
-- [Error Handling](error_handling.md) - Error types and recovery
 - Analysis Documents:
   - [AN-cp76d: ArduPilot Analysis](analysis/AN-cp76d-ardupilot-analysis.md)
   - [AN-kir7h: Platform Abstraction](analysis/AN-kir7h-platform-abstraction.md)

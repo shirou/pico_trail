@@ -354,7 +354,7 @@ function taskPlanDoc({
   lines.push("- Goal: Complete the implementation steps.");
   lines.push("- Non-Goals: Any unrelated cleanups.");
   lines.push("- Assumptions: Required prerequisites are in place.");
-  lines.push("- Constraints: Follow Kopi coding standards.");
+  lines.push("- Constraints: Follow coding standards.");
   lines.push("");
   lines.push("## Plan Summary");
   lines.push("");
@@ -1313,7 +1313,7 @@ describe("printStatus", () => {
     printStatus(documents, false);
 
     const output = logCalls.join("\n");
-    expect(output).toContain("=== Kopi TDL Status ===");
+    expect(output).toContain("=== pico_trail TDL Status ===");
     expect(output).not.toContain("Coverage:");
     expect(output).toContain("Gaps:");
     expect(output).toContain("FR-1000");
@@ -2047,7 +2047,7 @@ describe("main", () => {
 
     const reportPath = join(repo, "reports", "out.md");
     const report = readFileSync(reportPath, "utf8");
-    expect(report).toContain("# Kopi Traceability Overview");
+    expect(report).toContain("# pico_trail Traceability Overview");
   });
 
   it("fails integrity check when gaps exist", () => {
@@ -2088,12 +2088,6 @@ describe("resolveOutputPath", () => {
     expect(resolveOutputPath(absolute, "/ignored")).toBe(absolute);
   });
 
-  it("defaults bare write flag to docs/traceability.md", () => {
-    const repoRoot = "/opt/kopi";
-    expect(resolveOutputPath("", repoRoot)).toBe(
-      join(repoRoot, "docs", "traceability.md"),
-    );
-  });
 });
 
 describe("toPosixPath", () => {

@@ -1,4 +1,4 @@
-# ADR-ggou4 MAVLink Implementation: rust-mavlink Crate with Custom Message Handlers
+# ADR-ggou4 MAVLink Implementation: rust-mavlink with Custom Handlers
 
 ## Metadata
 

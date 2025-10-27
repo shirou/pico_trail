@@ -235,7 +235,7 @@ impl Platform for Pico2W {
 - Cons: Still low-level for devices, requires wrapper types
 - Effort: Medium
 
-#### 4. **Option D: Three-Tier Abstraction (embedded-hal + Platform + Device Traits)** ⭐ **Recommended**
+#### 4. **Option D: Three-Tier Abstraction (HAL + Platform + Device)** ⭐ **Recommended**
 
 ```rust
 // Tier 1: Platform traits (low-level peripherals)

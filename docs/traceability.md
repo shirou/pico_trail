@@ -1,0 +1,76 @@
+# pico_trail Traceability Overview
+
+Generated on 2025-10-27T15:41:00.606Z
+
+## Summary
+
+| Metric | Count |
+| --- | ---: |
+| Analyses | 4 |
+| Requirements | 13 |
+| ADRs | 5 |
+| Tasks | 1 |
+| Requirements with tasks | 0 (0%) |
+
+## Traceability Matrix
+
+| Analyses | ADRs | Requirement | Status | Tasks |
+| --- | --- | --- | --- | --- |
+| — | — | [FR-333ym](requirements/FR-333ym-gps-waypoint-navigation.md) - FR-333ym GPS Waypoint Navigation with S-Curve Path Planning | Approved | — |
+| — | [ADR-hj79f](adr/ADR-hj79f-storage-strategy.md) | [FR-4e922](requirements/FR-4e922-data-logging.md) - FR-4e922 Data Logging to Flash Storage | Approved | — |
+| — | [ADR-vywkw](adr/ADR-vywkw-task-scheduler-selection.md) | [FR-5inw2](requirements/FR-5inw2-task-scheduler.md) - FR-5inw2 Task Scheduler with Configurable Rates | Approved | — |
+| — | [ADR-hj79f](adr/ADR-hj79f-storage-strategy.md)<br>[ADR-ggou4](adr/ADR-ggou4-mavlink-implementation.md) | [FR-a1cuu](requirements/FR-a1cuu-runtime-parameters.md) - FR-a1cuu Runtime Parameter Configuration | Approved | — |
+| — | [ADR-6twis](adr/ADR-6twis-ahrs-algorithm-selection.md) | [FR-eyuh8](requirements/FR-eyuh8-ahrs-attitude-estimation.md) - FR-eyuh8 AHRS Attitude Estimation | Approved | — |
+| — | [ADR-ggou4](adr/ADR-ggou4-mavlink-implementation.md) | [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) - FR-gpzpz MAVLink Protocol Communication | Approved | — |
+| — | — | [FR-sp3at](requirements/FR-sp3at-vehicle-modes.md) - FR-sp3at Vehicle Operational Modes | Approved | — |
+| — | — | [FR-sxsvw](requirements/FR-sxsvw-failsafe-mechanisms.md) - FR-sxsvw Failsafe Mechanisms | Approved | — |
+| — | [ADR-vywkw](adr/ADR-vywkw-task-scheduler-selection.md)<br>[ADR-6twis](adr/ADR-6twis-ahrs-algorithm-selection.md) | [NFR-3wlo1](requirements/NFR-3wlo1-imu-sampling-rate.md) - NFR-3wlo1 IMU Sampling Rate | Approved | — |
+| — | [ADR-oa2qa](adr/ADR-oa2qa-platform-abstraction.md) | [NFR-nmmu0](requirements/NFR-nmmu0-platform-code-isolation.md) - NFR-nmmu0 Platform Code Isolation | Approved | — |
+| — | [ADR-oa2qa](adr/ADR-oa2qa-platform-abstraction.md) | [NFR-pj11s](requirements/NFR-pj11s-no-unsafe-rust.md) - NFR-pj11s Memory Safety - No Unsafe Rust | Approved | — |
+| — | [ADR-vywkw](adr/ADR-vywkw-task-scheduler-selection.md) | [NFR-ukjvr](requirements/NFR-ukjvr-control-loop-latency.md) - NFR-ukjvr Control Loop Latency | Approved | — |
+| — | [ADR-6twis](adr/ADR-6twis-ahrs-algorithm-selection.md)<br>[ADR-hj79f](adr/ADR-hj79f-storage-strategy.md)<br>[ADR-ggou4](adr/ADR-ggou4-mavlink-implementation.md) | [NFR-z2iuk](requirements/NFR-z2iuk-memory-limits.md) - NFR-z2iuk Memory Usage Limits | Approved | — |
+
+### Requirement Dependencies
+
+| Requirement | Depends On | Blocks | Blocked By |
+| --- | --- | --- | --- |
+| [FR-333ym](requirements/FR-333ym-gps-waypoint-navigation.md) - FR-333ym GPS Waypoint Navigation with S-Curve Path Planning | [FR-5inw2](requirements/FR-5inw2-task-scheduler.md)<br>[FR-eyuh8](requirements/FR-eyuh8-ahrs-attitude-estimation.md) | [FR-sp3at](requirements/FR-sp3at-vehicle-modes.md) (inferred) | [FR-5inw2](requirements/FR-5inw2-task-scheduler.md)<br>[FR-eyuh8](requirements/FR-eyuh8-ahrs-attitude-estimation.md) |
+| [FR-4e922](requirements/FR-4e922-data-logging.md) - FR-4e922 Data Logging to Flash Storage | [FR-5inw2](requirements/FR-5inw2-task-scheduler.md)<br>[FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) (inferred) | [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) | [FR-5inw2](requirements/FR-5inw2-task-scheduler.md)<br>[FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) (inferred) |
+| [FR-5inw2](requirements/FR-5inw2-task-scheduler.md) - FR-5inw2 Task Scheduler with Configurable Rates | — | [FR-333ym](requirements/FR-333ym-gps-waypoint-navigation.md) (inferred)<br>[FR-4e922](requirements/FR-4e922-data-logging.md) (inferred)<br>[FR-eyuh8](requirements/FR-eyuh8-ahrs-attitude-estimation.md) (inferred)<br>[FR-sp3at](requirements/FR-sp3at-vehicle-modes.md) (inferred)<br>[FR-sxsvw](requirements/FR-sxsvw-failsafe-mechanisms.md) (inferred)<br>[NFR-3wlo1](requirements/NFR-3wlo1-imu-sampling-rate.md)<br>[NFR-ukjvr](requirements/NFR-ukjvr-control-loop-latency.md) | — |
+| [FR-a1cuu](requirements/FR-a1cuu-runtime-parameters.md) - FR-a1cuu Runtime Parameter Configuration | [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) (inferred) | [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) | [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) (inferred) |
+| [FR-eyuh8](requirements/FR-eyuh8-ahrs-attitude-estimation.md) - FR-eyuh8 AHRS Attitude Estimation | [FR-5inw2](requirements/FR-5inw2-task-scheduler.md)<br>[NFR-3wlo1](requirements/NFR-3wlo1-imu-sampling-rate.md) | [FR-333ym](requirements/FR-333ym-gps-waypoint-navigation.md) (inferred)<br>[NFR-3wlo1](requirements/NFR-3wlo1-imu-sampling-rate.md) (inferred) | [FR-5inw2](requirements/FR-5inw2-task-scheduler.md)<br>[NFR-3wlo1](requirements/NFR-3wlo1-imu-sampling-rate.md) |
+| [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) - FR-gpzpz MAVLink Protocol Communication | [FR-4e922](requirements/FR-4e922-data-logging.md) (inferred)<br>[FR-a1cuu](requirements/FR-a1cuu-runtime-parameters.md) (inferred) | [FR-4e922](requirements/FR-4e922-data-logging.md)<br>[FR-a1cuu](requirements/FR-a1cuu-runtime-parameters.md) | [FR-4e922](requirements/FR-4e922-data-logging.md) (inferred)<br>[FR-a1cuu](requirements/FR-a1cuu-runtime-parameters.md) (inferred) |
+| [FR-sp3at](requirements/FR-sp3at-vehicle-modes.md) - FR-sp3at Vehicle Operational Modes | [FR-333ym](requirements/FR-333ym-gps-waypoint-navigation.md)<br>[FR-5inw2](requirements/FR-5inw2-task-scheduler.md) | [FR-sxsvw](requirements/FR-sxsvw-failsafe-mechanisms.md) | [FR-333ym](requirements/FR-333ym-gps-waypoint-navigation.md)<br>[FR-5inw2](requirements/FR-5inw2-task-scheduler.md) |
+| [FR-sxsvw](requirements/FR-sxsvw-failsafe-mechanisms.md) - FR-sxsvw Failsafe Mechanisms | [FR-5inw2](requirements/FR-5inw2-task-scheduler.md)<br>[FR-sp3at](requirements/FR-sp3at-vehicle-modes.md) | — | [FR-5inw2](requirements/FR-5inw2-task-scheduler.md)<br>[FR-sp3at](requirements/FR-sp3at-vehicle-modes.md) |
+| [NFR-3wlo1](requirements/NFR-3wlo1-imu-sampling-rate.md) - NFR-3wlo1 IMU Sampling Rate | [FR-5inw2](requirements/FR-5inw2-task-scheduler.md)<br>[FR-eyuh8](requirements/FR-eyuh8-ahrs-attitude-estimation.md) | [FR-eyuh8](requirements/FR-eyuh8-ahrs-attitude-estimation.md) (inferred) | [FR-5inw2](requirements/FR-5inw2-task-scheduler.md)<br>[FR-eyuh8](requirements/FR-eyuh8-ahrs-attitude-estimation.md) |
+| [NFR-nmmu0](requirements/NFR-nmmu0-platform-code-isolation.md) - NFR-nmmu0 Platform Code Isolation | — | — | — |
+| [NFR-pj11s](requirements/NFR-pj11s-no-unsafe-rust.md) - NFR-pj11s Memory Safety - No Unsafe Rust | — | — | — |
+| [NFR-ukjvr](requirements/NFR-ukjvr-control-loop-latency.md) - NFR-ukjvr Control Loop Latency | [FR-5inw2](requirements/FR-5inw2-task-scheduler.md) | — | [FR-5inw2](requirements/FR-5inw2-task-scheduler.md) |
+| [NFR-z2iuk](requirements/NFR-z2iuk-memory-limits.md) - NFR-z2iuk Memory Usage Limits | — | — | — |
+
+### Dependency Consistency
+
+- [FR-eyuh8](requirements/FR-eyuh8-ahrs-attitude-estimation.md) and [NFR-3wlo1](requirements/NFR-3wlo1-imu-sampling-rate.md) list each other as prerequisites; remove the contradiction.
+- [FR-4e922](requirements/FR-4e922-data-logging.md) and [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) list each other as dependents; remove the contradiction.
+- [FR-a1cuu](requirements/FR-a1cuu-runtime-parameters.md) and [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) list each other as dependents; remove the contradiction.
+- [FR-4e922](requirements/FR-4e922-data-logging.md) - FR-4e922 Data Logging to Flash Storage: add Prerequisite Requirements entry for [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) (inferred)
+- [FR-a1cuu](requirements/FR-a1cuu-runtime-parameters.md) - FR-a1cuu Runtime Parameter Configuration: add Prerequisite Requirements entry for [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) (inferred)
+- [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) - FR-gpzpz MAVLink Protocol Communication: add Prerequisite Requirements entry for [FR-4e922](requirements/FR-4e922-data-logging.md) (inferred)<br>[FR-a1cuu](requirements/FR-a1cuu-runtime-parameters.md) (inferred)
+- [FR-333ym](requirements/FR-333ym-gps-waypoint-navigation.md) - FR-333ym GPS Waypoint Navigation with S-Curve Path Planning: add Dependent Requirements entry for [FR-sp3at](requirements/FR-sp3at-vehicle-modes.md) (inferred)
+- [FR-5inw2](requirements/FR-5inw2-task-scheduler.md) - FR-5inw2 Task Scheduler with Configurable Rates: add Dependent Requirements entry for [FR-333ym](requirements/FR-333ym-gps-waypoint-navigation.md) (inferred)<br>[FR-4e922](requirements/FR-4e922-data-logging.md) (inferred)<br>[FR-eyuh8](requirements/FR-eyuh8-ahrs-attitude-estimation.md) (inferred)<br>[FR-sp3at](requirements/FR-sp3at-vehicle-modes.md) (inferred)<br>[FR-sxsvw](requirements/FR-sxsvw-failsafe-mechanisms.md) (inferred)
+- [FR-eyuh8](requirements/FR-eyuh8-ahrs-attitude-estimation.md) - FR-eyuh8 AHRS Attitude Estimation: add Dependent Requirements entry for [FR-333ym](requirements/FR-333ym-gps-waypoint-navigation.md) (inferred)<br>[NFR-3wlo1](requirements/NFR-3wlo1-imu-sampling-rate.md) (inferred)
+- [NFR-3wlo1](requirements/NFR-3wlo1-imu-sampling-rate.md) - NFR-3wlo1 IMU Sampling Rate: add Dependent Requirements entry for [FR-eyuh8](requirements/FR-eyuh8-ahrs-attitude-estimation.md) (inferred)
+
+## Traceability Gaps
+
+- FR-333ym: No upstream analysis or ADR references (Status: Approved)
+- FR-sp3at: No upstream analysis or ADR references (Status: Approved)
+- FR-sxsvw: No upstream analysis or ADR references (Status: Approved)
+- ADR-6twis: No upstream analysis references (Status: Approved)
+- ADR-ggou4: No upstream analysis references (Status: Approved)
+- ADR-hj79f: No upstream analysis references (Status: Approved)
+- ADR-oa2qa: No upstream analysis references (Status: Approved)
+- ADR-vywkw: No upstream analysis references (Status: Approved)
+- T-egg4f: No upstream analysis, requirement, or ADR references (Status: Phase 1 In Progress)
+
+_This file is generated by `scripts/trace-status.ts`. Do not commit generated outputs to avoid merge conflicts._

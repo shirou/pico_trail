@@ -25,7 +25,7 @@
 
 ## Background and Current State
 
-- Context: `[Where this fits in Kopi; user workflows it affects]`
+- Context: `[Where this fits in pico_trail; user workflows it affects]`
 - Current behavior: `[What exists today; relevant modules/paths]`
 - Pain points: `[Current issues/limitations]`
 - Constraints: `[Time/tech/platform/compliance]`
@@ -47,44 +47,13 @@
 
 - `[Sequence of operations from input to output]`
 
-### Storage Layout and Paths (if applicable)
-
-- JDKs: `~/.kopi/jdks/<vendor>-<version>/`
-- Shims: `~/.kopi/shims/`
-- Config: `~/.kopi/config.toml`
-- Cache: `~/.kopi/cache/`
-
-### CLI/API Design (if applicable)
-
-Usage
-
-```bash
-kopi <command> `[options]`
-```
-
-Options
-
-- `--flag`: `[Description]`
-- `--option <value>`: `[Description]`
-
-Examples
-
-```bash
-kopi <command> <example-1>
-kopi <command> <example-2> --flag
-```
-
-Implementation Notes
-
-- Use `clap` derive API for argument parsing with clear, English help messages.
-
 ### Data Models and Types
 
 - `[Structs/enums/fields; serialization formats; version formats]`
 
 ### Error Handling
 
-- Use `KopiError` variants with actionable, English messages.
+- English messages.
 - Integrate with `ErrorContext` for enriched output and correct exit codes.
 - Exit codes: `[2 invalid input/config, 3 no local version, 4 JDK not installed, 13 permission, 20 network, 28 disk, 127 not found]`.
 
@@ -152,7 +121,6 @@ Decision Rationale
 ## Documentation Impact
 
 - Update `docs/reference.md` for CLI/behavior changes.
-- Update user docs in `../kopi-vm.github.io/` if user-facing.
 - Add or update `/docs/adr/` entries for design decisions (rationale and alternatives).
 
 ## External References (optional)

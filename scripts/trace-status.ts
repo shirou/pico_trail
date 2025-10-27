@@ -1193,7 +1193,7 @@ export function renderTraceabilityMarkdown(
   } = buildRequirementDependencyInfo(documents);
 
   const lines: string[] = [];
-  lines.push("# Kopi Traceability Overview");
+  lines.push("# pico_trail Traceability Overview");
   lines.push("");
   lines.push(`Generated on ${new Date().toISOString()}`);
   lines.push("");
@@ -1451,7 +1451,7 @@ export function printStatus(
   const reciprocalLinkIssues = collectTaskReciprocalLinkIssues(documents);
   const designPlanIssues = collectTaskDesignPlanIssues(documents);
 
-  console.log("=== Kopi TDL Status ===\n");
+  console.log("=== pico_trail TDL Status ===\n");
   if (showStatusDetails) {
     const coverage = calculateCoverage(documents);
     console.log("Coverage:");
