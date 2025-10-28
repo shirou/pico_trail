@@ -14,7 +14,8 @@
       "Bash(cargo clippy:*)",
       "Bash(find:*)",
       "Bash(cargo test:*)",
-      "Bash(cargo doc:*)"
+      "Bash(cargo doc:*)",
+      "Bash(rustc:*)"
     ],
     "deny": [],
     "ask": []

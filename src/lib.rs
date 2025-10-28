@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 
 //! pico_trail - Embedded autopilot system for Raspberry Pi Pico W/2W
 //!
@@ -8,8 +8,11 @@
 // Platform abstraction layer (NFR-nmmu0: Platform Code Isolation)
 pub mod platform;
 
+// Device drivers using platform abstraction
+pub mod devices;
+
 // Future modules (to be implemented in subsequent phases):
-// pub mod devices;       // Device drivers (GPS, IMU, Motor, Servo)
+// pub mod devices;       // More device drivers (IMU, Motor, Servo)
 // pub mod subsystems;    // Subsystems (AHRS, Navigation, Control)
 // pub mod vehicle;       // Vehicle logic and flight modes
 // pub mod communication; // MAVLink protocol and telemetry

@@ -6,6 +6,13 @@
 pub mod error;
 pub mod traits;
 
+// Platform implementations (feature-gated)
+#[cfg(feature = "pico2_w")]
+pub mod rp2350;
+
+#[cfg(any(test, feature = "mock"))]
+pub mod mock;
+
 // Re-export commonly used types
 pub use error::{PlatformError, Result};
 pub use traits::{

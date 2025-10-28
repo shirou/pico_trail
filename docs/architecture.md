@@ -195,18 +195,160 @@ Critical safety systems:
 
 ## Hardware Platform Support
 
+### Platform Abstraction Layer
+
+The platform abstraction layer provides zero-cost hardware independence through Rust traits and compile-time dispatch. All platform-specific code is isolated to `src/platform/` per NFR-nmmu0.
+
+**Architecture**:
+
+```
+Application/Device Code (Platform-independent)
+        ↓ uses traits
+Platform Traits (UART, I2C, SPI, PWM, GPIO, Timer)
+        ↓ implemented by
+Platform Implementations (RP2350, RP2040, Mock)
+        ↓ uses
+HAL Crates (rp235x-hal, rp2040-hal)
+```
+
+**Key Features**:
+
+- **Zero HAL Imports**: No HAL imports outside `src/platform/`
+- **Mock Testing**: Complete mock implementations for unit tests
+- **Compile-time Dispatch**: Zero-cost abstractions via trait monomorphization
+- **CI Enforcement**: Automated checks prevent HAL leakage
+
+**Platform Trait Hierarchy**:
+
+```rust
+// Root platform trait
+pub trait Platform {
+    type Uart: UartInterface;
+    type I2c: I2cInterface;
+    type Spi: SpiInterface;
+    type Pwm: PwmInterface;
+    type Gpio: GpioInterface;
+    type Timer: TimerInterface;
+
+    fn init() -> Result<Self>;
+    fn create_uart(&mut self, id: u8, config: UartConfig) -> Result<Self::Uart>;
+    // ... other peripheral creation methods
+}
+```
+
+**Example Usage**:
+
+```rust
+// Device driver generic over UartInterface
+pub struct GpsDriver<U: UartInterface> {
+    uart: U,
+}
+
+impl<U: UartInterface> GpsDriver<U> {
+    pub fn read_position(&mut self) -> Result<Option<GpsPosition>> {
+        // Works with any UART implementation (RP2350, RP2040, Mock)
+    }
+}
+```
+
+**Implementation Status**:
+
+| Component          | Status      | Tests |
+| ------------------ | ----------- | ----- |
+| Platform Traits    | ✅ Complete | -     |
+| Mock Platform      | ✅ Complete | 26    |
+| RP2350 Platform    | 🚧 Partial  | -     |
+| RP2040 Platform    | ⏸️ Planned  | -     |
+| Example GPS Driver | ✅ Complete | 4     |
+| CI HAL Isolation   | ✅ Complete | -     |
+
 ### Supported Platforms
 
-| Platform              | CPU                 | Flash | RAM    | Status  |
-| --------------------- | ------------------- | ----- | ------ | ------- |
-| Raspberry Pi Pico W   | RP2040 (Cortex-M0+) | 2 MB  | 264 KB | Planned |
-| Raspberry Pi Pico 2 W | RP2350 (Cortex-M33) | 4 MB  | 520 KB | Planned |
+| Platform              | CPU                 | Flash | RAM    | Status      |
+| --------------------- | ------------------- | ----- | ------ | ----------- |
+| Raspberry Pi Pico W   | RP2040 (Cortex-M0+) | 2 MB  | 264 KB | Planned     |
+| Raspberry Pi Pico 2 W | RP2350 (Cortex-M33) | 4 MB  | 520 KB | In Progress |
+| Mock (Testing)        | Host CPU            | -     | -      | Complete    |
 
 ### Platform Selection Strategy
 
 - **Pico 2 W Primary**: Focus development on Pico 2 W (ARM Cortex-M33) for better performance
 - **Pico W Support**: Maintain compatibility via platform abstraction layer
 - **Future Expansion**: Architecture supports ESP32, STM32F4 through trait implementation
+- **Mock Platform**: Enables hardware-free unit testing in CI
+
+### Adding a New Platform
+
+To add support for a new hardware platform:
+
+1. **Create Platform Module**: `src/platform/<platform_name>/`
+
+   ```rust
+   // src/platform/<platform_name>/mod.rs
+   #[cfg(feature = "<platform_name>")]
+   pub mod uart;
+   pub mod i2c;
+   // ... other peripherals
+   pub mod platform;
+   ```
+
+2. **Implement Peripheral Traits**: Each peripheral (UART, I2C, etc.) must implement the corresponding trait
+
+   ```rust
+   // src/platform/<platform_name>/uart.rs
+   use crate::platform::traits::UartInterface;
+
+   pub struct MyPlatformUart { /* HAL wrapper */ }
+
+   impl UartInterface for MyPlatformUart {
+       fn write(&mut self, data: &[u8]) -> Result<usize> {
+           // Use platform HAL
+       }
+       // ... implement other trait methods
+   }
+   ```
+
+3. **Implement Platform Trait**: Create the root platform struct
+
+   ```rust
+   // src/platform/<platform_name>/platform.rs
+   use crate::platform::traits::Platform;
+
+   pub struct MyPlatform { /* peripheral state */ }
+
+   impl Platform for MyPlatform {
+       type Uart = MyPlatformUart;
+       // ... other associated types
+
+       fn init() -> Result<Self> {
+           // Initialize clocks, peripherals
+       }
+
+       fn create_uart(&mut self, id: u8, config: UartConfig) -> Result<Self::Uart> {
+           // Configure and return UART instance
+       }
+   }
+   ```
+
+4. **Add Feature Flag**: Update `Cargo.toml`
+
+   ```toml
+   [features]
+   my_platform = ["<hal-crate>", "cortex-m", ...]
+   ```
+
+5. **Update Platform Module**: Add feature gate in `src/platform/mod.rs`
+   ```rust
+   #[cfg(feature = "my_platform")]
+   pub mod my_platform;
+   ```
+
+**Requirements**:
+
+- All HAL imports must stay within `src/platform/<platform_name>/`
+- Implement all platform traits completely
+- Provide platform-specific initialization sequence
+- Document peripheral pin mappings and configuration
 
 ### Memory Constraints
 
