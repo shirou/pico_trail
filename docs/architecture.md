@@ -168,12 +168,69 @@ Based on Embassy async executor for efficient task management.
 
 ### Parameter System
 
-Runtime-configurable parameters stored in Flash/EEPROM:
+Runtime-configurable parameters with Flash-backed persistence:
 
-- Parameter groups (e.g., `GPS_*`, `PID_*`, `SAFETY_*`)
-- Type-safe parameter access
-- MAVLink parameter protocol support
-- Range validation and defaults
+**Architecture**:
+
+```
+┌──────────────────────────────────────────┐
+│      Application Layer                   │
+│   (MAVLink PARAM_SET/GET handlers)       │
+└────────────────┬─────────────────────────┘
+                 │
+┌────────────────▼─────────────────────────┐
+│   Parameter Registry (RAM Cache)         │
+│   - Type-safe parameter access           │
+│   - Bounds validation                    │
+│   - Modified flag tracking               │
+└────────────────┬─────────────────────────┘
+                 │
+┌────────────────▼─────────────────────────┐
+│   Flash Parameter Storage                │
+│   - 4-block round-robin rotation         │
+│   - CRC32 validation                     │
+│   - Wear leveling statistics             │
+└────────────────┬─────────────────────────┘
+                 │
+┌────────────────▼─────────────────────────┐
+│   Platform Flash Interface               │
+│   - RP2040/RP2350 ROM functions          │
+│   - Critical section protection          │
+└──────────────────────────────────────────┘
+```
+
+**Features**:
+
+- **Fast Loading**: Parameters load in < 100ms during initialization
+- **Non-Blocking Saves**: Async save with < 5ms blocking time
+- **Wear Leveling**: 4-block rotation distributes writes evenly (40,000+ saves)
+- **Corruption Recovery**: CRC32 validation with automatic fallback
+- **Power-Loss Protection**: Redundant blocks survive unexpected power loss
+- **Capacity**: Supports 200+ parameters per platform
+
+**Flash Layout** (RP2040/RP2350):
+
+```
+Flash Address       Size      Purpose
+─────────────────────────────────────────────
+0x000000-0x03FFFF  256 KB    Firmware (protected)
+0x040000-0x040FFF    4 KB    Parameter Block 0
+0x041000-0x041FFF    4 KB    Parameter Block 1
+0x042000-0x042FFF    4 KB    Parameter Block 2
+0x043000-0x043FFF    4 KB    Parameter Block 3
+0x044000-0x045FFF    8 KB    Mission Storage (future)
+0x046000-0x3FFFFF  ~3.7 MB   Log Storage (future)
+```
+
+**Usage**:
+
+- Parameter groups (e.g., `RATE_ROLL_P`, `SYSID_THISMAV`, `SR_EXTRA1`)
+- Type-safe access (Float32, UInt32)
+- MAVLink parameter protocol support (PARAM_REQUEST_LIST, PARAM_SET, PARAM_VALUE)
+- Range validation and default values
+- Debounced saves (5-second delay to reduce Flash wear)
+
+For detailed documentation, see [docs/parameters.md](parameters.md).
 
 ### Data Logger
 

@@ -24,6 +24,8 @@ pub enum PlatformError {
     Gpio(GpioError),
     /// Timer operation failed
     Timer(TimerError),
+    /// Flash operation failed
+    Flash(FlashError),
     /// Platform initialization failed
     InitializationFailed,
     /// Invalid configuration provided
@@ -112,6 +114,24 @@ pub enum TimerError {
     InvalidDuration,
 }
 
+/// Flash-specific errors
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum FlashError {
+    /// Erase operation failed
+    EraseFailed,
+    /// Write operation failed
+    WriteFailed,
+    /// Read operation failed
+    ReadFailed,
+    /// Invalid address (out of bounds)
+    InvalidAddress,
+    /// Verify failed (data mismatch after write)
+    VerifyFailed,
+    /// Flash is busy
+    Busy,
+}
+
 impl fmt::Display for PlatformError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -121,9 +141,17 @@ impl fmt::Display for PlatformError {
             PlatformError::Pwm(e) => write!(f, "PWM error: {:?}", e),
             PlatformError::Gpio(e) => write!(f, "GPIO error: {:?}", e),
             PlatformError::Timer(e) => write!(f, "Timer error: {:?}", e),
+            PlatformError::Flash(e) => write!(f, "Flash error: {:?}", e),
             PlatformError::InitializationFailed => write!(f, "Platform initialization failed"),
             PlatformError::InvalidConfig => write!(f, "Invalid configuration"),
             PlatformError::ResourceUnavailable => write!(f, "Resource not available"),
         }
+    }
+}
+
+// From implementations for error conversion
+impl From<FlashError> for PlatformError {
+    fn from(error: FlashError) -> Self {
+        PlatformError::Flash(error)
     }
 }

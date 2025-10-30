@@ -2,6 +2,7 @@
 //!
 //! This module defines the traits that platform implementations must provide.
 
+pub mod flash;
 pub mod gpio;
 pub mod i2c;
 pub mod platform;
@@ -11,6 +12,7 @@ pub mod timer;
 pub mod uart;
 
 // Re-export trait interfaces
+pub use flash::FlashInterface;
 pub use gpio::{GpioInterface, GpioMode};
 pub use i2c::{I2cConfig, I2cInterface};
 pub use platform::Platform;

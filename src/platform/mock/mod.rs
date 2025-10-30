@@ -22,6 +22,7 @@
 
 #![cfg(any(test, feature = "mock"))]
 
+mod flash;
 mod gpio;
 mod i2c;
 mod platform;
@@ -30,6 +31,7 @@ mod spi;
 mod timer;
 mod uart;
 
+pub use flash::MockFlash;
 pub use gpio::MockGpio;
 pub use i2c::MockI2c;
 pub use platform::MockPlatform;

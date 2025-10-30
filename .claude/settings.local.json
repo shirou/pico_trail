@@ -28,7 +28,9 @@
       "Bash(probe-rs:*)",
       "Bash(cargo run:*)",
       "Bash(elf2uf2-rs:*)",
-      "Bash(./scripts/build-rp2350.sh:*)"
+      "Bash(./scripts/build-rp2350.sh:*)",
+      "Bash(bun:*)",
+      "Read(//home/shirou/.cargo/registry/src/**)"
     ],
     "deny": [],
     "ask": []

@@ -22,6 +22,7 @@
 //! let uart = platform.create_uart(/* config */);
 //! ```
 
+mod flash;
 mod gpio;
 mod i2c;
 mod platform;
@@ -30,6 +31,7 @@ mod spi;
 mod timer;
 mod uart;
 
+pub use flash::Rp2350Flash;
 pub use gpio::Rp2350Gpio;
 pub use i2c::Rp2350I2c;
 pub use platform::Rp2350Platform;
