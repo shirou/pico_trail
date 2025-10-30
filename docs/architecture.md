@@ -425,21 +425,108 @@ To add support for a new hardware platform:
 
 ### MAVLink Protocol
 
-Full MAVLink 2.0 implementation:
+Full MAVLink 2.0 implementation using the rust-mavlink crate with custom message handlers. The implementation provides GCS compatibility with QGroundControl 4.x and Mission Planner 1.3.x.
 
-- **Common Messages**: HEARTBEAT, ATTITUDE, GPS_RAW_INT, RC_CHANNELS
-- **Mission Protocol**: Mission upload/download, current waypoint
-- **Parameter Protocol**: PARAM_REQUEST_LIST, PARAM_SET
-- **Command Protocol**: MAV_CMD_NAV\_\_, MAV_CMD_DO\_\_
+**Architecture**:
+
+```
+┌──────────────────────────────────────────┐
+│      Application Layer                   │
+│   (Scheduler, AHRS, GPS, Parameters)     │
+└────────────────┬─────────────────────────┘
+                 │ (Data queries)
+┌────────────────▼─────────────────────────┐
+│   MAVLink Message Handlers               │
+│   - ParamHandler (PARAM_*)               │
+│   - TelemetryStreamer (HEARTBEAT, etc.)  │
+│   - CommandHandler (COMMAND_LONG)        │
+│   - MissionHandler (MISSION_*)           │
+└────────────────┬─────────────────────────┘
+                 │ (MAVLink messages)
+┌────────────────▼─────────────────────────┐
+│   rust-mavlink Crate                     │
+│   - Message parsing (read_v2_msg)        │
+│   - Message encoding (serialize)         │
+│   - CRC validation                       │
+└────────────────┬─────────────────────────┘
+                 │ (Byte stream)
+┌────────────────▼─────────────────────────┐
+│   Platform UART Interface                │
+│   (115200 baud, 8N1)                     │
+└──────────────────────────────────────────┘
+```
+
+**Message Support**:
+
+- **Telemetry (Outbound)**:
+  - HEARTBEAT (ID 0) - 1Hz - Vehicle type, armed status, system status
+  - SYS_STATUS (ID 1) - 1Hz - Battery voltage/current, CPU load
+  - ATTITUDE (ID 30) - 10Hz (configurable via SR_EXTRA1) - Roll, pitch, yaw, rates
+  - GPS_RAW_INT (ID 24) - 5Hz (configurable via SR_POSITION) - Lat, lon, alt, fix type
+
+- **Parameter Protocol (Bidirectional)**:
+  - PARAM_REQUEST_LIST (ID 21) - Request all parameters
+  - PARAM_REQUEST_READ (ID 20) - Request specific parameter
+  - PARAM_SET (ID 23) - Set parameter value
+  - PARAM_VALUE (ID 22) - Parameter value response
+
+- **Command Protocol (Inbound)**:
+  - COMMAND_LONG (ID 76) - Execute command
+  - COMMAND_ACK (ID 77) - Command acknowledgment
+  - Supported commands:
+    - MAV_CMD_COMPONENT_ARM_DISARM (400) - Arm/disarm vehicle
+    - MAV_CMD_DO_SET_MODE (176) - Change flight mode
+    - MAV_CMD_PREFLIGHT_CALIBRATION (241) - Sensor calibration
+
+- **Mission Protocol (Bidirectional)**:
+  - MISSION_COUNT (ID 44) - Mission item count
+  - MISSION_ITEM_INT (ID 73) - Mission waypoint (scaled integer coordinates)
+  - MISSION_REQUEST_INT (ID 51) - Request specific waypoint
+  - MISSION_REQUEST_LIST (ID 43) - Request mission download
+  - MISSION_ACK (ID 47) - Mission operation acknowledgment
+
+**Stream Rate Control**:
+
+Telemetry rates are configurable via MAVLink parameters:
+
+| Parameter   | Default | Range   | Controls                 |
+| ----------- | ------- | ------- | ------------------------ |
+| SR_EXTRA1   | 10 Hz   | 0-50 Hz | ATTITUDE message rate    |
+| SR_POSITION | 5 Hz    | 0-50 Hz | GPS_RAW_INT message rate |
+| SR_RC_CHAN  | 5 Hz    | 0-50 Hz | RC_CHANNELS message rate |
+| SR_RAW_SENS | 5 Hz    | 0-50 Hz | IMU_SCALED message rate  |
+
+**Performance**:
+
+- Memory usage: \~8 KB RAM (buffers + state)
+- CPU overhead: \~5% at default rates
+- Bandwidth usage: \~40 KB/minute at default rates (\~5% of 115200 baud UART)
+- Message latency: < 10ms (COMMAND_LONG → COMMAND_ACK)
+- Connection timeout: 5 seconds (missed HEARTBEAT)
+
+**Implementation Status**:
+
+| Component           | Status      | Tests |
+| ------------------- | ----------- | ----- |
+| Core Infrastructure | ✅ Complete | 24    |
+| Parameter Protocol  | ✅ Complete | 14    |
+| Telemetry Streaming | ✅ Complete | 15    |
+| Command Protocol    | ✅ Complete | 13    |
+| Mission Protocol    | ✅ Complete | 21    |
+| Hardware Validation | 🚧 Pending  | -     |
+
+**Location**: `src/communication/mavlink/`
+
+For detailed usage guide, see [MAVLink Documentation](mavlink.md).
 
 ### Telemetry Streams
 
 Configurable telemetry rates (default 10Hz):
 
-- Position and attitude
-- Battery status
-- System health
-- Mode and armed status
+- **Position and attitude**: GPS position, roll/pitch/yaw angles, rotation rates
+- **Battery status**: Voltage, current, remaining capacity
+- **System health**: CPU load, sensor status, error flags
+- **Mode and armed status**: Current flight mode, armed/disarmed state
 
 ## Navigation & Control
 

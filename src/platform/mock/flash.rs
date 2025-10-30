@@ -114,12 +114,12 @@ impl MockFlash {
 
     /// Check if address is in writable region
     fn is_writable(&self, address: u32) -> bool {
-        address >= FIRMWARE_SIZE && address < FLASH_CAPACITY
+        (FIRMWARE_SIZE..FLASH_CAPACITY).contains(&address)
     }
 
     /// Check if address is block-aligned
     fn is_block_aligned(&self, address: u32) -> bool {
-        address % BLOCK_SIZE == 0
+        address.is_multiple_of(BLOCK_SIZE)
     }
 }
 
@@ -189,7 +189,7 @@ impl FlashInterface for MockFlash {
         }
 
         // Validate size is multiple of block size
-        if size % BLOCK_SIZE != 0 {
+        if !size.is_multiple_of(BLOCK_SIZE) {
             return Err(FlashError::InvalidAddress.into());
         }
 

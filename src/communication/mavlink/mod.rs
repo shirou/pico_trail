@@ -27,10 +27,10 @@
 //! Initial implementation uses UART transport at 115200 baud. Future enhancements
 //! may add USB CDC support for direct PC connection.
 
-// Module structure populated during Phase 1
+// Module structure populated during Phase 1-2
+pub mod handlers; // Message handlers (Phase 2+)
 pub mod parser; // Message parsing (Phase 1)
-                // pub mod writer;    // Message writing (Phase 1)
-                // pub mod router;    // Message routing (Phase 1)
-                // pub mod state;     // System state (Phase 1)
-                // pub mod task;      // MAVLink task (Phase 1)
-                // pub mod handlers;  // Message handlers (Phase 2+)
+pub mod router; // Message routing (Phase 1)
+pub mod state; // System state (Phase 1)
+pub mod task; // MAVLink task (Phase 1)
+pub mod writer; // Message writing (Phase 1)

@@ -36,7 +36,6 @@ cortex-m-rt = { version = "0.7", optional = true }
 defmt = { version = "1.0", optional = true }
 defmt-rtt = { version = "1.0", optional = true }
 panic-probe = { version = "1.0", features = ["print-defmt"], optional = true }
-semihosting = { version = "0.1.20", optional = true }
 
 # Embassy async framework (FR-5inw2: Task Scheduler)
 embassy-executor = { version = "0.9", features = ["arch-cortex-m", "executor-thread"], optional = true }
@@ -76,6 +75,7 @@ defmt-test = "0.3"
 # Host-only test dependencies (not used for embedded targets)
 [target.'cfg(not(target_arch = "arm"))'.dev-dependencies]
 critical-section = { version = "1.2", features = ["std"] }
+tokio = { version = "1", features = ["rt", "macros"] }
 
 # cargo build/run
 [profile.dev]
@@ -104,7 +104,7 @@ debug = 2
 default = []
 pico2_w = [
     "cortex-m", "cortex-m-rt", "defmt", "defmt-rtt",
-    "panic-probe", "semihosting", "rp235x-hal",
+    "panic-probe", "rp235x-hal",
     "embedded-hal", "embedded-hal-1", "nb", "fugit",
     "embassy-executor", "embassy-time", "embassy-rp", "embassy-usb",
     "embassy-sync", "embassy-futures",
