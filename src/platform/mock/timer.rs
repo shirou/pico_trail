@@ -1,6 +1,6 @@
 //! Mock Timer implementation for testing
 
-use crate::platform::{Result, traits::TimerInterface};
+use crate::platform::{traits::TimerInterface, Result};
 
 /// Mock Timer implementation
 ///

@@ -20,7 +20,7 @@
 //! }
 //! ```
 
-use crate::platform::{Result, traits::UartInterface};
+use crate::platform::{traits::UartInterface, Result};
 
 /// GPS position data
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn test_gps_invalid_sentence() {
-        let mut uart = MockUart::new(UartConfig::default());
+        let uart = MockUart::new(UartConfig::default());
         let mut gps = GpsDriver::new(uart);
 
         // Inject invalid sentence

@@ -11,9 +11,10 @@ pub mod platform;
 // Device drivers using platform abstraction
 pub mod devices;
 
+// Core systems (FR-5inw2: Task Scheduler)
+pub mod core;
+
 // Future modules (to be implemented in subsequent phases):
-// pub mod devices;       // More device drivers (IMU, Motor, Servo)
 // pub mod subsystems;    // Subsystems (AHRS, Navigation, Control)
 // pub mod vehicle;       // Vehicle logic and flight modes
 // pub mod communication; // MAVLink protocol and telemetry
-// pub mod core;          // Core systems (Scheduler, Parameters, Logger)

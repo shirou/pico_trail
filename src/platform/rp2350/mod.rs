@@ -22,8 +22,6 @@
 //! let uart = platform.create_uart(/* config */);
 //! ```
 
-#![cfg(feature = "pico2_w")]
-
 mod gpio;
 mod i2c;
 mod platform;

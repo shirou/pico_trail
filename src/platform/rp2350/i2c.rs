@@ -3,9 +3,9 @@
 //! This module provides I2C support for RP2350 using the `rp235x-hal` crate.
 
 use crate::platform::{
-    Result,
     error::{I2cError, PlatformError},
     traits::{I2cConfig, I2cInterface},
+    Result,
 };
 use rp235x_hal::i2c::I2C;
 
@@ -14,16 +14,14 @@ use rp235x_hal::i2c::I2C;
 /// Wraps the `rp235x-hal` I2C peripheral to implement the `I2cInterface` trait.
 pub struct Rp2350I2c<D, P>
 where
-    D: rp235x_hal::i2c::I2CDevice,
-    P: rp235x_hal::i2c::ValidI2CPinout<D>,
+    D: rp235x_hal::i2c::I2cDevice,
 {
     i2c: I2C<D, P>,
 }
 
 impl<D, P> Rp2350I2c<D, P>
 where
-    D: rp235x_hal::i2c::I2CDevice,
-    P: rp235x_hal::i2c::ValidI2CPinout<D>,
+    D: rp235x_hal::i2c::I2cDevice,
 {
     /// Create a new RP2350 I2C instance
     ///
@@ -40,8 +38,7 @@ where
 
 impl<D, P> I2cInterface for Rp2350I2c<D, P>
 where
-    D: rp235x_hal::i2c::I2CDevice,
-    P: rp235x_hal::i2c::ValidI2CPinout<D>,
+    D: rp235x_hal::i2c::I2cDevice,
 {
     fn write(&mut self, addr: u8, data: &[u8]) -> Result<()> {
         use embedded_hal::blocking::i2c::Write;

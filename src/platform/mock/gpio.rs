@@ -1,9 +1,9 @@
 //! Mock GPIO implementation for testing
 
 use crate::platform::{
-    Result,
     error::{GpioError, PlatformError},
     traits::{GpioInterface, GpioMode},
+    Result,
 };
 
 /// Mock GPIO implementation

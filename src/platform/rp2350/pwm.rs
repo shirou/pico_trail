@@ -3,16 +3,17 @@
 //! This module provides PWM support for RP2350 using the `rp235x-hal` crate.
 
 use crate::platform::{
-    Result,
     error::{PlatformError, PwmError},
     traits::{PwmConfig, PwmInterface},
+    Result,
 };
-use rp235x_hal::pwm::{Channel, Slice, SliceId};
+use embedded_hal_1::pwm::SetDutyCycle;
+use rp235x_hal::pwm::{ChannelId, Slice, SliceId};
 
 /// RP2350 PWM implementation
 ///
 /// Wraps the `rp235x-hal` PWM slice to implement the `PwmInterface` trait.
-pub struct Rp2350Pwm<S: SliceId, C: Channel> {
+pub struct Rp2350Pwm<S: SliceId, C: ChannelId> {
     slice: Slice<S, rp235x_hal::pwm::FreeRunning>,
     channel: core::marker::PhantomData<C>,
     duty_cycle: f32,
@@ -20,17 +21,14 @@ pub struct Rp2350Pwm<S: SliceId, C: Channel> {
     enabled: bool,
 }
 
-impl<S: SliceId, C: Channel> Rp2350Pwm<S, C> {
+impl<S: SliceId, C: ChannelId> Rp2350Pwm<S, C> {
     /// Create a new RP2350 PWM instance
     ///
     /// # Arguments
     ///
     /// * `slice` - The HAL PWM slice
     /// * `config` - PWM configuration
-    pub fn new(mut slice: Slice<S, rp235x_hal::pwm::FreeRunning>, config: PwmConfig) -> Self {
-        // Set initial frequency and duty cycle
-        let top = slice.get_top();
-
+    pub fn new(slice: Slice<S, rp235x_hal::pwm::FreeRunning>, config: PwmConfig) -> Self {
         let mut pwm = Self {
             slice,
             channel: core::marker::PhantomData,
@@ -53,7 +51,7 @@ impl<S: SliceId, C: Channel> Rp2350Pwm<S, C> {
     }
 }
 
-impl<S: SliceId, C: Channel> PwmInterface for Rp2350Pwm<S, C> {
+impl<S: SliceId, C: ChannelId> PwmInterface for Rp2350Pwm<S, C> {
     fn set_duty_cycle(&mut self, duty_cycle: f32) -> Result<()> {
         if !(0.0..=1.0).contains(&duty_cycle) {
             return Err(PlatformError::Pwm(PwmError::InvalidDutyCycle));
@@ -62,7 +60,11 @@ impl<S: SliceId, C: Channel> PwmInterface for Rp2350Pwm<S, C> {
         self.duty_cycle = duty_cycle;
         let compare = self.duty_to_compare(duty_cycle);
 
-        self.slice.channel_b().set_duty_cycle(compare);
+        // Access channel_b field directly (not a method)
+        self.slice
+            .channel_b
+            .set_duty_cycle(compare)
+            .map_err(|_| PlatformError::Pwm(PwmError::InvalidDutyCycle))?;
 
         Ok(())
     }
@@ -96,7 +98,10 @@ impl<S: SliceId, C: Channel> PwmInterface for Rp2350Pwm<S, C> {
 
         // Re-apply duty cycle with new top value
         let compare = self.duty_to_compare(self.duty_cycle);
-        self.slice.channel_b().set_duty_cycle(compare);
+        self.slice
+            .channel_b
+            .set_duty_cycle(compare)
+            .map_err(|_| PlatformError::Pwm(PwmError::InvalidDutyCycle))?;
 
         Ok(())
     }

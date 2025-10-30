@@ -1,9 +1,9 @@
 //! Mock Platform implementation for testing
 
 use crate::platform::{
-    Result,
     error::PlatformError,
     traits::{I2cConfig, Platform, PwmConfig, SpiConfig, UartConfig},
+    Result,
 };
 
 use super::{MockGpio, MockI2c, MockPwm, MockSpi, MockTimer, MockUart};

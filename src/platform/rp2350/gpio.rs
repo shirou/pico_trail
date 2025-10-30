@@ -3,53 +3,61 @@
 //! This module provides GPIO support for RP2350 using the `rp235x-hal` crate.
 
 use crate::platform::{
-    Result,
     error::{GpioError, PlatformError},
     traits::{GpioInterface, GpioMode},
+    Result,
 };
-use rp235x_hal::gpio::{FunctionNull, Pin, PinId};
+use rp235x_hal::gpio::{
+    FunctionNull, FunctionSioInput, FunctionSioOutput, Pin, PinId, PullDown, PullNone, PullType,
+    PullUp,
+};
 
 /// RP2350 GPIO implementation
 ///
 /// Wraps the `rp235x-hal` GPIO pin to implement the `GpioInterface` trait.
-pub struct Rp2350Gpio<I: PinId, M: PinMode> {
-    pin: Pin<I, M>,
+pub struct Rp2350Gpio<I: PinId, F: rp235x_hal::gpio::Function, P: PullType> {
+    pin: Pin<I, F, P>,
     mode: GpioMode,
 }
 
-impl<I: PinId, M: PinMode> Rp2350Gpio<I, M> {
+impl<I: PinId, F: rp235x_hal::gpio::Function, P: PullType> Rp2350Gpio<I, F, P> {
     /// Create a new RP2350 GPIO instance
     ///
     /// # Arguments
     ///
     /// * `pin` - The HAL GPIO pin
     /// * `mode` - Initial GPIO mode
-    pub fn new(pin: Pin<I, M>, mode: GpioMode) -> Self {
+    pub fn new(pin: Pin<I, F, P>, mode: GpioMode) -> Self {
         Self { pin, mode }
     }
 }
 
 // Implementation for output pins
-impl<I: PinId> GpioInterface for Rp2350Gpio<I, rp235x_hal::gpio::FunctionSioOutput> {
+impl<I: PinId, P: PullType> GpioInterface for Rp2350Gpio<I, FunctionSioOutput, P> {
     fn set_high(&mut self) -> Result<()> {
-        use rp235x_hal::gpio::PinState;
-        self.pin.set_output_state(PinState::High);
-        Ok(())
+        use embedded_hal::digital::v2::OutputPin;
+        self.pin
+            .set_high()
+            .map_err(|_| PlatformError::Gpio(GpioError::HardwareError))
     }
 
     fn set_low(&mut self) -> Result<()> {
-        use rp235x_hal::gpio::PinState;
-        self.pin.set_output_state(PinState::Low);
-        Ok(())
+        use embedded_hal::digital::v2::OutputPin;
+        self.pin
+            .set_low()
+            .map_err(|_| PlatformError::Gpio(GpioError::HardwareError))
     }
 
     fn toggle(&mut self) -> Result<()> {
-        self.pin.toggle_output_state();
-        Ok(())
+        use embedded_hal::digital::v2::ToggleableOutputPin;
+        self.pin
+            .toggle()
+            .map_err(|_| PlatformError::Gpio(GpioError::HardwareError))
     }
 
     fn read(&self) -> bool {
-        self.pin.is_high()
+        use embedded_hal::digital::v2::InputPin;
+        self.pin.is_high().unwrap_or(false)
     }
 
     fn set_mode(&mut self, mode: GpioMode) -> Result<()> {
@@ -66,7 +74,7 @@ impl<I: PinId> GpioInterface for Rp2350Gpio<I, rp235x_hal::gpio::FunctionSioOutp
 }
 
 // Implementation for input pins
-impl<I: PinId> GpioInterface for Rp2350Gpio<I, rp235x_hal::gpio::FunctionSioInput> {
+impl<I: PinId, P: PullType> GpioInterface for Rp2350Gpio<I, FunctionSioInput, P> {
     fn set_high(&mut self) -> Result<()> {
         Err(PlatformError::Gpio(GpioError::InvalidMode))
     }
@@ -80,7 +88,8 @@ impl<I: PinId> GpioInterface for Rp2350Gpio<I, rp235x_hal::gpio::FunctionSioInpu
     }
 
     fn read(&self) -> bool {
-        self.pin.is_high()
+        use embedded_hal::digital::v2::InputPin;
+        self.pin.is_high().unwrap_or(false)
     }
 
     fn set_mode(&mut self, mode: GpioMode) -> Result<()> {
@@ -96,16 +105,18 @@ impl<I: PinId> GpioInterface for Rp2350Gpio<I, rp235x_hal::gpio::FunctionSioInpu
 }
 
 // Helper functions for pin configuration
-impl<I: PinId, M: PinMode> Rp2350Gpio<I, M> {
+impl<I: PinId, F: rp235x_hal::gpio::Function, P: PullType> Rp2350Gpio<I, F, P> {
     /// Convert to output mode (helper for initialization)
-    pub fn into_output(self) -> Rp2350Gpio<I, rp235x_hal::gpio::FunctionSioOutput>
+    pub fn into_output(self) -> Rp2350Gpio<I, FunctionSioOutput, PullNone>
     where
-        M: rp235x_hal::gpio::ValidFunction<I>,
+        I: rp235x_hal::gpio::ValidFunction<FunctionNull>,
+        I: rp235x_hal::gpio::ValidFunction<FunctionSioOutput>,
     {
         let pin = self
             .pin
             .into_function::<FunctionNull>()
-            .into_push_pull_output();
+            .into_push_pull_output()
+            .into_pull_type::<PullNone>();
         Rp2350Gpio {
             pin,
             mode: GpioMode::OutputPushPull,
@@ -113,9 +124,10 @@ impl<I: PinId, M: PinMode> Rp2350Gpio<I, M> {
     }
 
     /// Convert to input mode (helper for initialization)
-    pub fn into_input(self) -> Rp2350Gpio<I, rp235x_hal::gpio::FunctionSioInput>
+    pub fn into_input(self) -> Rp2350Gpio<I, FunctionSioInput, PullNone>
     where
-        M: rp235x_hal::gpio::ValidFunction<I>,
+        I: rp235x_hal::gpio::ValidFunction<FunctionNull>,
+        I: rp235x_hal::gpio::ValidFunction<FunctionSioInput>,
     {
         let pin = self
             .pin
@@ -128,9 +140,10 @@ impl<I: PinId, M: PinMode> Rp2350Gpio<I, M> {
     }
 
     /// Convert to input with pull-up (helper for initialization)
-    pub fn into_pull_up_input(self) -> Rp2350Gpio<I, rp235x_hal::gpio::FunctionSioInput>
+    pub fn into_pull_up_input(self) -> Rp2350Gpio<I, FunctionSioInput, PullUp>
     where
-        M: rp235x_hal::gpio::ValidFunction<I>,
+        I: rp235x_hal::gpio::ValidFunction<FunctionNull>,
+        I: rp235x_hal::gpio::ValidFunction<FunctionSioInput>,
     {
         let pin = self
             .pin
@@ -143,9 +156,10 @@ impl<I: PinId, M: PinMode> Rp2350Gpio<I, M> {
     }
 
     /// Convert to input with pull-down (helper for initialization)
-    pub fn into_pull_down_input(self) -> Rp2350Gpio<I, rp235x_hal::gpio::FunctionSioInput>
+    pub fn into_pull_down_input(self) -> Rp2350Gpio<I, FunctionSioInput, PullDown>
     where
-        M: rp235x_hal::gpio::ValidFunction<I>,
+        I: rp235x_hal::gpio::ValidFunction<FunctionNull>,
+        I: rp235x_hal::gpio::ValidFunction<FunctionSioInput>,
     {
         let pin = self
             .pin

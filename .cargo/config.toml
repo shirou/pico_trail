@@ -18,7 +18,10 @@ rustflags = [
 # target = "thumbv7m-none-eabi"    # Cortex-M3
 # target = "thumbv7em-none-eabi"   # Cortex-M4 and Cortex-M7 (no FPU)
 # target = "thumbv7em-none-eabihf" # Cortex-M4F and Cortex-M7F (with FPU)
-target = "thumbv8m.main-none-eabihf"
+# Note: Default target commented out to allow host tests. Specify target explicitly:
+#   - For RP2350: cargo build --target=thumbv8m.main-none-eabihf --features pico2_w
+#   - For tests: cargo test (uses host target)
+# target = "thumbv8m.main-none-eabihf"
 
 [alias]
 # `cargo rb foo` will expand to `cargo run --bin foo`

@@ -1,7 +1,7 @@
 [package]
 authors = ["shirou <shirou.faw@gmail.com>"]
 name = "pico_trail"
-edition = "2024"
+edition = "2021"
 version = "0.1.0"
 license = "BSD-2-Clause"
 description = "Embedded autopilot system for Raspberry Pi Pico W and Pico 2 W"
@@ -24,26 +24,44 @@ categories = ["embedded", "no-std"]
 # harness = false
 
 # needed for each integration test
+# Note: Integration tests are only for embedded targets (require pico2_w feature)
 [[test]]
 name = "integration"
 harness = false
+required-features = ["pico2_w"]
 
 [dependencies]
-cortex-m = { version = "0.7", features = ["critical-section-single-core"], optional = true }
+cortex-m = { version = "0.7", optional = true }
 cortex-m-rt = { version = "0.7", optional = true }
 defmt = { version = "1.0", optional = true }
 defmt-rtt = { version = "1.0", optional = true }
 panic-probe = { version = "1.0", features = ["print-defmt"], optional = true }
 semihosting = { version = "0.1.20", optional = true }
 
+# Embassy async framework (FR-5inw2: Task Scheduler)
+embassy-executor = { version = "0.9", features = ["arch-cortex-m", "executor-thread"], optional = true }
+embassy-time = { version = "0.5", features = ["tick-hz-1_000_000"], optional = true }
+embassy-rp = { version = "0.8", features = ["time-driver"], optional = true }
+embassy-usb = { version = "0.5", optional = true }
+heapless = { version = "0.8", optional = true }
+
+# Synchronization primitives
+# Implementation provided by cortex-m's critical-section-single-core feature
+critical-section = "1.2"
+
 # Platform HALs (optional, enabled via features)
 rp235x-hal = { version = "0.3.0", optional = true }
 embedded-hal = { version = "0.2.7", features = ["unproven"], optional = true }
+embedded-hal-1 = { package = "embedded-hal", version = "1.0", optional = true }
 nb = { version = "1.1.0", optional = true }
 fugit = { version = "0.3.7", optional = true }
 
 [dev-dependencies]
 defmt-test = "0.3"
+
+# Host-only test dependencies (not used for embedded targets)
+[target.'cfg(not(target_arch = "arm"))'.dev-dependencies]
+critical-section = { version = "1.2", features = ["std"] }
 
 # cargo build/run
 [profile.dev]
@@ -62,7 +80,9 @@ opt-level = 's'
 codegen-units = 1
 # Use Link Time Optimisations to further inline things across
 # crates
-lto = 'fat'
+# Note: 'fat' LTO causes bitcode loading issues with rp235x-hal 0.3.0
+# Using 'thin' instead for better compatibility
+lto = 'thin'
 # Leave the debug symbols in (default is no debug info)
 debug = 2
 
@@ -71,6 +91,8 @@ default = []
 pico2_w = [
     "cortex-m", "cortex-m-rt", "defmt", "defmt-rtt",
     "panic-probe", "semihosting", "rp235x-hal",
-    "embedded-hal", "nb", "fugit"
+    "embedded-hal", "embedded-hal-1", "nb", "fugit",
+    "embassy-executor", "embassy-time", "embassy-rp", "embassy-usb", "heapless",
+    "embassy-rp/rp235xa", "embassy-rp/critical-section-impl", "embassy-rp/binary-info"
 ]
 mock = []

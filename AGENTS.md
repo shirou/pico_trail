@@ -210,6 +210,34 @@ Both commands must pass successfully before considering the documentation work c
 - **Build**: `cargo build` (debug), `cargo build --release` (production)
 - **Test**: `cargo test --lib --quiet` - Run unit tests efficiently
 
+### Building for Embedded Targets (RP2350)
+
+**IMPORTANT: Always use the build script for RP2350/Pico 2 W targets.**
+
+- **Build examples**: `./scripts/build-rp2350.sh` - Build all examples and convert to UF2
+- **Build specific example**: `./scripts/build-rp2350.sh scheduler_demo` - Build single example
+- **Release build**: `./scripts/build-rp2350.sh --release scheduler_demo` - Optimized build
+
+The script automatically:
+
+1. Builds the example for `thumbv8m.main-none-eabihf` target
+2. Converts ELF binary to UF2 format (required for flashing)
+3. Places UF2 files in `target/` directory
+
+**Flashing to Pico 2 W:**
+
+```bash
+# Method 1: Using probe-rs (recommended - shows defmt logs)
+probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/scheduler_demo
+
+# Method 2: Manual UF2 copy
+# 1. Hold BOOTSEL button while connecting USB
+# 2. Copy target/scheduler_demo.uf2 to mounted drive
+# 3. Pico will automatically reboot and run
+```
+
+**Note**: Host tests and embedded builds use different targets. Do not use the default `cargo build` for embedded code.
+
 ## Additional Documentation
 
 - **Architecture & Structure**: [`docs/architecture.md`](docs/architecture.md) - Project structure, components, and storage locations

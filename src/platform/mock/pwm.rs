@@ -1,9 +1,9 @@
 //! Mock PWM implementation for testing
 
 use crate::platform::{
-    Result,
     error::{PlatformError, PwmError},
     traits::{PwmConfig, PwmInterface},
+    Result,
 };
 
 /// Mock PWM implementation

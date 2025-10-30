@@ -1,8 +1,8 @@
 //! Mock I2C implementation for testing
 
 use crate::platform::{
-    Result,
     traits::{I2cConfig, I2cInterface},
+    Result,
 };
 use core::cell::RefCell;
 use std::vec::Vec;

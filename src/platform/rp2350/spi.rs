@@ -3,9 +3,9 @@
 //! This module provides SPI support for RP2350 using the `rp235x-hal` crate.
 
 use crate::platform::{
-    Result,
     error::{PlatformError, SpiError},
     traits::{SpiConfig, SpiInterface},
+    Result,
 };
 use rp235x_hal::spi::Spi;
 

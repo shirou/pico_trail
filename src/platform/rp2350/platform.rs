@@ -3,12 +3,9 @@
 //! This module provides the root Platform trait implementation for RP2350.
 
 use crate::platform::{
-    Result,
     error::PlatformError,
-    traits::{
-        I2cConfig, I2cInterface, Platform, PwmConfig, PwmInterface, SpiConfig, SpiInterface,
-        TimerInterface, UartConfig, UartInterface,
-    },
+    traits::{I2cConfig, Platform, PwmConfig, SpiConfig, UartConfig},
+    Result,
 };
 
 use super::{Rp2350Gpio, Rp2350I2c, Rp2350Pwm, Rp2350Spi, Rp2350Timer, Rp2350Uart};
@@ -27,12 +24,12 @@ use super::{Rp2350Gpio, Rp2350I2c, Rp2350Pwm, Rp2350Spi, Rp2350Timer, Rp2350Uart
 ///
 /// For actual hardware use, applications should initialize peripherals directly
 /// from the HAL and wrap them in our trait implementations.
-pub struct Rp2350Platform {
-    timer: Rp2350Timer,
+pub struct Rp2350Platform<D: rp235x_hal::timer::TimerDevice> {
+    timer: Rp2350Timer<D>,
     system_clock_hz: u32,
 }
 
-impl Rp2350Platform {
+impl<D: rp235x_hal::timer::TimerDevice> Rp2350Platform<D> {
     /// System clock frequency for RP2350 (typically 125 MHz)
     pub const SYSTEM_CLOCK_HZ: u32 = 125_000_000;
 
@@ -40,7 +37,7 @@ impl Rp2350Platform {
     ///
     /// This is a simplified constructor for testing and initial development.
     /// A full implementation would initialize all system components.
-    pub fn new(timer: Rp2350Timer) -> Self {
+    pub fn new(timer: Rp2350Timer<D>) -> Self {
         Self {
             timer,
             system_clock_hz: Self::SYSTEM_CLOCK_HZ,
@@ -48,38 +45,70 @@ impl Rp2350Platform {
     }
 }
 
-impl Platform for Rp2350Platform {
+impl<D: rp235x_hal::timer::TimerDevice> Platform for Rp2350Platform<D> {
     // Associated types for each peripheral interface
     type Uart = Rp2350Uart<
         rp235x_hal::pac::UART0,
         (
-            rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio0, rp235x_hal::gpio::FunctionUart>,
-            rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio1, rp235x_hal::gpio::FunctionUart>,
+            rp235x_hal::gpio::Pin<
+                rp235x_hal::gpio::bank0::Gpio0,
+                rp235x_hal::gpio::FunctionUart,
+                rp235x_hal::gpio::PullNone,
+            >,
+            rp235x_hal::gpio::Pin<
+                rp235x_hal::gpio::bank0::Gpio1,
+                rp235x_hal::gpio::FunctionUart,
+                rp235x_hal::gpio::PullNone,
+            >,
         ),
     >;
 
     type I2c = Rp2350I2c<
         rp235x_hal::pac::I2C0,
         (
-            rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio4, rp235x_hal::gpio::FunctionI2c>,
-            rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio5, rp235x_hal::gpio::FunctionI2c>,
+            rp235x_hal::gpio::Pin<
+                rp235x_hal::gpio::bank0::Gpio4,
+                rp235x_hal::gpio::FunctionI2c,
+                rp235x_hal::gpio::PullNone,
+            >,
+            rp235x_hal::gpio::Pin<
+                rp235x_hal::gpio::bank0::Gpio5,
+                rp235x_hal::gpio::FunctionI2c,
+                rp235x_hal::gpio::PullNone,
+            >,
         ),
     >;
 
     type Spi = Rp2350Spi<
         rp235x_hal::pac::SPI0,
         (
-            rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio16, rp235x_hal::gpio::FunctionSpi>,
-            rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio19, rp235x_hal::gpio::FunctionSpi>,
-            rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio18, rp235x_hal::gpio::FunctionSpi>,
+            rp235x_hal::gpio::Pin<
+                rp235x_hal::gpio::bank0::Gpio19,
+                rp235x_hal::gpio::FunctionSpi,
+                rp235x_hal::gpio::PullNone,
+            >, // TX/MOSI
+            rp235x_hal::gpio::Pin<
+                rp235x_hal::gpio::bank0::Gpio16,
+                rp235x_hal::gpio::FunctionSpi,
+                rp235x_hal::gpio::PullNone,
+            >, // RX/MISO
+            rp235x_hal::gpio::Pin<
+                rp235x_hal::gpio::bank0::Gpio18,
+                rp235x_hal::gpio::FunctionSpi,
+                rp235x_hal::gpio::PullNone,
+            >, // SCK
         ),
     >;
 
     type Pwm = Rp2350Pwm<rp235x_hal::pwm::Pwm0, rp235x_hal::pwm::B>;
 
-    type Gpio = Rp2350Gpio<rp235x_hal::gpio::bank0::Gpio0, rp235x_hal::gpio::FunctionSioOutput>;
+    type Gpio = Rp2350Gpio<
+        rp235x_hal::gpio::bank0::Gpio0,
+        rp235x_hal::gpio::FunctionSioOutput,
+        rp235x_hal::gpio::PullNone,
+    >;
 
-    type Timer = Rp2350Timer;
+    type Timer = Rp2350Timer<D>;
 
     fn init() -> Result<Self> {
         // NOTE: This is a placeholder implementation.

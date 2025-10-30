@@ -2,8 +2,8 @@
 //!
 //! This module provides timer and delay support for RP2350 using the `rp235x-hal` crate.
 
-use crate::platform::{Result, traits::TimerInterface};
-use rp235x_hal::timer::Timer;
+use crate::platform::{traits::TimerInterface, Result};
+use rp235x_hal::timer::{Timer, TimerDevice};
 
 /// RP2350 Timer implementation
 ///
@@ -13,22 +13,22 @@ use rp235x_hal::timer::Timer;
 ///
 /// The RP2350 timer is a 64-bit microsecond timer that provides accurate timing
 /// and delay functionality.
-pub struct Rp2350Timer {
-    timer: Timer,
+pub struct Rp2350Timer<D: TimerDevice> {
+    timer: Timer<D>,
 }
 
-impl Rp2350Timer {
+impl<D: TimerDevice> Rp2350Timer<D> {
     /// Create a new RP2350 Timer instance
     ///
     /// # Arguments
     ///
     /// * `timer` - The HAL timer peripheral
-    pub fn new(timer: Timer) -> Self {
+    pub fn new(timer: Timer<D>) -> Self {
         Self { timer }
     }
 }
 
-impl TimerInterface for Rp2350Timer {
+impl<D: TimerDevice> TimerInterface for Rp2350Timer<D> {
     fn delay_us(&mut self, us: u32) -> Result<()> {
         use embedded_hal::blocking::delay::DelayUs;
         self.timer.delay_us(us);
@@ -42,6 +42,6 @@ impl TimerInterface for Rp2350Timer {
     }
 
     fn now_us(&self) -> u64 {
-        self.timer.get_counter()
+        self.timer.get_counter().ticks()
     }
 }

@@ -15,7 +15,20 @@
       "Bash(find:*)",
       "Bash(cargo test:*)",
       "Bash(cargo doc:*)",
-      "Bash(rustc:*)"
+      "Bash(rustc:*)",
+      "Bash(bun scripts/trace-status.ts:*)",
+      "Read(//home/shirou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rp235x-hal-0.3.0/src/gpio/**)",
+      "Read(//home/shirou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rp235x-hal-0.3.0/src/**)",
+      "Bash(cargo build:*)",
+      "Read(//home/shirou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rp235x-hal-0.3.0/**)",
+      "WebFetch(domain:docs.rs)",
+      "Bash(grep:*)",
+      "Bash(cargo clean:*)",
+      "Bash(sync)",
+      "Bash(probe-rs:*)",
+      "Bash(cargo run:*)",
+      "Bash(elf2uf2-rs:*)",
+      "Bash(./scripts/build-rp2350.sh:*)"
     ],
     "deny": [],
     "ask": []

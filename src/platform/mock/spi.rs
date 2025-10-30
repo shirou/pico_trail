@@ -1,8 +1,8 @@
 //! Mock SPI implementation for testing
 
 use crate::platform::{
-    Result,
     traits::{SpiConfig, SpiInterface},
+    Result,
 };
 use core::cell::RefCell;
 use std::vec::Vec;

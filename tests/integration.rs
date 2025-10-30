@@ -1,5 +1,6 @@
-#![no_std]
-#![no_main]
+#![cfg_attr(feature = "pico2_w", no_std)]
+#![cfg_attr(feature = "pico2_w", no_main)]
+#![cfg(feature = "pico2_w")] // Only compile for embedded targets
 
 use pico_trail as _; // memory layout + panic handler
 

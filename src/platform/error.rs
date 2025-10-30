@@ -99,6 +99,8 @@ pub enum GpioError {
     InvalidMode,
     /// Pin already in use
     PinInUse,
+    /// Hardware error during GPIO operation
+    HardwareError,
 }
 
 /// Timer-specific errors

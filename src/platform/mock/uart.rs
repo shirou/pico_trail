@@ -1,8 +1,8 @@
 //! Mock UART implementation for testing
 
 use crate::platform::{
-    Result,
     traits::{UartConfig, UartInterface},
+    Result,
 };
 use core::cell::RefCell;
 use std::vec::Vec;
