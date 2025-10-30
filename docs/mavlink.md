@@ -503,7 +503,7 @@ Key modules:
 ## Related Documentation
 
 - [Architecture](architecture.md) - System architecture and components
-- [T-fuytd Task](tasks/T-fuytd-mavlink-communication/) - Implementation details
+- [T-fuytd Task](archive/tasks/T-fuytd-mavlink-communication/) - Implementation details
 - [ADR-ggou4](adr/ADR-ggou4-mavlink-implementation.md) - MAVLink architecture decision
 - [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) - MAVLink requirements
 

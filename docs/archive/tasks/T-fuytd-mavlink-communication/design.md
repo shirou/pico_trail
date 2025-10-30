@@ -3,18 +3,18 @@
 ## Metadata
 
 - Type: Design
-- Status: Draft
+- Status: Approved
 
 ## Links
 
 - Associated Plan Document:
   - [T-fuytd-mavlink-communication-plan](plan.md)
 - Related ADRs:
-  - [ADR-ggou4-mavlink-implementation](../../adr/ADR-ggou4-mavlink-implementation.md)
+  - [ADR-ggou4-mavlink-implementation](../../../adr/ADR-ggou4-mavlink-implementation.md)
 - Related Requirements:
-  - [FR-gpzpz-mavlink-protocol](../../requirements/FR-gpzpz-mavlink-protocol.md)
-  - [FR-a1cuu-runtime-parameters](../../requirements/FR-a1cuu-runtime-parameters.md)
-  - [NFR-z2iuk-memory-limits](../../requirements/NFR-z2iuk-memory-limits.md)
+  - [FR-gpzpz-mavlink-protocol](../../../requirements/FR-gpzpz-mavlink-protocol.md)
+  - [FR-a1cuu-runtime-parameters](../../../requirements/FR-a1cuu-runtime-parameters.md)
+  - [NFR-z2iuk-memory-limits](../../../requirements/NFR-z2iuk-memory-limits.md)
 
 ## Overview
 
@@ -22,11 +22,11 @@ Implement MAVLink 2.0 protocol communication for ground control station (GCS) in
 
 ## Success Metrics
 
-- [ ] Compatible with QGroundControl 4.x (tested connection, telemetry display)
-- [ ] Compatible with Mission Planner 1.3.x (tested connection, telemetry display)
-- [ ] MAVLink state uses < 10 KB RAM (measured via defmt memory logging)
-- [ ] 10Hz telemetry streams without dropped messages (verified via GCS logs)
-- [ ] < 0.1% message corruption rate (CRC validation tracking)
+- [x] Compatible with QGroundControl 4.x (tested connection, telemetry display)
+- [x] Compatible with Mission Planner 1.3.x (tested connection, telemetry display)
+- [x] MAVLink state uses < 10 KB RAM (measured via defmt memory logging)
+- [x] 10Hz telemetry streams without dropped messages (verified via GCS logs)
+- [x] < 0.1% message corruption rate (CRC validation tracking)
 
 ## Background and Current State
 
@@ -348,4 +348,4 @@ Autopilot → GCS: COMMAND_ACK(MAV_CMD_COMPONENT_ARM_DISARM, MAV_RESULT_ACCEPTED
 
 ## Template Usage
 
-For detailed instructions on using this template, see [Template Usage Instructions](../../templates/README.md#design-template-designmd) in the templates README.
+For detailed instructions on using this template, see [Template Usage Instructions](../../../templates/README.md#design-template-designmd) in the templates README.

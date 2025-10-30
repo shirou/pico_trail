@@ -9,8 +9,8 @@
 
 - Prerequisite Requirements: N/A
 - Dependent Requirements:
-  - [FR-a1cuu-runtime-parameters](FR-a1cuu-runtime-parameters.md)
   - [FR-4e922-data-logging](FR-4e922-data-logging.md)
+  - [FR-a1cuu-runtime-parameters](FR-a1cuu-runtime-parameters.md)
 - Related Tasks: N/A - Tasks will be created after ADRs
 
 ## Requirement Statement

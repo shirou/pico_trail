@@ -9,8 +9,8 @@
 
 - Prerequisite Requirements:
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
+- Dependent Requirements:
   - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)
-- Dependent Requirements: N/A
 - Related Tasks: N/A - Tasks will be created after ADRs
 
 ## Requirement Statement

@@ -10,11 +10,11 @@
 - Associated Design Document:
   - [T-fuytd-mavlink-communication-design](design.md)
 - Related ADRs:
-  - [ADR-ggou4-mavlink-implementation](../../adr/ADR-ggou4-mavlink-implementation.md)
+  - [ADR-ggou4-mavlink-implementation](../../../adr/ADR-ggou4-mavlink-implementation.md)
 - Related Requirements:
-  - [FR-gpzpz-mavlink-protocol](../../requirements/FR-gpzpz-mavlink-protocol.md)
-  - [FR-a1cuu-runtime-parameters](../../requirements/FR-a1cuu-runtime-parameters.md)
-  - [NFR-z2iuk-memory-limits](../../requirements/NFR-z2iuk-memory-limits.md)
+  - [FR-gpzpz-mavlink-protocol](../../../requirements/FR-gpzpz-mavlink-protocol.md)
+  - [FR-a1cuu-runtime-parameters](../../../requirements/FR-a1cuu-runtime-parameters.md)
+  - [NFR-z2iuk-memory-limits](../../../requirements/NFR-z2iuk-memory-limits.md)
 
 ## Overview
 
@@ -82,8 +82,8 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask. If an
 ### Inputs
 
 - Documentation:
-  - `/docs/adr/ADR-ggou4-mavlink-implementation.md` – Architecture decision
-  - `/docs/requirements/FR-gpzpz-mavlink-protocol.md` – Protocol requirement
+  - [ADR-ggou4-mavlink-implementation](../../../adr/ADR-ggou4-mavlink-implementation.md) – Architecture decision
+  - [FR-gpzpz-mavlink-protocol](../../../requirements/FR-gpzpz-mavlink-protocol.md) – Protocol requirement
 - Source Code to Create:
   - `/src/communication/` – New communication module
   - `/src/communication/mavlink/` – MAVLink implementation
@@ -607,4 +607,4 @@ probe-rs run --chip RP2350 --release target/thumbv8m.main-none-eabihf/release/ex
 
 ## Template Usage
 
-For detailed instructions on using this template, see [Template Usage Instructions](../../templates/README.md#plan-template-planmd) in the templates README.
+For detailed instructions on using this template, see [Template Usage Instructions](../../../templates/README.md#plan-template-planmd) in the templates README.

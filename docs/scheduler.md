@@ -618,8 +618,8 @@ async fn main(spawner: Spawner) {
 ## Related Documentation
 
 - [Architecture](architecture.md) - System architecture and component overview
-- [Task Design Document](tasks/T-g729p-embassy-task-scheduler/design.md) - Detailed scheduler design
-- [Task Plan](tasks/T-g729p-embassy-task-scheduler/plan.md) - Implementation plan and validation results
+- [Task Design Document](archive/tasks/T-g729p-embassy-task-scheduler/design.md) - Detailed scheduler design
+- [Task Plan](archive/tasks/T-g729p-embassy-task-scheduler/plan.md) - Implementation plan and validation results
 - [ADR-vywkw](adr/ADR-vywkw-task-scheduler-selection.md) - Scheduler framework selection decision
 - [FR-5inw2](requirements/FR-5inw2-task-scheduler.md) - Task scheduler functional requirements
 - [NFR-ukjvr](requirements/NFR-ukjvr-control-loop-latency.md) - Control loop latency requirement

@@ -7,9 +7,9 @@
 
 ## Links
 
-- Prerequisite Requirements: N/A
-- Dependent Requirements:
+- Prerequisite Requirements:
   - [FR-gpzpz-mavlink-protocol](FR-gpzpz-mavlink-protocol.md)
+- Dependent Requirements: N/A
 - Related Tasks: N/A - Tasks will be created after ADRs
 
 ## Requirement Statement

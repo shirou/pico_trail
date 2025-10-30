@@ -18,13 +18,13 @@ Implement MAVLink 2.0 protocol communication for ground control station (GCS) in
 
 ### Requirements
 
-- [FR-gpzpz-mavlink-protocol](../../requirements/FR-gpzpz-mavlink-protocol.md) - MAVLink protocol requirement
-- [FR-a1cuu-runtime-parameters](../../requirements/FR-a1cuu-runtime-parameters.md) - Parameter configuration
-- [NFR-z2iuk-memory-limits](../../requirements/NFR-z2iuk-memory-limits.md) - Memory constraints
+- [FR-gpzpz-mavlink-protocol](../../../requirements/FR-gpzpz-mavlink-protocol.md) - MAVLink protocol requirement
+- [FR-a1cuu-runtime-parameters](../../../requirements/FR-a1cuu-runtime-parameters.md) - Parameter configuration
+- [NFR-z2iuk-memory-limits](../../../requirements/NFR-z2iuk-memory-limits.md) - Memory constraints
 
 ### Architecture Decisions
 
-- [ADR-ggou4-mavlink-implementation](../../adr/ADR-ggou4-mavlink-implementation.md) - rust-mavlink with custom handlers
+- [ADR-ggou4-mavlink-implementation](../../../adr/ADR-ggou4-mavlink-implementation.md) - rust-mavlink with custom handlers
 
 ### Dependencies
 

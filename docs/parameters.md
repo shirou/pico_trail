@@ -446,5 +446,5 @@ probe-rs run --chip RP2350 target/.../param_persistence_hardware_test
 
 - **Requirements**: [FR-a1cuu-runtime-parameters](requirements/FR-a1cuu-runtime-parameters.md)
 - **ADR**: [ADR-hj79f-storage-strategy](adr/ADR-hj79f-storage-strategy.md)
-- **Task**: [T-ex2h7-parameter-persistence](tasks/T-ex2h7-parameter-persistence/)
+- **Task**: [T-ex2h7-parameter-persistence](archive/tasks/T-ex2h7-parameter-persistence/)
 - **MAVLink Parameter Protocol**: <https://mavlink.io/en/services/parameter.html>

@@ -10,7 +10,8 @@
 - Prerequisite Requirements:
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
   - [NFR-3wlo1-imu-sampling-rate](NFR-3wlo1-imu-sampling-rate.md)
-- Dependent Requirements: N/A
+- Dependent Requirements:
+  - [FR-333ym-gps-waypoint-navigation](FR-333ym-gps-waypoint-navigation.md)
 - Related Tasks: N/A - Tasks will be created after ADRs
 
 ## Requirement Statement

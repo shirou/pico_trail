@@ -9,6 +9,11 @@
 
 - Prerequisite Requirements: N/A
 - Dependent Requirements:
+  - [FR-333ym-gps-waypoint-navigation](FR-333ym-gps-waypoint-navigation.md)
+  - [FR-4e922-data-logging](FR-4e922-data-logging.md)
+  - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)
+  - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md)
+  - [FR-sxsvw-failsafe-mechanisms](FR-sxsvw-failsafe-mechanisms.md)
   - [NFR-ukjvr-control-loop-latency](NFR-ukjvr-control-loop-latency.md)
   - [NFR-3wlo1-imu-sampling-rate](NFR-3wlo1-imu-sampling-rate.md)
 - Related Tasks: N/A - Tasks will be created after ADRs
