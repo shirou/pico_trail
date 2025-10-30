@@ -59,6 +59,10 @@ crc = { version = "3.2", default-features = false }
 # Bitflags for parameter flags
 bitflags = "2.6"
 
+# MAVLink 2.0 protocol (FR-gpzpz: MAVLink Protocol)
+mavlink = { version = "0.13", default-features = false, features = ["embedded", "common"] }
+embedded-io-async = "0.6"
+
 # Platform HALs (optional, enabled via features)
 rp235x-hal = { version = "0.3.0", optional = true }
 embedded-hal = { version = "0.2.7", features = ["unproven"], optional = true }

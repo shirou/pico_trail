@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Implementation Plan
-- Status: Draft
+- Status: Phase 1 In Progress
 
 ## Links
 
@@ -93,16 +93,16 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask. If an
 
 ### Tasks
 
-- [ ] **Setup module structure**
-  - [ ] Create `src/communication/` directory
-  - [ ] Create `src/communication/mavlink/` directory
-  - [ ] Create `src/communication/mavlink/mod.rs` with module exports
-  - [ ] Create `src/communication/mod.rs`
-  - [ ] Update `src/lib.rs` to include `communication` module
-- [ ] **Add dependencies**
-  - [ ] Add `mavlink` crate to `Cargo.toml` with features `["embedded", "common"]`
-  - [ ] Add `heapless` crate for fixed-size buffers (no_std)
-  - [ ] Verify `embassy-time` already present (from T-g729p)
+- [x] **Setup module structure**
+  - [x] Create `src/communication/` directory
+  - [x] Create `src/communication/mavlink/` directory
+  - [x] Create `src/communication/mavlink/mod.rs` with module exports
+  - [x] Create `src/communication/mod.rs`
+  - [x] Update `src/lib.rs` to include `communication` module
+- [x] **Add dependencies**
+  - [x] Add `mavlink` crate to `Cargo.toml` with features `["embedded", "common"]`
+  - [x] Add `heapless` crate for fixed-size buffers (no_std) - already present
+  - [x] Verify `embassy-time` already present (from T-g729p) - confirmed
 - [ ] **Implement message parser**
   - [ ] Create `src/communication/mavlink/parser.rs`
   - [ ] Define `read_mavlink_message()` async function using rust-mavlink `read_v2_msg()`
@@ -554,11 +554,34 @@ probe-rs run --chip RP2350 --release target/thumbv8m.main-none-eabihf/release/ex
 
 ## Open Questions
 
-- [ ] Should we implement all MAVLink commands or start with essential subset (arm, mode)? → Next step: Start with arm/disarm and mode change, add others in future tasks as needed
-- [ ] How to handle parameter storage persistence (flash writes)? → Decision: Defer to FR-a1cuu task, keep parameters in RAM only for this task
-- [ ] Should we support USB CDC as alternative to UART? → Method: USB support as future enhancement, UART-only for initial implementation
-- [ ] What system ID and component ID should we use? → Decision: System ID 1 (configurable via SYSID_THISMAV parameter), Component ID MAV_COMP_ID_AUTOPILOT1 (1)
-- [ ] Should we implement mavproxy-style routing (multiple GCS endpoints)? → Decision: Defer to future task, single GCS connection for v1
+- [x] Should we implement all MAVLink commands or start with essential subset (arm, mode)? → Decision: Start with arm/disarm and mode change, add others in future tasks as needed
+- [x] How to handle parameter storage persistence (flash writes)? → Decision: Defer to FR-a1cuu task, keep parameters in RAM only for this task (now completed in T-ex2h7)
+- [x] Should we support USB CDC as alternative to UART? → Decision: USB support as future enhancement (see below), UART-only for initial implementation
+- [x] What system ID and component ID should we use? → Decision: System ID 1 (configurable via SYSID_THISMAV parameter), Component ID MAV_COMP_ID_AUTOPILOT1 (1)
+- [x] Should we implement mavproxy-style routing (multiple GCS endpoints)? → Decision: Defer to future task, single GCS connection for v1
+
+## Future Enhancements
+
+### USB CDC Transport
+
+**Rationale**: USB CDC (Communications Device Class) provides direct PC connection without external UART adapter, simplifying hardware setup and enabling higher bandwidth.
+
+**Benefits**:
+- No external USB-serial adapter required
+- Higher bandwidth potential (12 Mbps USB Full Speed vs 115200 baud UART)
+- Simpler wiring for end users
+- Can coexist with UART for dual-channel operation
+
+**Implementation Requirements**:
+- Add USB CDC interface to Platform abstraction layer (src/platform/traits/usb_cdc.rs)
+- Implement RP2350 USB CDC driver (src/platform/rp2350/usb_cdc.rs)
+- Add transport selection in MAVLink router (UART vs USB CDC)
+- Update examples with USB CDC configuration
+- Test with QGroundControl/Mission Planner over USB
+
+**Estimated Effort**: 1-2 weeks (depends on embassy-usb stability)
+
+**Priority**: Medium (nice-to-have after core functionality validated)
 
 ---
 

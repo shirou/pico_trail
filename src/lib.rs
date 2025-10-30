@@ -14,7 +14,9 @@ pub mod devices;
 // Core systems (FR-5inw2: Task Scheduler)
 pub mod core;
 
+// Communication protocols (FR-gpzpz: MAVLink Protocol)
+pub mod communication;
+
 // Future modules (to be implemented in subsequent phases):
 // pub mod subsystems;    // Subsystems (AHRS, Navigation, Control)
 // pub mod vehicle;       // Vehicle logic and flight modes
-// pub mod communication; // MAVLink protocol and telemetry
