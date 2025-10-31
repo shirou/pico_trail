@@ -30,6 +30,12 @@
 //! }
 //! ```
 
+pub mod calibration;
 pub mod dcm;
+pub mod state;
+pub mod task;
 
-pub use dcm::{Dcm, DcmConfig, DcmState};
+pub use calibration::{estimate_gyro_bias, CalibrationData};
+pub use dcm::{Dcm, DcmConfig};
+pub use state::{AttitudeQuality, AttitudeState, SharedAttitudeState};
+pub use task::{run_ahrs_task, AhrsTaskConfig, ImuData};

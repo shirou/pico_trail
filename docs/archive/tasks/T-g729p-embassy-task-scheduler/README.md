@@ -8,8 +8,8 @@
 
 - **Design**: [design.md](design.md) - Architecture and component design
 - **Plan**: [plan.md](plan.md) - Implementation phases and verification
-- **Requirement**: [FR-5inw2-task-scheduler](../../requirements/FR-5inw2-task-scheduler.md)
-- **ADR**: [ADR-vywkw-task-scheduler-selection](../../adr/ADR-vywkw-task-scheduler-selection.md)
+- **Requirement**: [FR-5inw2-task-scheduler](../../../requirements/FR-5inw2-task-scheduler.md)
+- **ADR**: [ADR-vywkw-task-scheduler-selection](../../../adr/ADR-vywkw-task-scheduler-selection.md)
 
 ## Overview
 

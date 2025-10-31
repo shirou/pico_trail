@@ -10,11 +10,11 @@
 - Associated Design Document:
   - [T-g729p-embassy-task-scheduler-design](design.md)
 - Related ADRs:
-  - [ADR-vywkw-task-scheduler-selection](../../adr/ADR-vywkw-task-scheduler-selection.md)
+  - [ADR-vywkw-task-scheduler-selection](../../../adr/ADR-vywkw-task-scheduler-selection.md)
 - Related Requirements:
-  - [FR-5inw2-task-scheduler](../../requirements/FR-5inw2-task-scheduler.md)
-  - [NFR-ukjvr-control-loop-latency](../../requirements/NFR-ukjvr-control-loop-latency.md)
-  - [NFR-3wlo1-imu-sampling-rate](../../requirements/NFR-3wlo1-imu-sampling-rate.md)
+  - [FR-5inw2-task-scheduler](../../../requirements/FR-5inw2-task-scheduler.md)
+  - [NFR-ukjvr-control-loop-latency](../../../requirements/NFR-ukjvr-control-loop-latency.md)
+  - [NFR-3wlo1-imu-sampling-rate](../../../requirements/NFR-3wlo1-imu-sampling-rate.md)
 
 ## Overview
 
@@ -357,4 +357,4 @@ probe-rs run --chip RP2040 --release target/thumbv6m-none-eabi/release/examples/
 
 ## Template Usage
 
-For detailed instructions on using this template, see [Template Usage Instructions](../../templates/README.md#plan-template-planmd) in the templates README.
+For detailed instructions on using this template, see [Template Usage Instructions](../../../templates/README.md#plan-template-planmd) in the templates README.

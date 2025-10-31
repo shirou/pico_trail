@@ -10,10 +10,10 @@
 - Associated Design Document:
   - [T-egg4f-platform-abstraction-design](design.md)
 - Related ADRs:
-  - [ADR-oa2qa-platform-abstraction](../../adr/ADR-oa2qa-platform-abstraction.md)
+  - [ADR-oa2qa-platform-abstraction](../../../adr/ADR-oa2qa-platform-abstraction.md)
 - Related Requirements:
-  - [NFR-nmmu0-platform-code-isolation](../../requirements/NFR-nmmu0-platform-code-isolation.md)
-  - [NFR-pj11s-no-unsafe-rust](../../requirements/NFR-pj11s-no-unsafe-rust.md)
+  - [NFR-nmmu0-platform-code-isolation](../../../requirements/NFR-nmmu0-platform-code-isolation.md)
+  - [NFR-pj11s-no-unsafe-rust](../../../requirements/NFR-pj11s-no-unsafe-rust.md)
 
 ## Overview
 
@@ -431,4 +431,4 @@ git push origin feature/platform-abstraction
 
 ## Template Usage
 
-For detailed instructions on using this template, see [Template Usage Instructions](../../templates/README.md#plan-template-planmd) in the templates README.
+For detailed instructions on using this template, see [Template Usage Instructions](../../../templates/README.md#plan-template-planmd) in the templates README.

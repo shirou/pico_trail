@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Implementation Plan
-- Status: Phase 1 In Progress
+- Status: Phase 3 Complete
 
 ## Links
 
@@ -152,30 +152,30 @@ Implement accelerometer and magnetometer corrections using PI controller. Add ca
 
 ### Phase 2 Tasks
 
-- [ ] **Accelerometer correction**
-  - [ ] Implement `Dcm::update(gyro, accel, dt)` method
-  - [ ] Compute accel error: `error = accel.cross(&accel_ref)`
-  - [ ] Apply PI correction: `omega_p = error * kp`, `omega_i += error * ki * dt`
-  - [ ] Add unit test: Static pitch/roll recovery from tilted initial state
-- [ ] **Magnetometer correction**
-  - [ ] Implement `Dcm::update_with_mag(mag)` method
-  - [ ] Compute heading error from magnetometer
-  - [ ] Apply yaw correction to `omega_p.z` and `omega_i.z`
-  - [ ] Add unit test: Heading correction from known magnetic field vector
-- [ ] **Calibration structures**
-  - [ ] Define `CalibrationData` struct (accel_offset, accel_scale, mag_offset, mag_scale, gyro_bias)
-  - [ ] Implement `apply_accel_calibration(raw: Vector3) -> Vector3`
-  - [ ] Implement `apply_mag_calibration(raw: Vector3) -> Vector3`
-  - [ ] Add unit test: Apply known offsets/scales, verify output
-- [ ] **Calibration persistence**
-  - [ ] Integrate with parameter system (load calibration on startup)
-  - [ ] Add parameter definitions for accel/mag offsets and scales
-  - [ ] Implement `load_calibration() -> Result<CalibrationData>`
-  - [ ] Add fallback: Use default identity calibration if load fails
-- [ ] **Gyro bias estimation**
-  - [ ] Implement initialization routine: Accumulate gyro samples for 1 second, compute mean
-  - [ ] Store bias in `gyro_bias` field, subtract from raw gyro readings
-  - [ ] Add unit test: Bias estimation from synthetic noisy gyro data
+- [x] **Accelerometer correction**
+  - [x] Implement `Dcm::update(gyro, accel, dt)` method
+  - [x] Compute accel error: `error = accel.cross(&accel_ref)`
+  - [x] Apply PI correction: `omega_p = error * kp`, `omega_i += error * ki * dt`
+  - [x] Add unit test: Static pitch/roll recovery from tilted initial state
+- [x] **Magnetometer correction**
+  - [x] Implement `Dcm::update_with_mag(mag)` method
+  - [x] Compute heading error from magnetometer
+  - [x] Apply yaw correction to `omega_p.z` and `omega_i.z`
+  - [x] Add unit test: Heading correction from known magnetic field vector
+- [x] **Calibration structures**
+  - [x] Define `CalibrationData` struct (accel_offset, accel_scale, mag_offset, mag_scale, gyro_bias)
+  - [x] Implement `apply_accel_calibration(raw: Vector3) -> Vector3`
+  - [x] Implement `apply_mag_calibration(raw: Vector3) -> Vector3`
+  - [x] Add unit test: Apply known offsets/scales, verify output
+- [x] **Calibration persistence**
+  - [x] Integrate with parameter system (load calibration on startup)
+  - [x] Add parameter definitions for accel/mag offsets and scales
+  - [x] Implement `load_calibration() -> Result<CalibrationData>`
+  - [x] Add fallback: Use default identity calibration if load fails
+- [x] **Gyro bias estimation**
+  - [x] Implement initialization routine: Accumulate gyro samples for 1 second, compute mean
+  - [x] Store bias in `gyro_bias` field, subtract from raw gyro readings
+  - [x] Add unit test: Bias estimation from synthetic noisy gyro data
 
 ### Phase 2 Deliverables
 
@@ -224,35 +224,35 @@ Integrate DCM algorithm into Embassy async task, publish attitude to shared stat
 
 ### Phase 3 Tasks
 
-- [ ] **Shared attitude state**
-  - [ ] Define `AttitudeState` struct (roll, pitch, yaw, angular_rates, timestamp, quality)
-  - [ ] Implement thread-safe access (use `embassy_sync::mutex::Mutex` or atomic)
-  - [ ] Add getter methods: `get_roll()`, `get_pitch()`, `get_yaw()`
-- [ ] **AHRS task implementation**
-  - [ ] Create `ahrs_task()` async function
-  - [ ] Initialize DCM and calibration on startup
-  - [ ] Main loop: Read IMU at 100Hz, call `Dcm::update()`, publish to shared state
-  - [ ] Magnetometer loop: Read mag at 10Hz, call `Dcm::update_with_mag()`
-  - [ ] Add convergence detection: Set `quality.converged` flag after 5 seconds
-- [ ] **Task scheduler integration**
-  - [ ] Register AHRS task with task scheduler (100Hz priority slot)
-  - [ ] Verify task execution via `defmt` logs
-  - [ ] Measure cycle time with `embassy_time::Instant`, log if > 8ms
-- [ ] **Performance profiling**
-  - [ ] Build for Pico W (RP2040): `./scripts/build-rp2350.sh ahrs_demo`
-  - [ ] Flash and run on hardware: `probe-rs run --chip RP2350 target/.../ahrs_demo`
-  - [ ] Capture cycle time statistics (min/max/avg)
-  - [ ] Verify < 10ms cycle time on Pico W, < 5ms on Pico 2 W
-- [ ] **Integration tests**
-  - [ ] Add test under `tests/ahrs_integration.rs`
-  - [ ] Test scenario: AHRS task running in Embassy executor, verify attitude updates
-  - [ ] Test convergence: Start with random orientation, verify convergence within 5s
-  - [ ] Test graceful degradation: Disable magnetometer, verify gyro-only mode
-- [ ] **Documentation**
-  - [ ] Add `docs/subsystems/ahrs.md` with usage guide
-  - [ ] Document calibration procedure (6-position accel, mag sphere fitting)
-  - [ ] Document tuning parameters (kp/ki gains)
-  - [ ] Update `docs/architecture.md` with AHRS subsystem section
+- [x] **Shared attitude state**
+  - [x] Define `AttitudeState` struct (roll, pitch, yaw, angular_rates, timestamp, quality)
+  - [x] Implement thread-safe access (use `embassy_sync::mutex::Mutex` or atomic)
+  - [x] Add getter methods: `get_roll()`, `get_pitch()`, `get_yaw()`
+- [x] **AHRS task implementation**
+  - [x] Create `ahrs_task()` async function
+  - [x] Initialize DCM and calibration on startup
+  - [x] Main loop: Read IMU at 100Hz, call `Dcm::update()`, publish to shared state
+  - [x] Magnetometer loop: Read mag at 10Hz, call `Dcm::update_with_mag()`
+  - [x] Add convergence detection: Set `quality.converged` flag after 5 seconds
+- [x] **Task scheduler integration**
+  - [x] Register AHRS task with task scheduler (100Hz priority slot)
+  - [x] Verify task execution via `defmt` logs
+  - [x] Measure cycle time with `embassy_time::Instant`, log if > 8ms
+- [x] **Performance profiling**
+  - [x] Build for Pico W (RP2040): `./scripts/build-rp2350.sh ahrs_demo`
+  - [x] Flash and run on hardware: `probe-rs run --chip RP2350 target/.../ahrs_demo`
+  - [x] Capture cycle time statistics (min/max/avg)
+  - [x] Verify < 10ms cycle time on Pico W, < 5ms on Pico 2 W
+- [x] **Integration tests**
+  - [x] Add test under `tests/ahrs_integration.rs`
+  - [x] Test scenario: AHRS task running in Embassy executor, verify attitude updates
+  - [x] Test convergence: Start with random orientation, verify convergence within 5s
+  - [x] Test graceful degradation: Disable magnetometer, verify gyro-only mode
+- [x] **Documentation**
+  - [x] Add `docs/subsystems/ahrs.md` with usage guide
+  - [x] Document calibration procedure (6-position accel, mag sphere fitting)
+  - [x] Document tuning parameters (kp/ki gains)
+  - [x] Update `docs/architecture.md` with AHRS subsystem section
 
 ### Phase 3 Deliverables
 

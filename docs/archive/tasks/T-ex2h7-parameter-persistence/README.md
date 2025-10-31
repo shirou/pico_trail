@@ -18,12 +18,12 @@ Implement Flash-backed parameter persistence with redundant block rotation for w
 
 ### Requirements
 
-- [FR-a1cuu-runtime-parameters](../../requirements/FR-a1cuu-runtime-parameters.md) - Runtime parameter configuration
-- [NFR-z2iuk-memory-limits](../../requirements/NFR-z2iuk-memory-limits.md) - Memory constraints
+- [FR-a1cuu-runtime-parameters](../../../requirements/FR-a1cuu-runtime-parameters.md) - Runtime parameter configuration
+- [NFR-z2iuk-memory-limits](../../../requirements/NFR-z2iuk-memory-limits.md) - Memory constraints
 
 ### Architecture Decisions
 
-- [ADR-hj79f-storage-strategy](../../adr/ADR-hj79f-storage-strategy.md) - Redundant block rotation with wear leveling
+- [ADR-hj79f-storage-strategy](../../../adr/ADR-hj79f-storage-strategy.md) - Redundant block rotation with wear leveling
 
 ### Dependencies
 

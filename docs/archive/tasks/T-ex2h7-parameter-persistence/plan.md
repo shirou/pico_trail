@@ -10,10 +10,10 @@
 - Associated Design Document:
   - [T-ex2h7-parameter-persistence-design](design.md)
 - Related ADRs:
-  - [ADR-hj79f-storage-strategy](../../adr/ADR-hj79f-storage-strategy.md)
+  - [ADR-hj79f-storage-strategy](../../../adr/ADR-hj79f-storage-strategy.md)
 - Related Requirements:
-  - [FR-a1cuu-runtime-parameters](../../requirements/FR-a1cuu-runtime-parameters.md)
-  - [NFR-z2iuk-memory-limits](../../requirements/NFR-z2iuk-memory-limits.md)
+  - [FR-a1cuu-runtime-parameters](../../../requirements/FR-a1cuu-runtime-parameters.md)
+  - [NFR-z2iuk-memory-limits](../../../requirements/NFR-z2iuk-memory-limits.md)
 
 ## Overview
 
@@ -493,4 +493,4 @@ probe-rs run --chip RP2350 --release target/thumbv8m.main-none-eabihf/release/ex
 
 ## Template Usage
 
-For detailed instructions on using this template, see [Template Usage Instructions](../../templates/README.md#plan-template-planmd) in the templates README.
+For detailed instructions on using this template, see [Template Usage Instructions](../../../templates/README.md#plan-template-planmd) in the templates README.

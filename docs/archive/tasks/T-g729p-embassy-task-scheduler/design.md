@@ -10,11 +10,11 @@
 - Associated Plan Document:
   - [T-g729p-embassy-task-scheduler-plan](plan.md)
 - Related ADRs:
-  - [ADR-vywkw-task-scheduler-selection](../../adr/ADR-vywkw-task-scheduler-selection.md)
+  - [ADR-vywkw-task-scheduler-selection](../../../adr/ADR-vywkw-task-scheduler-selection.md)
 - Related Requirements:
-  - [FR-5inw2-task-scheduler](../../requirements/FR-5inw2-task-scheduler.md)
-  - [NFR-ukjvr-control-loop-latency](../../requirements/NFR-ukjvr-control-loop-latency.md)
-  - [NFR-3wlo1-imu-sampling-rate](../../requirements/NFR-3wlo1-imu-sampling-rate.md)
+  - [FR-5inw2-task-scheduler](../../../requirements/FR-5inw2-task-scheduler.md)
+  - [NFR-ukjvr-control-loop-latency](../../../requirements/NFR-ukjvr-control-loop-latency.md)
+  - [NFR-3wlo1-imu-sampling-rate](../../../requirements/NFR-3wlo1-imu-sampling-rate.md)
 
 ## Overview
 
@@ -406,4 +406,4 @@ async fn main(spawner: Spawner) {
 
 ## Template Usage
 
-For detailed instructions on using this template, see [Template Usage Instructions](../../templates/README.md#design-template-designmd) in the templates README.
+For detailed instructions on using this template, see [Template Usage Instructions](../../../templates/README.md#design-template-designmd) in the templates README.

@@ -10,10 +10,10 @@
 - Associated Plan Document:
   - [T-egg4f-platform-abstraction-plan](plan.md)
 - Related ADRs:
-  - [ADR-oa2qa-platform-abstraction](../../adr/ADR-oa2qa-platform-abstraction.md)
+  - [ADR-oa2qa-platform-abstraction](../../../adr/ADR-oa2qa-platform-abstraction.md)
 - Related Requirements:
-  - [NFR-nmmu0-platform-code-isolation](../../requirements/NFR-nmmu0-platform-code-isolation.md)
-  - [NFR-pj11s-no-unsafe-rust](../../requirements/NFR-pj11s-no-unsafe-rust.md)
+  - [NFR-nmmu0-platform-code-isolation](../../../requirements/NFR-nmmu0-platform-code-isolation.md)
+  - [NFR-pj11s-no-unsafe-rust](../../../requirements/NFR-pj11s-no-unsafe-rust.md)
 
 ## Overview
 
@@ -37,7 +37,7 @@ Implement a three-tier platform abstraction layer that isolates all hardware-spe
   - Zero-cost abstraction requirement (< 1% overhead)
   - Real-time constraints (50Hz minimum control loop)
   - Memory budget limitations
-- Related ADRs: [ADR-oa2qa-platform-abstraction](../../adr/ADR-oa2qa-platform-abstraction.md) - Selected three-tier design over two-tier embedded-hal approach
+- Related ADRs: [ADR-oa2qa-platform-abstraction](../../../adr/ADR-oa2qa-platform-abstraction.md) - Selected three-tier design over two-tier embedded-hal approach
 
 ## Proposed Design
 
@@ -377,4 +377,4 @@ impl<G: GpsSensor> WaypointNavigator<G> {
 
 ## Template Usage
 
-For detailed instructions on using this template, see [Template Usage Instructions](../../templates/README.md#design-template-designmd) in the templates README.
+For detailed instructions on using this template, see [Template Usage Instructions](../../../templates/README.md#design-template-designmd) in the templates README.
