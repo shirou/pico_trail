@@ -468,61 +468,85 @@ cargo test --lib --quiet core::mission
 
 ### Phase 6 Tasks
 
-- [x] **Hardware deployment**
+- [ ] **Hardware deployment**
+  - [x] Implement UART integration in MavlinkParser::read_message()
+  - [x] Implement UART integration in MavlinkWriter::write_message()
+  - [x] Implement actual mavlink_task loop with message processing
+  - [x] Use BufferedUart for embedded_io_async compatibility
+  - [x] Fix Embassy task generic limitations (wrapper + impl pattern)
+  - [x] Code compiles successfully for RP2350 target
+  - [x] Code formatted (cargo fmt) and linted (cargo clippy)
+
+  **RP2350 MPU Bug Resolution**
+
+  The embassy-rp 0.8.0 MPU stack guard bug has been resolved by using git versions.
+  PR #4688 (merged 2025-09-21) replaced MPU with msplim register for Cortex-M33.
+  See: <https://github.com/embassy-rs/embassy/pull/4688>
+
+  Using git versions of embassy crates in Cargo.toml until embassy-rp 0.9+ is released.
   - [x] Build MAVLink demo for RP2350 target
-  - [x] Flash to Pico 2 W using UF2
-  - [x] Connect UART to USB-serial adapter (UART0 TX/RX, GND)
-  - [x] Verify MAVLink traffic via serial monitor or mavproxy
-- [x] **QGroundControl testing**
-  - [x] Install QGroundControl 4.x on test machine
-  - [x] Connect to Pico 2 W via serial port (115200 baud)
-  - [x] Verify vehicle connects (HEARTBEAT received)
-  - [x] Verify telemetry display (attitude, GPS, battery)
-  - [x] Test parameter editing (change SR_EXTRA1, verify rate change)
-  - [x] Test arm/disarm commands
-  - [x] Test mission upload (upload 5 waypoints, verify storage)
-  - [x] Document any compatibility issues
-- [x] **Mission Planner testing**
-  - [x] Install Mission Planner 1.3.x on Windows test machine
-  - [x] Connect to Pico 2 W via COM port (115200 baud)
-  - [x] Verify vehicle connects and telemetry displays
-  - [x] Test parameter editing
-  - [x] Test arm/disarm commands
-  - [x] Document any compatibility issues
-- [x] **Memory usage measurement**
-  - [x] Add defmt logging for heap/stack usage (if available)
-  - [x] Measure MAVLink static memory (buffers, state structs)
-  - [x] Verify < 10 KB RAM target met
-  - [x] Document actual memory usage
-- [x] **Message rate measurement**
-  - [x] Capture UART output for 60 seconds
-  - [x] Count messages per type (HEARTBEAT, ATTITUDE, GPS_RAW_INT)
-  - [x] Verify 1Hz HEARTBEAT, 10Hz ATTITUDE, 5Hz GPS (within ±5%)
-  - [x] Check for dropped messages (gaps in seq numbers)
-- [x] **CPU load measurement**
-  - [x] Enable scheduler CPU load monitoring (from T-g729p)
-  - [x] Measure CPU load with all telemetry streams active
-  - [x] Verify < 10% CPU overhead target
-  - [x] Document actual CPU load
-- [x] **CRC validation tracking**
-  - [x] Add statistics for CRC failures in message parser
-  - [x] Run for 1000+ messages
-  - [x] Verify < 0.1% corruption rate
-  - [x] Document error rate
-- [x] **Optimization (if needed)**
-  - [x] Profile hot paths (message serialization, telemetry update)
-  - [x] Optimize if CPU load > 10% or memory > 10 KB
-  - [x] Consider reducing telemetry rates or buffer sizes
+  - [ ] Flash to Pico 2 W using UF2
+  - [ ] Connect UART to USB-serial adapter (UART0 TX/RX, GND)
+  - [ ] Verify MAVLink traffic via serial monitor or mavproxy
+
+- [ ] **QGroundControl testing**
+  - [ ] Install QGroundControl 4.x on test machine
+  - [ ] Connect to Pico 2 W via serial port (115200 baud)
+  - [ ] Verify vehicle connects (HEARTBEAT received)
+  - [ ] Verify telemetry display (attitude, GPS, battery)
+  - [ ] Test parameter editing (change SR_EXTRA1, verify rate change)
+  - [ ] Test arm/disarm commands
+  - [ ] Test mission upload (upload 5 waypoints, verify storage)
+  - [ ] Document any compatibility issues
+
+- [ ] **Mission Planner testing**
+  - [ ] Install Mission Planner 1.3.x on Windows test machine
+  - [ ] Connect to Pico 2 W via COM port (115200 baud)
+  - [ ] Verify vehicle connects and telemetry displays
+  - [ ] Test parameter editing
+  - [ ] Test arm/disarm commands
+  - [ ] Document any compatibility issues
+
+- [ ] **Memory usage measurement**
+  - [ ] Add defmt logging for heap/stack usage (if available)
+  - [ ] Measure MAVLink static memory (buffers, state structs)
+  - [ ] Verify < 10 KB RAM target met
+  - [ ] Document actual memory usage
+
+- [ ] **Message rate measurement**
+  - [ ] Capture UART output for 60 seconds
+  - [ ] Count messages per type (HEARTBEAT, ATTITUDE, GPS_RAW_INT)
+  - [ ] Verify 1Hz HEARTBEAT, 10Hz ATTITUDE, 5Hz GPS (within ±5%)
+  - [ ] Check for dropped messages (gaps in seq numbers)
+
+- [ ] **CPU load measurement**
+  - [ ] Enable scheduler CPU load monitoring (from T-g729p)
+  - [ ] Measure CPU load with all telemetry streams active
+  - [ ] Verify < 10% CPU overhead target
+  - [ ] Document actual CPU load
+
+- [ ] **CRC validation tracking**
+  - [ ] Add statistics for CRC failures in message parser
+  - [ ] Run for 1000+ messages
+  - [ ] Verify < 0.1% corruption rate
+  - [ ] Document error rate
+
+- [ ] **Optimization (if needed)**
+  - [ ] Profile hot paths (message serialization, telemetry update)
+  - [ ] Optimize if CPU load > 10% or memory > 10 KB
+  - [ ] Consider reducing telemetry rates or buffer sizes
+
 - [x] **Documentation**
   - [x] Create `docs/mavlink.md` with usage guide (wiring, GCS setup, supported messages)
   - [x] Update `docs/architecture.md` with MAVLink component diagram
   - [x] Add code examples in handler files
   - [x] Update `README.md` with GCS compatibility section
-- [x] **RP2040 validation (Pico W)**
-  - [x] Build and flash to Pico W (RP2040)
-  - [x] Re-run QGroundControl connection test
-  - [x] Verify performance acceptable on Cortex-M0+ (no FPU)
-  - [x] Document any platform-specific issues
+
+- [ ] **RP2040 validation (Pico W)**
+  - [ ] Build and flash to Pico W (RP2040)
+  - [ ] Re-run QGroundControl connection test
+  - [ ] Verify performance acceptable on Cortex-M0+ (no FPU)
+  - [ ] Document any platform-specific issues
 
 ### Phase 6 Deliverables
 
@@ -545,12 +569,12 @@ probe-rs run --chip RP2350 --release target/thumbv8m.main-none-eabihf/release/ex
 
 ### Phase 6 Acceptance Criteria
 
-- [x] QGroundControl 4.x connects successfully, displays telemetry
-- [x] Mission Planner 1.3.x connects successfully, displays telemetry
-- [x] Memory usage < 10 KB (measured and documented)
-- [x] Telemetry rates within ±5% of target (1Hz, 5Hz, 10Hz)
-- [x] CPU load < 10% during full telemetry streaming
-- [x] CRC error rate < 0.1% over 1000+ messages
+- [ ] QGroundControl 4.x connects successfully, displays telemetry
+- [ ] Mission Planner 1.3.x connects successfully, displays telemetry
+- [ ] Memory usage < 10 KB (measured and documented)
+- [ ] Telemetry rates within ±5% of target (1Hz, 5Hz, 10Hz)
+- [ ] CPU load < 10% during full telemetry streaming
+- [ ] CRC error rate < 0.1% over 1000+ messages
 - [x] Documentation complete and accurate
 
 ---
@@ -558,14 +582,14 @@ probe-rs run --chip RP2350 --release target/thumbv8m.main-none-eabihf/release/ex
 ## Definition of Done
 
 - [x] `cargo check --features pico2_w`
-- [x] `cargo check --features pico_w` (if RP2040 hardware available)
+- [ ] `cargo check --features pico_w` (if RP2040 hardware available)
 - [x] `cargo fmt`
 - [x] `cargo clippy --all-targets -- -D warnings`
 - [x] `cargo test --lib --quiet` (all tests pass)
 - [x] `docs/mavlink.md` created with usage guide
 - [x] `docs/architecture.md` updated with MAVLink component
-- [x] Hardware validation completed on Pico 2 W (QGC + MP tested)
-- [x] All performance targets met (FR-gpzpz, NFR-z2iuk)
+- [ ] Hardware validation completed on Pico 2 W (QGC + MP tested)
+- [ ] All performance targets met (FR-gpzpz, NFR-z2iuk)
 - [x] No `unsafe` code outside `src/platform/`
 - [x] All `unsafe` blocks have SAFETY comments
 - [x] No vague naming (no "manager"/"util")

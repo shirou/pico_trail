@@ -38,12 +38,16 @@ defmt-rtt = { version = "1.0", optional = true }
 panic-probe = { version = "1.0", features = ["print-defmt"], optional = true }
 
 # Embassy async framework (FR-5inw2: Task Scheduler)
-embassy-executor = { version = "0.9", features = ["arch-cortex-m", "executor-thread"], optional = true }
-embassy-time = { version = "0.5", features = ["tick-hz-1_000_000"], optional = true }
-embassy-rp = { version = "0.8", features = ["time-driver"], optional = true }
-embassy-usb = { version = "0.5", optional = true }
-embassy-sync = { version = "0.6", optional = true }
-embassy-futures = { version = "0.1", optional = true }
+# Using git version to fix RP2350 MPU stack guard issue
+# PR #4688 (merged 2025-09-21) replaced MPU with msplim register for Cortex-M33
+# See: https://github.com/embassy-rs/embassy/pull/4688
+# TODO: Switch back to released version once embassy-rp 0.9+ is published
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", features = ["arch-cortex-m", "executor-thread"], optional = true }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", features = ["tick-hz-1_000_000"], optional = true }
+embassy-rp = { git = "https://github.com/embassy-rs/embassy", features = ["time-driver"], optional = true }
+embassy-usb = { git = "https://github.com/embassy-rs/embassy", optional = true }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", optional = true }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", optional = true }
 
 # heapless for no_std collections (required for parameter storage)
 heapless = "0.8"

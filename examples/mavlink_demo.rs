@@ -72,7 +72,7 @@ use {defmt_rtt as _, panic_probe as _};
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     // Initialize platform
-    let _p = hal::init(Default::default());
+    let p = hal::init(Default::default());
 
     info!("pico_trail MAVLink Demo");
     info!("========================");
@@ -89,27 +89,59 @@ async fn main(spawner: Spawner) {
     info!("  - SYS_STATUS: 1Hz");
     info!("");
 
-    // TODO: Spawn MAVLink task
-    // Example structure (requires actual UART instance):
-    //
-    // use pico_trail::communication::mavlink::task::{mavlink_task_placeholder, MavlinkConfig};
-    // use pico_trail::platform::rp2350::Rp2350Flash;
-    //
-    // let flash = Rp2350Flash::new(...);
-    // let config = MavlinkConfig {
-    //     system_id: 1,
-    //     component_id: 1,
-    //     baud_rate: 115200,
-    // };
-    // spawner.spawn(mavlink_task_placeholder(config, flash)).unwrap();
+    // Initialize UART0 for MAVLink communication
+    use embassy_rp::bind_interrupts;
+    use embassy_rp::peripherals::UART0;
+    use embassy_rp::uart::{BufferedInterruptHandler, BufferedUart, Config as UartConfig};
 
-    info!("Hardware integration pending - see example comments for details");
-    info!("");
-    info!("To complete this example:");
-    info!("  1. Initialize RP2350 UART0 peripheral");
-    info!("  2. Configure GPIO 0 (TX) and GPIO 1 (RX)");
-    info!("  3. Create Rp2350Uart wrapper");
-    info!("  4. Pass to MAVLink task");
+    // Bind UART0 interrupt for buffered mode
+    bind_interrupts!(struct Irqs {
+        UART0_IRQ => BufferedInterruptHandler<UART0>;
+    });
+
+    // Configure UART
+    let mut uart_config = UartConfig::default();
+    uart_config.baudrate = 115200;
+
+    // Static buffers for UART (required for BufferedUart)
+    static mut TX_BUF: [u8; 1024] = [0; 1024];
+    static mut RX_BUF: [u8; 512] = [0; 512];
+
+    // Initialize BufferedUart for async I/O
+    // SAFETY: These static buffers are only used by this UART instance
+    let uart = BufferedUart::new(
+        p.UART0,
+        p.PIN_0, // TX
+        p.PIN_1, // RX
+        Irqs,
+        unsafe { &mut TX_BUF },
+        unsafe { &mut RX_BUF },
+        uart_config,
+    );
+
+    // Split UART into TX and RX
+    let (uart_tx, uart_rx) = uart.split();
+
+    // Initialize Flash for parameter storage
+    use pico_trail::platform::rp2350::Rp2350Flash;
+
+    let flash = Rp2350Flash::new();
+
+    // Configure MAVLink
+    use pico_trail::communication::mavlink::task::{mavlink_task, MavlinkConfig};
+
+    let config = MavlinkConfig {
+        system_id: 1,
+        component_id: 1,
+        baud_rate: 115200,
+    };
+
+    info!("Spawning MAVLink task...");
+
+    // Spawn MAVLink task
+    spawner.spawn(mavlink_task(uart_rx, uart_tx, config, flash).unwrap());
+
+    info!("MAVLink task spawned successfully");
     info!("");
     info!("Expected GCS Messages:");
     info!("  - HEARTBEAT (ID 0) - vehicle type, armed status");
@@ -131,7 +163,7 @@ async fn main(spawner: Spawner) {
     info!("");
 
     // Demonstration statistics task
-    spawner.spawn(stats_task()).unwrap();
+    spawner.spawn(stats_task().unwrap());
 
     // Main loop
     loop {

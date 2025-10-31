@@ -116,17 +116,14 @@ impl MavlinkWriter {
     /// ```
     pub async fn write_message<W>(
         &mut self,
-        _writer: &mut W,
-        _message: &mavlink::common::MavMessage,
+        writer: &mut W,
+        message: &mavlink::common::MavMessage,
     ) -> Result<(), WriterError>
     where
         W: embedded_io_async::Write,
     {
-        // Clear buffer for new message
-        self.tx_buffer.clear();
-
-        // Create MAVLink header (will be used in actual implementation)
-        let _header = mavlink::MavHeader {
+        // Create MAVLink header
+        let header = mavlink::MavHeader {
             system_id: self.system_id,
             component_id: self.component_id,
             sequence: self.sequence,
@@ -135,17 +132,21 @@ impl MavlinkWriter {
         // Increment sequence for next message
         self.sequence = self.sequence.wrapping_add(1);
 
-        // Serialize message using rust-mavlink
-        // Note: This is a simplified implementation. The actual implementation
-        // will need to integrate with rust-mavlink's serialization.
-        //
-        // For now, we'll implement a placeholder that demonstrates the structure.
-        // The actual implementation will be completed when integrating with UART.
+        // Write message using rust-mavlink's async write function
+        match mavlink::write_v2_msg_async(writer, header, message).await {
+            Ok(_bytes_written) => {
+                // Update statistics
+                self.stats.messages_sent += 1;
+                Ok(())
+            }
+            Err(_e) => {
+                // Update error statistics
+                self.stats.buffer_overflows += 1;
 
-        // Placeholder: Increment sent count
-        self.stats.messages_sent += 1;
-
-        Ok(())
+                // Convert rust-mavlink error to WriterError
+                Err(WriterError::UartError)
+            }
+        }
     }
 
     /// Serialize a message into the TX buffer

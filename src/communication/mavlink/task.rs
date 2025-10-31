@@ -36,6 +36,9 @@ use super::{
 };
 use crate::platform::traits::flash::FlashInterface;
 
+#[cfg(feature = "pico2_w")]
+use mavlink::Message;
+
 /// MAVLink task configuration
 #[derive(Debug, Clone, Copy)]
 pub struct MavlinkConfig {
@@ -72,6 +75,90 @@ pub struct MavlinkContext<F: FlashInterface> {
     /// Configuration (will be used in actual implementation)
     #[allow(dead_code)]
     config: MavlinkConfig,
+}
+
+#[cfg(feature = "pico2_w")]
+#[embassy_executor::task]
+pub async fn mavlink_task(
+    uart_rx: embassy_rp::uart::BufferedUartRx,
+    uart_tx: embassy_rp::uart::BufferedUartTx,
+    config: MavlinkConfig,
+    flash: crate::platform::rp2350::Rp2350Flash,
+) {
+    mavlink_task_impl(uart_rx, uart_tx, config, flash).await
+}
+
+/// Generic MAVLink task implementation
+///
+/// This helper function contains the actual task logic and is generic over
+/// UART and Flash types. The task macro wrapper above uses concrete types
+/// because Embassy tasks cannot be generic.
+#[cfg(feature = "pico2_w")]
+async fn mavlink_task_impl<R, W, F>(mut uart_rx: R, mut uart_tx: W, config: MavlinkConfig, flash: F)
+where
+    R: embedded_io_async::Read,
+    W: embedded_io_async::Write,
+    F: FlashInterface,
+{
+    use embassy_time::{Duration, Instant, Timer};
+
+    defmt::info!("MAVLink task started");
+    defmt::info!("  System ID: {}", config.system_id);
+    defmt::info!("  Component ID: {}", config.component_id);
+
+    let mut context = MavlinkContext::new(config, flash);
+    let mut last_telemetry = Instant::now();
+    let telemetry_interval = Duration::from_millis(100); // 10Hz base rate
+
+    loop {
+        // Non-blocking message read attempt
+        // Use a small timeout to allow telemetry updates
+        let read_result = embassy_futures::select::select(
+            Timer::after(Duration::from_millis(10)),
+            context.parser.read_message(&mut uart_rx),
+        )
+        .await;
+
+        // Handle message if one was received
+        match read_result {
+            embassy_futures::select::Either::Second(Ok((header, msg))) => {
+                defmt::trace!("RX MAVLink msg ID={}", msg.message_id());
+
+                // Get current timestamp
+                let timestamp_us = Instant::now().as_micros();
+
+                // Route message to handlers
+                if let Err(e) = context.router.handle_message(&header, &msg, timestamp_us) {
+                    if !matches!(e, super::router::RouterError::NoHandler) {
+                        defmt::warn!("Handler error: {:?}", e);
+                    }
+                }
+            }
+            embassy_futures::select::Either::Second(Err(e)) => {
+                defmt::warn!("Parse error: {:?}", e);
+            }
+            embassy_futures::select::Either::First(_) => {
+                // Timeout - no message received, continue to telemetry
+            }
+        }
+
+        // Send telemetry at regular intervals
+        if last_telemetry.elapsed() >= telemetry_interval {
+            let timestamp_us = Instant::now().as_micros();
+            let telemetry_msgs = context.router.update_telemetry(timestamp_us);
+
+            for msg in &telemetry_msgs {
+                if let Err(e) = context.writer.write_message(&mut uart_tx, msg).await {
+                    defmt::warn!("TX error: {:?}", e);
+                }
+            }
+
+            last_telemetry = Instant::now();
+        }
+
+        // Small yield to prevent task starvation
+        Timer::after_millis(1).await;
+    }
 }
 
 impl<F: FlashInterface> MavlinkContext<F> {

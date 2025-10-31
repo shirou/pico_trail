@@ -94,25 +94,29 @@ impl MavlinkParser {
     /// ```
     pub async fn read_message<R>(
         &mut self,
-        _reader: &mut R,
+        reader: &mut R,
     ) -> Result<(mavlink::MavHeader, mavlink::common::MavMessage), ParserError>
     where
         R: embedded_io_async::Read,
     {
-        // Clear buffer for new message
-        self.rx_buffer.clear();
+        // Use rust-mavlink's async read function
+        match mavlink::read_v2_msg_async(reader).await {
+            Ok((header, msg)) => {
+                // Update statistics
+                self.stats.messages_received += 1;
+                Ok((header, msg))
+            }
+            Err(e) => {
+                // Update error statistics
+                self.stats.parse_errors += 1;
 
-        // Read message using rust-mavlink parser
-        // Note: This is a simplified implementation. The actual implementation
-        // will need to integrate with rust-mavlink's async reading or implement
-        // a byte-by-byte reading loop.
-        //
-        // For now, we'll implement a placeholder that demonstrates the structure.
-        // The actual implementation will be completed when integrating with UART.
-
-        // Placeholder: Increment error count for unimplemented functionality
-        self.stats.parse_errors += 1;
-        Err(ParserError::NotImplemented)
+                // Convert rust-mavlink error to ParserError
+                match e {
+                    mavlink::error::MessageReadError::Io => Err(ParserError::UartError),
+                    mavlink::error::MessageReadError::Parse(_) => Err(ParserError::CrcError),
+                }
+            }
+        }
     }
 
     /// Process a single byte from UART

@@ -35,7 +35,18 @@
       "mcp__serena__search_for_pattern",
       "mcp__serena__find_symbol",
       "mcp__serena__list_dir",
-      "Bash(node scripts/tdl-new-id.ts:*)"
+      "Bash(node scripts/tdl-new-id.ts:*)",
+      "mcp__serena__initial_instructions",
+      "mcp__serena__check_onboarding_performed",
+      "mcp__serena__think_about_collected_information",
+      "mcp__serena__think_about_task_adherence",
+      "mcp__serena__list_memories",
+      "mcp__serena__replace_symbol_body",
+      "mcp__serena__insert_after_symbol",
+      "Bash(cat:*)",
+      "Bash(cargo tree:*)",
+      "Bash(cargo search:*)",
+      "Bash(xargs cat:*)"
     ],
     "deny": [],
     "ask": []
