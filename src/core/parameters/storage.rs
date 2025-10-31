@@ -322,7 +322,7 @@ mod tests {
 
         // Write parameters
         let params = heapless::Vec::<Parameter, MAX_PARAMS>::from_slice(&[
-            Parameter::new_f32(0x12345678, 3.14159),
+            Parameter::new_f32(0x12345678, core::f32::consts::PI),
             Parameter::new_u32(0xABCDEF00, 12345),
         ])
         .unwrap();
@@ -542,10 +542,8 @@ mod tests {
         storage.write_block(3, &params, 4).unwrap();
 
         // Corrupt all blocks
-        for i in 0..4 {
-            storage
-                .flash_mut()
-                .inject_corruption(PARAM_BLOCK_ADDRESSES[i] + 20, 4);
+        for &addr in &PARAM_BLOCK_ADDRESSES {
+            storage.flash_mut().inject_corruption(addr + 20, 4);
         }
 
         // Should return None

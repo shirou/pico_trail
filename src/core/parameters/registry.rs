@@ -348,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_param_value_conversion() {
-        let float_val = ParamValue::Float(3.14159);
+        let float_val = ParamValue::Float(core::f32::consts::PI);
         let u32_val = float_val.to_u32();
         let recovered = ParamValue::from_u32(u32_val, ParamType::Float);
         assert_eq!(float_val, recovered);

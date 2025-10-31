@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn test_parameter_f32_serialization() {
-        let param = Parameter::new_f32(0x12345678, 3.14159);
+        let param = Parameter::new_f32(0x12345678, core::f32::consts::PI);
         let bytes = param.to_bytes();
         let decoded = Parameter::from_bytes(&bytes).unwrap();
 

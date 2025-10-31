@@ -17,6 +17,8 @@ pub mod core;
 // Communication protocols (FR-gpzpz: MAVLink Protocol)
 pub mod communication;
 
+// Subsystems (FR-eyuh8: AHRS, Navigation, Control)
+pub mod subsystems;
+
 // Future modules (to be implemented in subsequent phases):
-// pub mod subsystems;    // Subsystems (AHRS, Navigation, Control)
 // pub mod vehicle;       // Vehicle logic and flight modes

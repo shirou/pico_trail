@@ -227,8 +227,10 @@ mod tests {
 
     #[test]
     fn test_battery_critical() {
-        let mut battery = BatteryState::default();
-        battery.voltage = 12.0;
+        let mut battery = BatteryState {
+            voltage: 12.0,
+            ..Default::default()
+        };
         assert!(!battery.is_critical());
 
         battery.voltage = 9.0;
