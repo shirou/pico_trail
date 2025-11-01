@@ -57,10 +57,12 @@ use {defmt_rtt as _, panic_probe as _};
 #[cfg(feature = "pico2_w")]
 use pico_trail::{
     communication::mavlink::{
-        transport::{uart::UartTransport, udp::UdpTransport, MavlinkTransport},
+        handlers::param::ParamHandler,
+        parser::MavlinkParser,
+        transport::udp::UdpTransport,
         transport_router::TransportRouter,
     },
-    parameters::{wifi::WifiParams, ParameterStore},
+    parameters::wifi::WifiParams,
     platform::rp2350::{network::WifiConfig, Rp2350Flash},
 };
 
@@ -73,14 +75,8 @@ async fn main(spawner: Spawner) {
     // Initialize Flash for parameter storage
     let mut flash = Rp2350Flash::new();
 
-    // Load parameters from Flash
-    let mut param_store = ParameterStore::load_from_flash(&mut flash).unwrap_or_else(|_| {
-        info!("No parameters found in Flash, using defaults");
-        ParameterStore::new()
-    });
-
-    // Register WiFi parameters with defaults
-    WifiParams::register_defaults(&mut param_store);
+    // Initialize ParamHandler which loads/registers parameters
+    let param_handler = ParamHandler::new(&mut flash);
 
     // Initialize WiFi and UDP transport first (if configured)
     #[cfg(feature = "pico2_w")]
@@ -88,7 +84,7 @@ async fn main(spawner: Spawner) {
         // Initialize platform
         let p = hal::init(Default::default());
 
-        let wifi_params = WifiParams::from_store(&param_store);
+        let wifi_params = WifiParams::from_store(param_handler.store());
 
         if wifi_params.is_configured() {
             info!("WiFi configured - initializing network...");
@@ -132,7 +128,7 @@ async fn main(spawner: Spawner) {
 
                     // Spawn message routing task
                     spawner
-                        .spawn(network_mavlink_task(router, param_store).unwrap());
+                        .spawn(network_mavlink_task(router, param_handler).unwrap());
                 }
                 Err(e) => {
                     warn!("WiFi initialization failed: {:?}", e);
@@ -167,6 +163,36 @@ async fn main(spawner: Spawner) {
     }
 }
 
+/// Simple byte buffer reader for MAVLink parsing
+struct ByteReader<'a> {
+    buffer: &'a [u8],
+    position: usize,
+}
+
+impl<'a> ByteReader<'a> {
+    fn new(buffer: &'a [u8]) -> Self {
+        Self { buffer, position: 0 }
+    }
+}
+
+impl<'a> embedded_io_async::ErrorType for ByteReader<'a> {
+    type Error = core::convert::Infallible;
+}
+
+impl<'a> embedded_io_async::Read for ByteReader<'a> {
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        let remaining = self.buffer.len() - self.position;
+        if remaining == 0 {
+            return Ok(0);
+        }
+
+        let to_read = buf.len().min(remaining);
+        buf[..to_read].copy_from_slice(&self.buffer[self.position..self.position + to_read]);
+        self.position += to_read;
+        Ok(to_read)
+    }
+}
+
 /// MAVLink task using TransportRouter for concurrent UART + UDP
 #[cfg(feature = "pico2_w")]
 #[embassy_executor::task]
@@ -176,12 +202,14 @@ async fn network_mavlink_task(
         embassy_rp::uart::BufferedUartRx,
         embassy_rp::uart::BufferedUartTx,
     >,
-    _param_store: ParameterStore,
+    param_handler: ParamHandler,
 ) {
     use embassy_time::Instant;
+    use mavlink::Message;
 
     info!("MAVLink network task started");
 
+    let mut parser = MavlinkParser::new();
     let mut last_heartbeat = Instant::now();
     let heartbeat_interval = Duration::from_secs(1); // 1Hz
     let mut sequence: u8 = 0;
@@ -198,10 +226,98 @@ async fn network_mavlink_task(
 
         // Handle received messages
         match read_result {
-            embassy_futures::select::Either::Second(Ok((n, transport_id))) => {
-                defmt::trace!("RX {} bytes from transport {}", n, transport_id);
-                // For this demo, we just log received bytes
-                // Full MAVLink parsing would use mavlink crate's read_v2_raw_message
+            embassy_futures::select::Either::Second(Ok((n, _transport_id))) => {
+                defmt::trace!("RX {} bytes", n);
+
+                // Create reader for parsing - may contain multiple messages
+                let mut reader = ByteReader::new(&buf[..n]);
+
+                // Parse all messages in the buffer
+                loop {
+                    match parser.read_message(&mut reader).await {
+                        Ok((header, msg)) => {
+                            defmt::debug!("RX MAVLink message: sys={}, comp={}, msgid={}",
+                                header.system_id, header.component_id, msg.message_id());
+
+                            // Handle PARAM_REQUEST_LIST
+                            if let mavlink::common::MavMessage::PARAM_REQUEST_LIST(data) = msg {
+                                defmt::info!("Received PARAM_REQUEST_LIST");
+                                let param_messages = param_handler.handle_request_list(&data);
+                                defmt::info!("Sending {} parameter values", param_messages.len());
+
+                                // Send each PARAM_VALUE message
+                                for (idx, param_msg) in param_messages.iter().enumerate() {
+                                    if let mavlink::common::MavMessage::PARAM_VALUE(pv) = param_msg {
+                                        let name = core::str::from_utf8(&pv.param_id)
+                                            .unwrap_or("?")
+                                            .trim_end_matches('\0');
+                                        defmt::info!("Sending param {}/{}: {} = {} (index={}, count={})",
+                                            idx + 1, param_messages.len(), name, pv.param_value,
+                                            pv.param_index, pv.param_count);
+                                    }
+
+                                    let param_header = mavlink::MavHeader {
+                                        system_id: 1,
+                                        component_id: 1,
+                                        sequence,
+                                    };
+
+                                    let mut msg_buf = [0u8; 280];
+                                    let mut msg_cursor = &mut msg_buf[..];
+
+                                    if let Ok(_) = mavlink::write_v2_msg(&mut msg_cursor, param_header, param_msg) {
+                                        let len = 280 - msg_cursor.len();
+                                        match router.send_bytes(&msg_buf[..len]).await {
+                                            Ok(n) => {
+                                                defmt::trace!("Sent {} bytes", n);
+                                                sequence = sequence.wrapping_add(1);
+                                            }
+                                            Err(e) => {
+                                                defmt::warn!("Failed to send param: {:?}", e);
+                                            }
+                                        }
+                                    }
+
+                                    // Add small delay between params to avoid overwhelming GCS
+                                    Timer::after_millis(5).await;
+                                }
+                                defmt::info!("Finished sending all parameters");
+                            }
+
+                            // Handle PARAM_REQUEST_READ
+                            else if let mavlink::common::MavMessage::PARAM_REQUEST_READ(data) = msg {
+                                let name = core::str::from_utf8(&data.param_id)
+                                    .unwrap_or("?")
+                                    .trim_end_matches('\0');
+                                defmt::info!("Received PARAM_REQUEST_READ: {}", name);
+
+                                if let Some(param_msg) = param_handler.handle_request_read(&data) {
+                                    let param_header = mavlink::MavHeader {
+                                        system_id: 1,
+                                        component_id: 1,
+                                        sequence,
+                                    };
+
+                                    let mut msg_buf = [0u8; 280];
+                                    let mut msg_cursor = &mut msg_buf[..];
+
+                                    if let Ok(_) = mavlink::write_v2_msg(&mut msg_cursor, param_header, &param_msg) {
+                                        let len = 280 - msg_cursor.len();
+                                        if let Ok(_) = router.send_bytes(&msg_buf[..len]).await {
+                                            sequence = sequence.wrapping_add(1);
+                                            defmt::info!("Sent PARAM_VALUE for {}", name);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            // End of buffer or parse error
+                            defmt::trace!("MAVLink parse finished/error: {:?}", e);
+                            break;
+                        }
+                    }
+                }
             }
             embassy_futures::select::Either::Second(Err(e)) => {
                 defmt::warn!("Receive error: {:?}", e);

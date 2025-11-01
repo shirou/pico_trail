@@ -126,21 +126,29 @@ impl ParamHandler {
         &self,
         _data: &PARAM_REQUEST_LIST_DATA,
     ) -> heapless::Vec<MavMessage, 64> {
-        let mut messages = heapless::Vec::new();
-        let count = self.store.count(); // Excludes hidden parameters
+        // First pass: collect all valid parameters (excluding hidden and non-MAVLink types)
+        let mut temp_params = heapless::Vec::<(&str, &ParamValue), 64>::new();
 
-        let mut index: u16 = 0;
         for name in self.store.iter_names() {
             if let Some(value) = self.store.get(name.as_str()) {
-                if let Some(msg) =
-                    self.create_param_value_message(name.as_str(), value, index, count as u16)
-                {
-                    let _ = messages.push(msg);
-                    index += 1;
-                    if messages.is_full() {
-                        break; // Limit batch size
+                // Only include parameters that can be sent via MAVLink (exclude String type)
+                match value {
+                    ParamValue::String(_) => continue, // Cannot be sent via MAVLink
+                    _ => {
+                        let _ = temp_params.push((name.as_str(), value));
                     }
                 }
+            }
+        }
+
+        // Now we know the actual count of sendable parameters
+        let count = temp_params.len() as u16;
+
+        // Second pass: create messages with correct count
+        let mut messages = heapless::Vec::new();
+        for (index, (name, value)) in temp_params.iter().enumerate() {
+            if let Some(msg) = self.create_param_value_message(name, value, index as u16, count) {
+                let _ = messages.push(msg);
             }
         }
 
@@ -160,22 +168,33 @@ impl ParamHandler {
     ///
     /// PARAM_VALUE message if parameter found and not hidden, or None otherwise.
     pub fn handle_request_read(&self, data: &PARAM_REQUEST_READ_DATA) -> Option<MavMessage> {
-        // Try by index first (only non-hidden parameters)
-        if data.param_index >= 0 {
-            let index = data.param_index as usize;
-            for (current_index, name) in self.store.iter_names().enumerate() {
-                if current_index == index {
-                    if let Some(value) = self.store.get(name.as_str()) {
-                        return self.create_param_value_message(
-                            name.as_str(),
-                            value,
-                            index as u16,
-                            self.store.count() as u16,
-                        );
-                    }
+        // Build list of sendable parameters (exclude String type)
+        let mut sendable_params = heapless::Vec::<heapless::String<16>, 64>::new();
+        for name in self.store.iter_names() {
+            if let Some(value) = self.store.get(name.as_str()) {
+                // Exclude String type parameters
+                if !matches!(value, ParamValue::String(_)) {
+                    let _ = sendable_params.push(name.clone());
                 }
             }
-            return None;
+        }
+        let total_count = sendable_params.len() as u16;
+
+        // Try by index first (only non-hidden, non-String parameters)
+        if data.param_index >= 0 {
+            let index = data.param_index as usize;
+            if index < sendable_params.len() {
+                let name = &sendable_params[index];
+                if let Some(value) = self.store.get(name.as_str()) {
+                    return self.create_param_value_message(
+                        name.as_str(),
+                        value,
+                        index as u16,
+                        total_count,
+                    );
+                }
+            }
+            return None; // Index out of range
         }
 
         // Try by name
@@ -189,14 +208,19 @@ impl ParamHandler {
         }
 
         if let Some(value) = self.store.get(param_id) {
-            // Find index for response
-            for (index, name) in (0_u16..).zip(self.store.iter_names()) {
+            // Exclude String type
+            if matches!(value, ParamValue::String(_)) {
+                return None;
+            }
+
+            // Find index in sendable parameters list
+            for (index, name) in sendable_params.iter().enumerate() {
                 if name.as_str() == param_id {
                     return self.create_param_value_message(
                         param_id,
                         value,
-                        index,
-                        self.store.count() as u16,
+                        index as u16,
+                        total_count,
                     );
                 }
             }
