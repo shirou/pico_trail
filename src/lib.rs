@@ -17,6 +17,9 @@ pub mod core;
 // Communication protocols (FR-gpzpz: MAVLink Protocol)
 pub mod communication;
 
+// Parameter storage for WiFi configuration and runtime settings
+pub mod parameters;
+
 // Subsystems (FR-eyuh8: AHRS, Navigation, Control)
 pub mod subsystems;
 

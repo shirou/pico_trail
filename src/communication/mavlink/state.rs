@@ -35,7 +35,7 @@ impl Default for ArmedState {
 }
 
 /// Flight mode for rover/boat
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
 pub enum FlightMode {
     /// Manual mode (direct RC control)
     Manual,

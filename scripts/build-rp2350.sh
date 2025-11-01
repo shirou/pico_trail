@@ -9,8 +9,30 @@
 #   ./scripts/build-rp2350.sh --release          # Build all examples (release)
 #   ./scripts/build-rp2350.sh scheduler_demo     # Build specific example (debug)
 #   ./scripts/build-rp2350.sh --release scheduler_demo scheduler_demo_usb
+#
+# Network-enabled examples (mavlink_demo_network):
+#   WiFi credentials are configured via MAVLink parameters after flashing.
+#   See docs/wifi-configuration.md for detailed setup instructions.
+#
+#   Quick start:
+#   1. Build and flash: ./scripts/build-rp2350.sh --release mavlink_demo_network
+#   2. Connect via UART (115200 baud)
+#   3. Set parameters: NET_SSID, NET_PASS via QGroundControl
+#   4. Reboot device to connect to WiFi
 
 set -euo pipefail
+
+# Load .env file if present (for WiFi configuration)
+if [[ -f .env ]]; then
+  echo "Loading .env file..."
+  set -a  # Automatically export all variables
+  # shellcheck source=/dev/null
+  source .env
+  set +a
+  echo "Environment variables loaded from .env"
+else
+  echo "No .env file found (WiFi will use runtime configuration)"
+fi
 
 # RP2350-ARM-S family ID
 FAMILY_ID="0xe48bff59"

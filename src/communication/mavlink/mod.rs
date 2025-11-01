@@ -24,13 +24,17 @@
 //!
 //! # Transport
 //!
-//! Initial implementation uses UART transport at 115200 baud. Future enhancements
-//! may add USB CDC support for direct PC connection.
+//! Supports multiple transport types via trait abstraction:
+//! - UART: Primary transport for GCS communication (115200 baud)
+//! - UDP: Network transport over WiFi (Phase 2+)
+//! - TCP: Reliable network transport (future)
 
 // Module structure populated during Phase 1-2
 pub mod handlers; // Message handlers (Phase 2+)
 pub mod parser; // Message parsing (Phase 1)
-pub mod router; // Message routing (Phase 1)
+pub mod router; // Protocol message routing (Phase 1)
 pub mod state; // System state (Phase 1)
 pub mod task; // MAVLink task (Phase 1)
+pub mod transport; // Transport abstraction layer (Phase 1+)
+pub mod transport_router; // Multi-transport routing (Phase 1+)
 pub mod writer; // Message writing (Phase 1)

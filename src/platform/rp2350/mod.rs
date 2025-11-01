@@ -31,6 +31,9 @@ mod spi;
 mod timer;
 mod uart;
 
+#[cfg(feature = "pico2_w")]
+pub mod network;
+
 pub use flash::Rp2350Flash;
 pub use gpio::Rp2350Gpio;
 pub use i2c::Rp2350I2c;

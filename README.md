@@ -6,6 +6,8 @@ An embedded autopilot system for Raspberry Pi Pico W and Pico 2 W, targeting rov
 
 - **Autonomous Navigation**: Waypoint-based navigation using S-curve path planning for smooth trajectory generation
 - **MAVLink Compatible**: Full compatibility with ground control stations (QGroundControl, Mission Planner)
+- **Wireless Communication**: WiFi-enabled UDP transport for wireless telemetry and control (Pico 2 W)
+- **Multi-Transport Support**: Concurrent UART and UDP operation with automatic GCS discovery
 - **Real-time Control**: Deterministic control loops with 50Hz minimum performance
 - **Memory Safe**: Built with Rust's ownership model, prioritizing safety over micro-optimizations
 - **Platform Abstraction**: Clean separation between hardware and application logic for portability
@@ -81,13 +83,53 @@ target = "thumbv8m.main-none-eabihf"  # For Pico 2 W
 
 ### 2. Build and Flash
 
-```bash
-# Build the project
-cargo build --release
+**UART-Only Example:**
 
-# Run an example (flashes and executes)
-cargo run --bin hello --release
+```bash
+# Build for RP2350 (Pico 2 W)
+./scripts/build-rp2350.sh --release mavlink_demo
+
+# Flash to device
+probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/mavlink_demo
 ```
+
+**WiFi-Enabled Example (Pico 2 W):**
+
+Option 1: Build-time WiFi configuration (recommended for development):
+
+```bash
+# 1. Configure WiFi credentials
+cp .env.example .env
+# Edit .env with your WiFi credentials
+
+# 2. Build (automatically loads .env)
+./scripts/build-rp2350.sh --release mavlink_demo_network
+
+# 3. Flash - device connects to WiFi automatically
+probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/mavlink_demo_network
+
+# 4. Connect QGroundControl via UDP (port 14550, listening mode)
+```
+
+Option 2: Runtime WiFi configuration (recommended for production):
+
+```bash
+# 1. Build without .env file
+./scripts/build-rp2350.sh --release mavlink_demo_network
+
+# 2. Flash to device
+probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/mavlink_demo_network
+
+# 3. Configure WiFi via UART:
+#    - Connect QGroundControl to UART (115200 baud)
+#    - Open Parameters tab
+#    - Set NET_SSID = "YourWiFiNetwork"
+#    - Set NET_PASS = "YourPassword"
+#    - Reboot device
+#    - Connect QGroundControl via UDP (port 14550, listening mode)
+```
+
+See [WiFi Configuration Guide](docs/wifi-configuration.md) for detailed setup instructions.
 
 ### 3. Run Tests
 
@@ -192,6 +234,24 @@ Full MAVLink 2.0 implementation supporting:
 - Parameter protocol (PARAM_REQUEST_LIST, PARAM_SET)
 - Command protocol (navigation and action commands)
 
+### Transport Options
+
+**UART Transport (All platforms):**
+
+- Reliable wired communication (115200 baud)
+- Primary transport for initial configuration
+- Single GCS connection
+
+**UDP Network Transport (Pico 2 W only):**
+
+- Wireless communication over WiFi (port 14550)
+- Multiple GCS support (up to 4 simultaneous)
+- Automatic GCS endpoint discovery
+- Concurrent UART + UDP operation
+- WiFi configuration via MAVLink parameters
+
+See [WiFi Configuration Guide](docs/wifi-configuration.md) for setup instructions.
+
 ### Telemetry
 
 Configurable telemetry streams (default 10Hz):
@@ -200,6 +260,8 @@ Configurable telemetry streams (default 10Hz):
 - Battery status
 - System health
 - Mode and armed status
+
+Telemetry is broadcast to all active transports (UART and UDP).
 
 ## Safety Features
 
@@ -211,6 +273,8 @@ Configurable telemetry streams (default 10Hz):
 ## Documentation
 
 - [Architecture & Structure](docs/architecture.md) - Project structure, components, and design
+- [WiFi Configuration Guide](docs/wifi-configuration.md) - WiFi and UDP transport setup
+- [MAVLink Guide](docs/mavlink.md) - MAVLink protocol usage and GCS setup
 - [TDL Process](docs/tdl.md) - Traceable Development Lifecycle workflow
 - [Analysis Documents](docs/analysis/) - Problem exploration and requirements discovery
 - [Requirements](docs/requirements/) - Functional and non-functional requirements

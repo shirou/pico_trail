@@ -183,7 +183,7 @@ impl MavlinkWriter {
 }
 
 /// Writer error types
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, defmt::Format)]
 pub enum WriterError {
     /// Buffer overflow (TX buffer full)
     BufferOverflow,

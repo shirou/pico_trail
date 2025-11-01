@@ -1,6 +1,6 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
 # TODO(2) replace `$CHIP` with your chip's name (see `probe-rs chip list` output)
-runner = ["probe-rs", "run", "--chip", "RP235x", "--log-format=oneline"]
+runner = ["probe-rs", "run", "--chip", "RP235x", "--log-format=oneline", "--rtt-scan-memory"]
 
 rustflags = [
   "-C", "linker=flip-link",
@@ -10,6 +10,9 @@ rustflags = [
   # See https://github.com/rust-embedded/cortex-m-quickstart/pull/95
   "-C", "link-arg=--nmagic",
 ]
+
+[env]
+DEFMT_LOG = "info"
 
 [build]
 # TODO(3) Adjust the compilation target.

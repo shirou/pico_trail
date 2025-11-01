@@ -94,7 +94,7 @@ pub async fn mavlink_task(
 /// UART and Flash types. The task macro wrapper above uses concrete types
 /// because Embassy tasks cannot be generic.
 #[cfg(feature = "pico2_w")]
-async fn mavlink_task_impl<R, W, F>(mut uart_rx: R, mut uart_tx: W, config: MavlinkConfig, flash: F)
+async fn mavlink_task_impl<R, W, F>(mut uart_rx: R, mut uart_tx: W, config: MavlinkConfig, mut flash: F)
 where
     R: embedded_io_async::Read,
     W: embedded_io_async::Write,
@@ -106,7 +106,7 @@ where
     defmt::info!("  System ID: {}", config.system_id);
     defmt::info!("  Component ID: {}", config.component_id);
 
-    let mut context = MavlinkContext::new(config, flash);
+    let mut context = MavlinkContext::new(config, &mut flash);
     let mut last_telemetry = Instant::now();
     let telemetry_interval = Duration::from_millis(100); // 10Hz base rate
 
@@ -168,7 +168,7 @@ impl<F: FlashInterface> MavlinkContext<F> {
     ///
     /// * `config` - MAVLink configuration
     /// * `flash` - Flash interface for parameter storage
-    pub fn new(config: MavlinkConfig, flash: F) -> Self {
+    pub fn new(config: MavlinkConfig, flash: &mut F) -> Self {
         Self {
             parser: MavlinkParser::new(),
             writer: MavlinkWriter::new(config.system_id, config.component_id),
@@ -221,7 +221,7 @@ impl<F: FlashInterface> MavlinkContext<F> {
 /// - Phase 3: Add telemetry streaming
 /// - Phase 4: Add command handlers
 /// - Phase 5: Add mission protocol
-pub async fn mavlink_task_placeholder<F: FlashInterface>(config: MavlinkConfig, flash: F) {
+pub async fn mavlink_task_placeholder<F: FlashInterface>(config: MavlinkConfig, flash: &mut F) {
     let _context = MavlinkContext::new(config, flash);
 
     // Placeholder task loop
@@ -264,8 +264,8 @@ mod tests {
     #[test]
     fn test_context_creation() {
         let config = MavlinkConfig::default();
-        let flash = MockFlash::new();
-        let context = MavlinkContext::new(config, flash);
+        let mut flash = MockFlash::new();
+        let context = MavlinkContext::new(config, &mut flash);
 
         assert!(!context.state().is_armed());
         assert_eq!(context.parser_stats().messages_received, 0);
@@ -276,8 +276,8 @@ mod tests {
     #[test]
     fn test_context_with_parameters() {
         let config = MavlinkConfig::default();
-        let flash = MockFlash::new();
-        let context = MavlinkContext::new(config, flash);
+        let mut flash = MockFlash::new();
+        let context = MavlinkContext::new(config, &mut flash);
 
         // Verify parameter handler is initialized with default parameters
         assert_eq!(context.router_stats().messages_processed, 0);
@@ -286,8 +286,8 @@ mod tests {
     #[test]
     fn test_state_access() {
         let config = MavlinkConfig::default();
-        let flash = MockFlash::new();
-        let mut context = MavlinkContext::new(config, flash);
+        let mut flash = MockFlash::new();
+        let mut context = MavlinkContext::new(config, &mut flash);
 
         // Modify state through mutable reference
         context.state_mut().battery.voltage = 11.5;
@@ -299,9 +299,9 @@ mod tests {
     #[tokio::test]
     async fn test_task_placeholder() {
         let config = MavlinkConfig::default();
-        let flash = MockFlash::new();
+        let mut flash = MockFlash::new();
 
         // Task should complete immediately on host (not in infinite loop)
-        mavlink_task_placeholder(config, flash).await;
+        mavlink_task_placeholder(config, &mut flash).await;
     }
 }

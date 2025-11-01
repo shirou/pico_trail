@@ -46,7 +46,12 @@
       "Bash(cat:*)",
       "Bash(cargo tree:*)",
       "Bash(cargo search:*)",
-      "Bash(xargs cat:*)"
+      "Bash(xargs cat:*)",
+      "Bash(wget:*)",
+      "Bash(for f in examples/*.rs)",
+      "Bash(do echo \"=== $f ===\")",
+      "Bash(done)",
+      "Bash(sudo /home/shirou/.cargo/bin/probe-rs run:*)"
     ],
     "deny": [],
     "ask": []

@@ -297,10 +297,10 @@ async fn main(spawner: Spawner) {
     let usb = builder.build();
 
     // USB task needs to run separately
-    spawner.spawn(usb_device_task(usb)).ok();
+    spawner.spawn(usb_device_task(usb).unwrap());
 
     // Spawn USB logger task
-    spawner.spawn(usb_logger_task(class)).unwrap();
+    spawner.spawn(usb_logger_task(class).unwrap());
 
     // Wait a moment for USB to initialize
     Timer::after(Duration::from_millis(100)).await;

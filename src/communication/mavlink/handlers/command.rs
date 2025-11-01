@@ -67,7 +67,7 @@ impl CommandHandler {
             MavCmd::MAV_CMD_DO_SET_MODE => self.handle_set_mode(cmd),
             MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION => self.handle_preflight_calibration(cmd),
             _ => {
-                warn!("Unsupported command: {:?}", cmd.command);
+                warn!("Unsupported command: {}", cmd.command as u32);
                 MavResult::MAV_RESULT_UNSUPPORTED
             }
         };

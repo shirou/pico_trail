@@ -87,13 +87,15 @@ pub struct MavlinkRouter<F: FlashInterface> {
     /// System state (shared between handlers)
     system_state: SystemState,
     /// Parameter protocol handler
-    param_handler: ParamHandler<F>,
+    param_handler: ParamHandler,
     /// Telemetry streamer
     telemetry: TelemetryStreamer,
     /// Command handler
     command_handler: CommandHandler,
     /// Mission handler
     mission_handler: MissionHandler,
+    /// Flash interface marker (not used directly, but needed for generic type)
+    _flash: core::marker::PhantomData<F>,
 }
 
 impl<F: FlashInterface> MavlinkRouter<F> {
@@ -104,7 +106,7 @@ impl<F: FlashInterface> MavlinkRouter<F> {
     /// * `flash` - Flash interface for parameter storage
     /// * `system_id` - MAVLink system ID (default: 1)
     /// * `component_id` - MAVLink component ID (default: 1)
-    pub fn new(flash: F, system_id: u8, component_id: u8) -> Self {
+    pub fn new(flash: &mut F, system_id: u8, component_id: u8) -> Self {
         let system_state = SystemState::new();
         Self {
             connection: ConnectionState::default(),
@@ -114,6 +116,7 @@ impl<F: FlashInterface> MavlinkRouter<F> {
             telemetry: TelemetryStreamer::new(system_id, component_id),
             command_handler: CommandHandler::new(system_state),
             mission_handler: MissionHandler::new(system_id, component_id),
+            _flash: core::marker::PhantomData,
         }
     }
 
@@ -143,12 +146,12 @@ impl<F: FlashInterface> MavlinkRouter<F> {
     }
 
     /// Get reference to parameter handler
-    pub fn param_handler(&self) -> &ParamHandler<F> {
+    pub fn param_handler(&self) -> &ParamHandler {
         &self.param_handler
     }
 
     /// Get mutable reference to parameter handler
-    pub fn param_handler_mut(&mut self) -> &mut ParamHandler<F> {
+    pub fn param_handler_mut(&mut self) -> &mut ParamHandler {
         &mut self.param_handler
     }
 
@@ -173,14 +176,14 @@ impl<F: FlashInterface> MavlinkRouter<F> {
     /// Vector of telemetry messages to send (HEARTBEAT, ATTITUDE, GPS, SYS_STATUS)
     pub fn update_telemetry(&mut self, current_time_us: u64) -> heapless::Vec<MavMessage, 4> {
         // Update stream rates from parameters
-        if let Some(sr_extra1) = self.param_handler.registry().get_by_name("SR_EXTRA1") {
-            if let Some(sr_position) = self.param_handler.registry().get_by_name("SR_POSITION") {
-                let extra1 = match sr_extra1.value {
-                    crate::core::parameters::ParamValue::Uint32(v) => v,
+        if let Some(sr_extra1) = self.param_handler.store().get("SR_EXTRA1") {
+            if let Some(sr_position) = self.param_handler.store().get("SR_POSITION") {
+                let extra1 = match sr_extra1 {
+                    crate::parameters::ParamValue::Int(v) => *v as u32,
                     _ => 10,
                 };
-                let position = match sr_position.value {
-                    crate::core::parameters::ParamValue::Uint32(v) => v,
+                let position = match sr_position {
+                    crate::parameters::ParamValue::Int(v) => *v as u32,
                     _ => 5,
                 };
                 self.telemetry.update_rates(extra1, position);
@@ -378,12 +381,13 @@ impl<F: FlashInterface> MavlinkRouter<F> {
 
 impl<F: FlashInterface + Default> Default for MavlinkRouter<F> {
     fn default() -> Self {
-        Self::new(F::default(), 1, 1) // Default system_id=1, component_id=1
+        let mut flash = F::default();
+        Self::new(&mut flash, 1, 1) // Default system_id=1, component_id=1
     }
 }
 
 /// Router error types
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, defmt::Format)]
 pub enum RouterError {
     /// No handler registered for message type
     NoHandler,
@@ -408,17 +412,19 @@ mod tests {
 
     #[test]
     fn test_router_creation() {
-        let flash = MockFlash::new();
-        let router = MavlinkRouter::new(flash, 1, 1);
+        let mut flash = MockFlash::new();
+        let router = MavlinkRouter::new(&mut flash, 1, 1);
         assert!(!router.connection().connected);
         assert_eq!(router.stats().messages_processed, 0);
-        assert_eq!(router.param_handler().count(), 5); // 5 default parameters
+        // WiFi params (5 visible: SSID/PASS are String, DHCP/IP/NETMASK/GATEWAY/... = 4)
+        // + SR params (4) + SYSID (1) + WiFi SSID visible = 10
+        assert_eq!(router.param_handler().count(), 10);
     }
 
     #[test]
     fn test_heartbeat_handling() {
-        let flash = MockFlash::new();
-        let mut router = MavlinkRouter::new(flash, 1, 1);
+        let mut flash = MockFlash::new();
+        let mut router = MavlinkRouter::new(&mut flash, 1, 1);
 
         let heartbeat = MavMessage::HEARTBEAT(HEARTBEAT_DATA {
             custom_mode: 0,
@@ -456,8 +462,8 @@ mod tests {
 
     #[test]
     fn test_param_request_list_handled() {
-        let flash = MockFlash::new();
-        let mut router = MavlinkRouter::new(flash, 1, 1);
+        let mut flash = MockFlash::new();
+        let mut router = MavlinkRouter::new(&mut flash, 1, 1);
 
         let param_request =
             MavMessage::PARAM_REQUEST_LIST(mavlink::common::PARAM_REQUEST_LIST_DATA {
@@ -478,8 +484,8 @@ mod tests {
 
     #[test]
     fn test_stats_reset() {
-        let flash = MockFlash::new();
-        let mut router = MavlinkRouter::new(flash, 1, 1);
+        let mut flash = MockFlash::new();
+        let mut router = MavlinkRouter::new(&mut flash, 1, 1);
         router.stats.messages_processed = 100;
         router.stats.unhandled_messages = 10;
         router.reset_stats();
@@ -489,8 +495,8 @@ mod tests {
 
     #[test]
     fn test_param_set_integration() {
-        let flash = MockFlash::new();
-        let mut router = MavlinkRouter::new(flash, 1, 1);
+        let mut flash = MockFlash::new();
+        let mut router = MavlinkRouter::new(&mut flash, 1, 1);
 
         let mut param_id = [0u8; 16];
         param_id[..9].copy_from_slice(b"SR_EXTRA1");
@@ -513,18 +519,14 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify parameter was updated
-        let param = router
-            .param_handler()
-            .registry()
-            .get_by_name("SR_EXTRA1")
-            .unwrap();
-        assert_eq!(param.value, crate::core::parameters::ParamValue::Uint32(20));
+        let param = router.param_handler().store().get("SR_EXTRA1").unwrap();
+        assert_eq!(*param, crate::parameters::ParamValue::Int(20));
     }
 
     #[test]
     fn test_telemetry_update() {
-        let flash = MockFlash::new();
-        let mut router = MavlinkRouter::new(flash, 1, 1);
+        let mut flash = MockFlash::new();
+        let mut router = MavlinkRouter::new(&mut flash, 1, 1);
         router.system_state.battery.voltage = 12.5;
         router.system_state.cpu_load = 25.0;
 
@@ -547,32 +549,28 @@ mod tests {
 
     #[test]
     fn test_telemetry_rate_from_parameters() {
-        let flash = MockFlash::new();
-        let mut router = MavlinkRouter::new(flash, 1, 1);
+        let mut flash = MockFlash::new();
+        let mut router = MavlinkRouter::new(&mut flash, 1, 1);
 
         // Change SR_EXTRA1 parameter (controls ATTITUDE rate)
         router
             .param_handler_mut()
-            .registry_mut()
-            .set_by_name("SR_EXTRA1", crate::core::parameters::ParamValue::Uint32(20))
+            .store_mut()
+            .set("SR_EXTRA1", crate::parameters::ParamValue::Int(20))
             .unwrap();
 
         // Telemetry update should pick up new rate
         let _messages = router.update_telemetry(0);
 
         // Verify rate was updated (indirectly through parameter)
-        let param = router
-            .param_handler()
-            .registry()
-            .get_by_name("SR_EXTRA1")
-            .unwrap();
-        assert_eq!(param.value, crate::core::parameters::ParamValue::Uint32(20));
+        let param = router.param_handler().store().get("SR_EXTRA1").unwrap();
+        assert_eq!(*param, crate::parameters::ParamValue::Int(20));
     }
 
     #[test]
     fn test_command_arm_integration() {
-        let flash = MockFlash::new();
-        let mut router = MavlinkRouter::new(flash, 1, 1);
+        let mut flash = MockFlash::new();
+        let mut router = MavlinkRouter::new(&mut flash, 1, 1);
 
         // Set good battery voltage
         router.system_state.battery.voltage = 12.0;
@@ -604,8 +602,8 @@ mod tests {
 
     #[test]
     fn test_command_disarm_integration() {
-        let flash = MockFlash::new();
-        let mut router = MavlinkRouter::new(flash, 1, 1);
+        let mut flash = MockFlash::new();
+        let mut router = MavlinkRouter::new(&mut flash, 1, 1);
 
         // Arm first
         router.system_state.armed = crate::communication::mavlink::state::ArmedState::Armed;
@@ -637,8 +635,8 @@ mod tests {
 
     #[test]
     fn test_command_mode_change_integration() {
-        let flash = MockFlash::new();
-        let mut router = MavlinkRouter::new(flash, 1, 1);
+        let mut flash = MockFlash::new();
+        let mut router = MavlinkRouter::new(&mut flash, 1, 1);
 
         let command = MavMessage::COMMAND_LONG(mavlink::common::COMMAND_LONG_DATA {
             target_system: 1,
@@ -672,8 +670,8 @@ mod tests {
     fn test_mission_upload_integration() {
         use mavlink::common::{MavCmd, MavFrame, MISSION_COUNT_DATA, MISSION_ITEM_INT_DATA};
 
-        let flash = MockFlash::new();
-        let mut router = MavlinkRouter::new(flash, 1, 1);
+        let mut flash = MockFlash::new();
+        let mut router = MavlinkRouter::new(&mut flash, 1, 1);
 
         // 1. Receive MISSION_COUNT
         let count_msg = MavMessage::MISSION_COUNT(MISSION_COUNT_DATA {
@@ -753,8 +751,8 @@ mod tests {
         use crate::core::mission::Waypoint;
         use mavlink::common::{MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA};
 
-        let flash = MockFlash::new();
-        let mut router = MavlinkRouter::new(flash, 1, 1);
+        let mut flash = MockFlash::new();
+        let mut router = MavlinkRouter::new(&mut flash, 1, 1);
 
         // Add waypoints to storage
         let wp1 = Waypoint::new(0, 370000000, -1220000000, 100.0);

@@ -157,7 +157,7 @@ impl Default for MavlinkParser {
 }
 
 /// Parser error types
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, defmt::Format)]
 pub enum ParserError {
     /// CRC validation failed
     CrcError,

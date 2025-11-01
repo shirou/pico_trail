@@ -39,9 +39,95 @@ Common adapters that work well:
 - CP2102
 - CH340G
 
+## Transport Options
+
+### UART Transport
+
+UART is the primary transport for initial configuration and reliable wired communication. All examples support UART by default.
+
+**Advantages:**
+
+- No configuration required - works out of the box
+- Reliable wired connection
+- No network dependencies
+- Suitable for field operations without WiFi
+
+**Limitations:**
+
+- Requires physical connection
+- Single GCS only (without router)
+- Limited range (cable length)
+
+### UDP Network Transport
+
+UDP transport enables wireless MAVLink communication over WiFi. Available in network-enabled examples (`mavlink_demo_network`).
+
+**Advantages:**
+
+- Wireless communication (WiFi range: \~50m indoors)
+- Multiple GCS support (up to 4 simultaneous)
+- Standard port 14550 (QGroundControl/Mission Planner compatible)
+- Concurrent UART + UDP operation
+
+**Limitations:**
+
+- Requires WiFi network and configuration
+- Potential packet loss on weak signal
+- Additional \~45 KB RAM overhead
+
+**Quick Start:**
+
+```bash
+# 1. Build network-enabled example
+./scripts/build-rp2350.sh --release mavlink_demo_network
+
+# 2. Flash and configure WiFi via UART
+probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/mavlink_demo_network
+
+# 3. Connect via UART, set parameters in QGroundControl:
+#    NET_SSID = "YourNetwork"
+#    NET_PASS = "YourPassword"
+#    NET_DHCP = 1
+
+# 4. Reboot device
+
+# 5. Connect QGroundControl via UDP:
+#    - Application Settings → Comm Links
+#    - Add UDP connection (port 14550, listening mode)
+#    - Device auto-discovers when HEARTBEAT sent
+```
+
+**Detailed Configuration:**
+
+See [WiFi Configuration Guide](wifi-configuration.md) for complete setup instructions, including:
+
+- Parameter configuration via MAVLink
+- DHCP and static IP setup
+- Troubleshooting WiFi connection issues
+- Security considerations
+- Performance tuning
+
+**Multiple GCS Support:**
+
+UDP transport automatically tracks up to 4 GCS:
+
+- Each GCS sends message to port 14550
+- Endpoint added to broadcast list
+- All telemetry broadcast to active GCS
+- Inactive GCS (no traffic for 10s) removed automatically
+
+**Concurrent Operation:**
+
+UART and UDP transports operate simultaneously:
+
+- Messages received from either transport
+- Telemetry broadcast to both transports
+- Independent failure isolation (UART works if WiFi fails)
+- No performance degradation with dual transports
+
 ## GCS Configuration
 
-### QGroundControl Setup
+### QGroundControl Setup (UART)
 
 1. **Install QGroundControl 4.x**
    - Download from <https://qgroundcontrol.com/>
@@ -64,7 +150,7 @@ Common adapters that work well:
    - Vehicle should appear within 5 seconds (HEARTBEAT timeout)
    - Telemetry should display on main screen
 
-### Mission Planner Setup
+### Mission Planner Setup (UART)
 
 1. **Install Mission Planner 1.3.x** (Windows only)
    - Download from <https://ardupilot.org/planner/>
@@ -78,6 +164,42 @@ Common adapters that work well:
 3. **Monitor Telemetry**
    - Flight Data view shows attitude, GPS, battery
    - Parameter list shows configurable parameters
+
+### QGroundControl Setup (UDP)
+
+1. **Configure WiFi on Device**
+   - Connect via UART first
+   - Set `NET_SSID` and `NET_PASS` parameters
+   - Reboot device to connect to WiFi
+
+2. **Add UDP Connection**
+   - Open QGroundControl
+   - Go to: Application Settings → Comm Links
+   - Click "Add" to create new connection
+   - Configure:
+     - Name: Pico Trail WiFi
+     - Type: UDP
+     - Listening Port: 14550
+     - Server Address: (leave empty for listening mode)
+
+3. **Connect**
+   - Click "Connect"
+   - Device auto-appears when HEARTBEAT received
+   - Verify connection in defmt logs
+
+**Note:** UDP uses "listening mode" (server) - QGroundControl waits for device to send HEARTBEAT.
+
+### Mission Planner Setup (UDP)
+
+1. **Configure Connection**
+   - Top-right: Connection type dropdown
+   - Select "UDP"
+   - Port: 14550
+   - Click "Connect"
+
+2. **Monitor**
+   - Device appears when HEARTBEAT received
+   - Flight Data view shows telemetry
 
 ## Supported Messages
 
@@ -121,6 +243,31 @@ Control telemetry rates via parameters (units: Hz):
 | Parameter     | Default | Range | Description       |
 | ------------- | ------- | ----- | ----------------- |
 | SYSID_THISMAV | 1       | 1-255 | MAVLink system ID |
+
+### Network Configuration (UDP Transport)
+
+Configure WiFi and network settings via MAVLink parameters. These parameters are only available in network-enabled examples (`mavlink_demo_network`).
+
+| Parameter   | Type   | Default       | Description                          |
+| ----------- | ------ | ------------- | ------------------------------------ |
+| NET_SSID    | String | "" (empty)    | WiFi network name (max 32 chars)     |
+| NET_PASS    | String | "" (hidden)   | WiFi password (max 63 chars, hidden) |
+| NET_DHCP    | Bool   | 1 (DHCP)      | Use DHCP (1) or static IP (0)        |
+| NET_IP      | IPv4   | 0.0.0.0       | Static IP address                    |
+| NET_NETMASK | IPv4   | 255.255.255.0 | Network mask                         |
+| NET_GATEWAY | IPv4   | 0.0.0.0       | Gateway address                      |
+
+**Security Note:** `NET_PASS` is write-only - it can be set via `PARAM_SET` but is hidden from `PARAM_REQUEST_READ` and `PARAM_REQUEST_LIST` for security. The password is stored unencrypted in Flash memory.
+
+**Configuration Workflow:**
+
+1. Connect via UART
+2. Set `NET_SSID` and `NET_PASS` in QGroundControl Parameters tab
+3. Optionally configure `NET_DHCP`, `NET_IP`, etc.
+4. Reboot device to apply WiFi configuration
+5. Device connects to WiFi automatically on boot
+
+**UART-Only Mode:** Leave `NET_SSID` empty to disable WiFi and operate in UART-only mode.
 
 ### Parameter Persistence
 
@@ -213,7 +360,7 @@ MAV_CMD_PREFLIGHT_CALIBRATION (241)
 
 ## Building and Flashing
 
-### Build
+### Build UART-Only Example
 
 ```bash
 # Build for RP2350 (Pico 2 W)
@@ -222,6 +369,15 @@ MAV_CMD_PREFLIGHT_CALIBRATION (241)
 # Build for RP2040 (Pico W)
 # TODO: Add RP2040 build script when available
 ```
+
+### Build Network-Enabled Example
+
+```bash
+# Build network example with UART + UDP support
+./scripts/build-rp2350.sh --release mavlink_demo_network
+```
+
+**Note:** WiFi credentials are configured via MAVLink parameters after flashing, not at build time. See [WiFi Configuration Guide](wifi-configuration.md).
 
 ### Flash with probe-rs (Recommended)
 
@@ -317,11 +473,19 @@ MAVLink task started
 
 ## Performance Metrics
 
-### Memory Usage
+### Memory Usage (UART-Only)
 
 - **Static**: \~6 KB (buffers, state, parameters)
 - **Stack**: \~2 KB (during message processing)
 - **Total**: < 10 KB RAM (< 4% on RP2040, < 2% on RP2350)
+
+### Memory Usage (UART + UDP)
+
+- **WiFi driver**: \~20 KB RAM (CYW43439)
+- **Network stack**: \~15 KB RAM (embassy-net)
+- **UDP buffers**: \~8 KB RAM (RX/TX)
+- **Transport overhead**: \~2 KB RAM (routing, GCS tracking)
+- **Total network**: \~45 KB RAM (\~17% on RP2040, \~8.7% on RP2350)
 
 ### CPU Load
 
@@ -344,9 +508,20 @@ At default parameters (measured over 60 seconds):
 
 ### Latency
 
+**UART Transport:**
+
 - **Command acknowledgment**: < 10ms (COMMAND_LONG → COMMAND_ACK)
 - **Parameter read**: < 50ms (PARAM_REQUEST_READ → PARAM_VALUE)
 - **Connection timeout**: 5 seconds (missed HEARTBEAT)
+
+**UDP Transport:**
+
+- **Command acknowledgment**: < 110ms (COMMAND_LONG → COMMAND_ACK)
+- **WiFi PHY latency**: \~10-20ms
+- **UDP stack processing**: \~5-10ms
+- **MAVLink encode/decode**: \~1-2ms
+- **Router overhead**: < 1ms
+- **Total additional latency**: \~20-33ms vs UART
 
 ### Error Rates
 
@@ -454,10 +629,17 @@ High bandwidth (USB):
 
 ### Multiple GCS Connections
 
-Currently single GCS only. For multiple GCS:
+**UART Transport:** Single GCS only. For multiple GCS via UART:
 
 1. Use mavproxy as router: `mavproxy --master=/dev/ttyUSB0 --baudrate=115200 --out=udp:192.168.1.100:14550 --out=udp:192.168.1.101:14550`
 2. Connect each GCS to UDP endpoint
+
+**UDP Transport:** Up to 4 simultaneous GCS automatically supported:
+
+1. Each GCS connects to UDP port 14550
+2. GCS endpoints auto-discovered when they send messages
+3. All telemetry broadcast to active GCS
+4. Inactive GCS (no traffic for 10s) automatically removed
 
 ### Message Filtering
 
@@ -502,10 +684,16 @@ Key modules:
 
 ## Related Documentation
 
+- [WiFi Configuration Guide](wifi-configuration.md) - Detailed WiFi setup for UDP transport
 - [Architecture](architecture.md) - System architecture and components
-- [T-fuytd Task](archive/tasks/T-fuytd-mavlink-communication/) - Implementation details
+- [T-fuytd Task](archive/tasks/T-fuytd-mavlink-communication/) - UART MAVLink implementation
+- [T-oq110 Task](tasks/T-oq110-mavlink-network-transport/) - Network transport implementation
 - [ADR-ggou4](adr/ADR-ggou4-mavlink-implementation.md) - MAVLink architecture decision
+- [ADR-ckv8z](adr/ADR-ckv8z-transport-abstraction.md) - Transport abstraction design
+- [ADR-aul2v](adr/ADR-aul2v-udp-primary-transport.md) - UDP transport decision
+- [ADR-dxdj0](adr/ADR-dxdj0-wifi-config-strategy.md) - WiFi configuration strategy
 - [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) - MAVLink requirements
+- [FR-ydttj](requirements/FR-ydttj-udp-network-transport.md) - UDP transport requirements
 
 ## License
 
