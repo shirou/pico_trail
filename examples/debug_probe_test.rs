@@ -64,7 +64,10 @@ async fn main(_spawner: Spawner) {
 
         // Every 10 blinks, print additional info
         if counter % 10 == 0 {
-            info!("--- Status: Running smoothly, {} blinks completed ---", counter);
+            info!(
+                "--- Status: Running smoothly, {} blinks completed ---",
+                counter
+            );
         }
     }
 }

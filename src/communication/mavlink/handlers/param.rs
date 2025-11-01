@@ -132,6 +132,9 @@ impl ParamHandler {
         for name in self.store.iter_names() {
             if let Some(value) = self.store.get(name.as_str()) {
                 // Only include parameters that can be sent via MAVLink (exclude String type)
+                // NOTE: MAVLink PARAM_VALUE only supports float/int types
+                // String parameters (e.g., NET_SSID, NET_PASS) cannot be transmitted
+                // via standard parameter protocol. Future: implement PARAM_EXT_* messages.
                 match value {
                     ParamValue::String(_) => continue, // Cannot be sent via MAVLink
                     _ => {

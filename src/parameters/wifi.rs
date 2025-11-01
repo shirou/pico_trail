@@ -4,12 +4,23 @@
 //!
 //! # Parameters
 //!
-//! - `NET_SSID` - WiFi network name (max 32 chars)
-//! - `NET_PASS` - WiFi password (max 63 chars, hidden from MAVLink readout)
-//! - `NET_DHCP` - Use DHCP (true) or static IP (false)
-//! - `NET_IP` - Static IP address (used if NET_DHCP = false)
-//! - `NET_NETMASK` - Network mask (used if NET_DHCP = false)
-//! - `NET_GATEWAY` - Gateway address (used if NET_DHCP = false)
+//! - `NET_SSID` - WiFi network name (max 32 chars, **String type - NOT visible in GCS**)
+//! - `NET_PASS` - WiFi password (max 63 chars, **String type - NOT visible in GCS**)
+//! - `NET_DHCP` - Use DHCP (true) or static IP (false, **visible in GCS**)
+//! - `NET_IP` - Static IP address (used if NET_DHCP = false, **visible in GCS**)
+//! - `NET_NETMASK` - Network mask (used if NET_DHCP = false, **visible in GCS**)
+//! - `NET_GATEWAY` - Gateway address (used if NET_DHCP = false, **visible in GCS**)
+//!
+//! # MAVLink Protocol Limitation
+//!
+//! **IMPORTANT**: String parameters (NET_SSID, NET_PASS) cannot be transmitted via
+//! standard MAVLink PARAM_VALUE messages, which only support float/int types.
+//!
+//! - ❌ `NET_SSID` and `NET_PASS` will NOT appear in QGroundControl/Mission Planner
+//! - ✅ Other parameters (DHCP, IP, etc.) are visible and configurable via GCS
+//! - **Recommended**: Configure SSID/password via `.env` file at build time
+//!
+//! Future enhancement: Implement PARAM_EXT_* messages (MAVLink 2.0) for String support.
 //!
 //! # Security Note
 //!
@@ -67,12 +78,12 @@ impl WifiParams {
     /// Parameters are only registered if they don't already exist.
     ///
     /// Default values can be provided at build time via environment variables:
-    /// - `WIFI_SSID` - WiFi network name
-    /// - `WIFI_PASSWORD` - WiFi password
-    /// - `WIFI_DHCP` - Use DHCP (true/false)
-    /// - `WIFI_IP` - Static IP address (e.g., "192.168.1.100")
-    /// - `WIFI_NETMASK` - Network mask (e.g., "255.255.255.0")
-    /// - `WIFI_GATEWAY` - Gateway address (e.g., "192.168.1.1")
+    /// - `NET_SSID` - WiFi network name
+    /// - `NET_PASS` - WiFi password
+    /// - `NET_DHCP` - Use DHCP (true/false)
+    /// - `NET_IP` - Static IP address (e.g., "192.168.1.100")
+    /// - `NET_NETMASK` - Network mask (e.g., "255.255.255.0")
+    /// - `NET_GATEWAY` - Gateway address (e.g., "192.168.1.1")
     ///
     /// # Arguments
     ///
@@ -83,12 +94,12 @@ impl WifiParams {
     /// Ok if all parameters registered successfully
     pub fn register_defaults(store: &mut ParameterStore) -> Result<()> {
         // Load defaults from build-time environment variables
-        let default_ssid = env!("WIFI_SSID");
-        let default_password = env!("WIFI_PASSWORD");
-        let default_dhcp = env!("WIFI_DHCP");
-        let default_ip = env!("WIFI_IP");
-        let default_netmask = env!("WIFI_NETMASK");
-        let default_gateway = env!("WIFI_GATEWAY");
+        let default_ssid = env!("NET_SSID");
+        let default_password = env!("NET_PASS");
+        let default_dhcp = env!("NET_DHCP");
+        let default_ip = env!("NET_IP");
+        let default_netmask = env!("NET_NETMASK");
+        let default_gateway = env!("NET_GATEWAY");
 
         // NET_SSID - WiFi network name (from env or empty)
         let ssid_value = if default_ssid.is_empty() {

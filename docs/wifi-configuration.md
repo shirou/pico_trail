@@ -8,14 +8,22 @@ WiFi credentials are stored in Flash memory using the parameter storage system. 
 
 ## Configuration Parameters
 
-| Parameter     | Type   | Description                          | Default       |
-| ------------- | ------ | ------------------------------------ | ------------- |
-| `NET_SSID`    | String | WiFi network name (max 32 chars)     | "" (empty)    |
-| `NET_PASS`    | String | WiFi password (max 63 chars, hidden) | "" (empty)    |
-| `NET_DHCP`    | Bool   | Use DHCP (1) or static IP (0)        | 1 (DHCP)      |
-| `NET_IP`      | IPv4   | Static IP address                    | 0.0.0.0       |
-| `NET_NETMASK` | IPv4   | Network mask                         | 255.255.255.0 |
-| `NET_GATEWAY` | IPv4   | Gateway address                      | 0.0.0.0       |
+| Parameter     | Type   | GCS Visible | Description                          | Default       |
+| ------------- | ------ | ----------- | ------------------------------------ | ------------- |
+| `NET_SSID`    | String | ❌ No       | WiFi network name (max 32 chars)     | "" (empty)    |
+| `NET_PASS`    | String | ❌ No       | WiFi password (max 63 chars, hidden) | "" (empty)    |
+| `NET_DHCP`    | Bool   | ✅ Yes      | Use DHCP (1) or static IP (0)        | 1 (DHCP)      |
+| `NET_IP`      | IPv4   | ✅ Yes      | Static IP address                    | 0.0.0.0       |
+| `NET_NETMASK` | IPv4   | ✅ Yes      | Network mask                         | 255.255.255.0 |
+| `NET_GATEWAY` | IPv4   | ✅ Yes      | Gateway address                      | 0.0.0.0       |
+
+**⚠️ IMPORTANT: MAVLink Parameter Limitations**
+
+Due to MAVLink PARAM_VALUE protocol constraints (only supports float/int types), String parameters **cannot be displayed** in QGroundControl/Mission Planner parameter lists:
+
+- ❌ `NET_SSID` and `NET_PASS` will **NOT appear** in GCS parameter list
+- ✅ Other WiFi parameters (DHCP, IP, etc.) **are visible** and configurable in GCS
+- **Recommended**: Configure SSID/password via `.env` file at build time (see below)
 
 ## Quick Start
 
@@ -33,15 +41,35 @@ probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/mav
 # 2. Copy target/mavlink_demo_network.uf2 to mounted drive
 ```
 
-### Step 2: Configure WiFi via MAVLink
+### Step 2: Configure WiFi Credentials
+
+**Method A: Build-Time Configuration (Recommended)**
+
+Create `.env` file with WiFi credentials before building:
+
+```bash
+# Copy example file
+cp .env.example .env
+
+# Edit .env with your credentials
+NET_SSID=YourNetworkName
+NET_PASS=YourPassword123
+NET_DHCP=true
+```
+
+Then rebuild firmware - credentials will be embedded as default values.
+
+**Method B: Runtime Configuration via MAVLink (Advanced)**
 
 Connect QGroundControl or Mission Planner to the UART port (115200 baud):
 
 1. Open Parameters tab
-2. Set `NET_SSID` to your WiFi network name
-3. Set `NET_PASS` to your WiFi password
-4. Optionally configure `NET_DHCP`, `NET_IP`, `NET_NETMASK`, `NET_GATEWAY`
+2. **Note**: `NET_SSID` and `NET_PASS` will NOT be visible (String type limitation)
+3. To set WiFi credentials, use MAVLink Inspector to manually send PARAM_SET messages
+4. Configure visible parameters: `NET_DHCP`, `NET_IP`, `NET_NETMASK`, `NET_GATEWAY`
 5. Parameters are automatically saved to Flash
+
+**Recommended**: Use Method A (.env file) for easier WiFi configuration.
 
 ### Step 3: Reboot Device
 

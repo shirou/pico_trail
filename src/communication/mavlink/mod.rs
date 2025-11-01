@@ -32,6 +32,7 @@
 // Module structure populated during Phase 1-2
 pub mod handlers; // Message handlers (Phase 2+)
 pub mod parser; // Message parsing (Phase 1)
+pub mod performance; // Performance metrics tracking (Phase 3)
 pub mod router; // Protocol message routing (Phase 1)
 pub mod state; // System state (Phase 1)
 pub mod task; // MAVLink task (Phase 1)

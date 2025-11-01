@@ -387,7 +387,8 @@ impl<F: FlashInterface + Default> Default for MavlinkRouter<F> {
 }
 
 /// Router error types
-#[derive(Debug, Clone, Copy, defmt::Format)]
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum RouterError {
     /// No handler registered for message type
     NoHandler,

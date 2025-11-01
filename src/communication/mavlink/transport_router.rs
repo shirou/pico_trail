@@ -438,7 +438,8 @@ where
 }
 
 /// Router error types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum RouterError {
     /// No transport available
     NoTransport,

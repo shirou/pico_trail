@@ -609,7 +609,7 @@ mod tests {
 
         // Test Float
         buf.clear();
-        let f = ParamValue::Float(3.14);
+        let f = ParamValue::Float(1.23);
         f.serialize(&mut buf).unwrap();
         assert_eq!(buf.len(), 4);
 

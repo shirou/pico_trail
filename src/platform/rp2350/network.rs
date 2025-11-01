@@ -176,13 +176,7 @@ pub async fn initialize_wifi(
     spawner: Spawner,
     config: WifiConfig,
     p: embassy_rp::Peripherals,
-) -> Result<
-    (
-        &'static Stack<'static>,
-        &'static mut Control<'static>,
-    ),
-    WifiError,
-> {
+) -> Result<(&'static Stack<'static>, &'static mut Control<'static>), WifiError> {
     if !config.is_configured() {
         defmt::info!("WiFi not configured (empty SSID), skipping WiFi initialization");
         return Err(WifiError::NotConfigured);
@@ -402,6 +396,114 @@ mod tests {
     }
 
     #[test]
+    fn test_wifi_config_dhcp() {
+        let mut config = WifiConfig::default();
+        config.ssid = heapless::String::from("TestNetwork");
+        config.password = heapless::String::from("password123");
+        config.use_dhcp = true;
+
+        assert!(config.is_configured());
+        assert!(config.use_dhcp);
+        assert_eq!(config.static_ip, [0, 0, 0, 0]); // Should be ignored with DHCP
+    }
+
+    #[test]
+    fn test_wifi_config_static_ip() {
+        let mut config = WifiConfig::default();
+        config.ssid = heapless::String::from("TestNetwork");
+        config.password = heapless::String::from("password123");
+        config.use_dhcp = false;
+        config.static_ip = [192, 168, 1, 100];
+        config.netmask = [255, 255, 255, 0];
+        config.gateway = [192, 168, 1, 1];
+
+        assert!(config.is_configured());
+        assert!(!config.use_dhcp);
+        assert_eq!(config.static_ip, [192, 168, 1, 100]);
+        assert_eq!(config.netmask, [255, 255, 255, 0]);
+        assert_eq!(config.gateway, [192, 168, 1, 1]);
+    }
+
+    #[test]
+    fn test_wifi_config_empty_ssid() {
+        let config = WifiConfig::default();
+        assert!(!config.is_configured());
+        assert_eq!(config.ssid.as_str(), "");
+    }
+
+    #[test]
+    fn test_wifi_config_max_length_ssid() {
+        let mut config = WifiConfig::default();
+        // Create 32-character SSID (max length)
+        let long_ssid = "12345678901234567890123456789012";
+        config.ssid = heapless::String::from(long_ssid);
+        assert!(config.is_configured());
+        assert_eq!(config.ssid.len(), 32);
+    }
+
+    #[test]
+    fn test_wifi_config_max_length_password() {
+        let mut config = WifiConfig::default();
+        config.ssid = heapless::String::from("TestNetwork");
+        // Create 63-character password (max length for WPA2)
+        let long_password = "123456789012345678901234567890123456789012345678901234567890123";
+        config.password = heapless::String::from(long_password);
+        assert_eq!(config.password.len(), 63);
+    }
+
+    #[test]
+    fn test_wifi_config_from_params_dhcp() {
+        use crate::parameters::wifi::WifiParams;
+        use heapless::String;
+
+        let mut params = WifiParams::default();
+        params.ssid = String::from("MyNetwork");
+        params.password = String::from("mypass123");
+        params.use_dhcp = true;
+
+        let config = WifiConfig::from_params(&params);
+
+        assert_eq!(config.ssid.as_str(), "MyNetwork");
+        assert_eq!(config.password.as_str(), "mypass123");
+        assert!(config.use_dhcp);
+        assert_eq!(config.static_ip, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_wifi_config_from_params_static_ip() {
+        use crate::parameters::wifi::WifiParams;
+        use heapless::String;
+
+        let mut params = WifiParams::default();
+        params.ssid = String::from("MyNetwork");
+        params.password = String::from("mypass123");
+        params.use_dhcp = false;
+        params.static_ip = [10, 0, 0, 50];
+        params.netmask = [255, 255, 255, 0];
+        params.gateway = [10, 0, 0, 1];
+
+        let config = WifiConfig::from_params(&params);
+
+        assert_eq!(config.ssid.as_str(), "MyNetwork");
+        assert!(!config.use_dhcp);
+        assert_eq!(config.static_ip, [10, 0, 0, 50]);
+        assert_eq!(config.netmask, [255, 255, 255, 0]);
+        assert_eq!(config.gateway, [10, 0, 0, 1]);
+    }
+
+    #[test]
+    fn test_wifi_config_from_params_empty_ssid() {
+        use crate::parameters::wifi::WifiParams;
+
+        let params = WifiParams::default(); // Empty SSID
+
+        let config = WifiConfig::from_params(&params);
+
+        assert!(!config.is_configured());
+        assert_eq!(config.ssid.as_str(), "");
+    }
+
+    #[test]
     fn test_retry_delay_exponential_backoff() {
         assert_eq!(get_retry_delay(0), Duration::from_millis(1000)); // 1s
         assert_eq!(get_retry_delay(1), Duration::from_millis(2000)); // 2s
@@ -409,5 +511,11 @@ mod tests {
         assert_eq!(get_retry_delay(3), Duration::from_millis(8000)); // 8s
         assert_eq!(get_retry_delay(4), Duration::from_millis(16000)); // 16s
         assert_eq!(get_retry_delay(5), Duration::from_millis(16000)); // Cap at 16s
+    }
+
+    #[test]
+    fn test_retry_delay_large_attempt() {
+        // Ensure delay caps at 16s even for large attempt numbers
+        assert_eq!(get_retry_delay(100), Duration::from_millis(16000));
     }
 }

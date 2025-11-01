@@ -101,14 +101,47 @@ impl Default for WifiParams {
 
 ### Parameter Configuration via QGroundControl
 
+**⚠️ LIMITATION: NET_SSID and NET_PASS are NOT visible in GCS parameter list**
+
+Due to MAVLink PARAM_VALUE protocol limitations (only supports float/int types), String parameters cannot be transmitted via standard parameter protocol. This affects:
+
+- ❌ `NET_SSID` (String type) - Not visible in parameter list
+- ❌ `NET_PASS` (String type) - Not visible in parameter list
+
+**Visible WiFi parameters in GCS:**
+
+- ✅ `NET_DHCP` (Bool) - Use DHCP (1) or static IP (0)
+- ✅ `NET_IP` (IPv4) - Static IP address
+- ✅ `NET_NETMASK` (IPv4) - Network mask
+- ✅ `NET_GATEWAY` (IPv4) - Gateway address
+
+**Recommended WiFi configuration method:**
+
+Use build-time environment variables in `.env` file:
+
+1. **Create .env file** with WiFi credentials:
+   ```bash
+   NET_SSID=MyNetwork
+   NET_PASS=SecurePassword123
+   NET_DHCP=true
+   ```
+2. **Build firmware** (credentials embedded as defaults)
+3. **Flash to device** - WiFi connects automatically
+4. **Adjust network settings** (DHCP/static IP) via GCS if needed
+
+**Alternative (Runtime configuration via GCS):**
+
 1. **Connect via UART** (WiFi not configured yet)
 2. **Open Parameters tab** in QGroundControl
-3. **Set WiFi parameters**:
-   - `NET_SSID` = "MyNetwork"
-   - `NET_PASS` = "SecurePassword123"
+3. **Manually send PARAM_SET** for NET_SSID/NET_PASS (requires MAVLink Inspector)
+4. **Set other WiFi parameters**:
    - `NET_DHCP` = 1 (or 0 for static IP)
-4. **Write parameters** (saved to Flash)
-5. **Reboot Pico** (WiFi connects with new settings)
+5. **Write parameters** (saved to Flash)
+6. **Reboot Pico** (WiFi connects with new settings)
+
+**Future Enhancement:**
+
+Implement PARAM_EXT\_\* messages (MAVLink 2.0) to support String parameters in GCS.
 
 ### Code Integration
 
@@ -392,8 +425,8 @@ impl ParameterHandler {
 
 1. Set environment variables:
    ```bash
-   export WIFI_SSID="YourNetwork"
-   export WIFI_PASSWORD="YourPassword"
+   export NET_SSID="YourNetwork"
+   export NET_PASS="YourPassword"
    ```
 ````
 
@@ -410,9 +443,9 @@ impl ParameterHandler {
 Create `.env` (gitignored):
 
 ```bash
-WIFI_SSID=MyNetwork
-WIFI_PASSWORD=SecurePassword123
-WIFI_DHCP=true
+NET_SSID=MyNetwork
+NET_PASS=SecurePassword123
+NET_DHCP=true
 ```
 
 Load and build:
@@ -425,12 +458,12 @@ source .env
 ### Static IP Configuration
 
 ```bash
-export WIFI_SSID="MyNetwork"
-export WIFI_PASSWORD="SecurePassword123"
-export WIFI_DHCP=false
-export WIFI_IP="192.168.1.100"
-export WIFI_NETMASK="255.255.255.0"
-export WIFI_GATEWAY="192.168.1.1"
+export NET_SSID="MyNetwork"
+export NET_PASS="SecurePassword123"
+export NET_DHCP=false
+export NET_IP="192.168.1.100"
+export NET_NETMASK="255.255.255.0"
+export NET_GATEWAY="192.168.1.1"
 ```
 
 ````
@@ -441,20 +474,20 @@ export WIFI_GATEWAY="192.168.1.1"
 
 ```bash
 # Home network
-export WIFI_SSID="HomeWiFi"
-export WIFI_PASSWORD="homepass"
+export NET_SSID="HomeWiFi"
+export NET_PASS="homepass"
 ./scripts/build-rp2350.sh && probe-rs run target/uf2/example.uf2
 
 # Office network
-export WIFI_SSID="OfficeWiFi"
-export WIFI_PASSWORD="officepass"
+export NET_SSID="OfficeWiFi"
+export NET_PASS="officepass"
 ./scripts/build-rp2350.sh && probe-rs run target/uf2/example.uf2
 
 # Test network with static IP
-export WIFI_SSID="TestNet"
-export WIFI_PASSWORD="testpass"
-export WIFI_DHCP=false
-export WIFI_IP="10.0.0.50"
+export NET_SSID="TestNet"
+export NET_PASS="testpass"
+export NET_DHCP=false
+export NET_IP="10.0.0.50"
 ./scripts/build-rp2350.sh
 ````
 
@@ -462,14 +495,14 @@ export WIFI_IP="10.0.0.50"
 
 ```bash
 # Site A
-export WIFI_SSID="SiteA-Network"
-export WIFI_PASSWORD="SecurePass123"
+export NET_SSID="SiteA-Network"
+export NET_PASS="SecurePass123"
 ./scripts/build-rp2350.sh --release
 cp target/pico_trail.uf2 firmware/site-a-firmware.uf2
 
 # Site B
-export WIFI_SSID="SiteB-Network"
-export WIFI_PASSWORD="DifferentPass456"
+export NET_SSID="SiteB-Network"
+export NET_PASS="DifferentPass456"
 ./scripts/build-rp2350.sh --release
 cp target/pico_trail.uf2 firmware/site-b-firmware.uf2
 ```

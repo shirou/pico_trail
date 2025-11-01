@@ -94,8 +94,12 @@ pub async fn mavlink_task(
 /// UART and Flash types. The task macro wrapper above uses concrete types
 /// because Embassy tasks cannot be generic.
 #[cfg(feature = "pico2_w")]
-async fn mavlink_task_impl<R, W, F>(mut uart_rx: R, mut uart_tx: W, config: MavlinkConfig, mut flash: F)
-where
+async fn mavlink_task_impl<R, W, F>(
+    mut uart_rx: R,
+    mut uart_tx: W,
+    config: MavlinkConfig,
+    mut flash: F,
+) where
     R: embedded_io_async::Read,
     W: embedded_io_async::Write,
     F: FlashInterface,

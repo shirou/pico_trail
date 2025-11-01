@@ -618,7 +618,7 @@ Not applicable (no external API calls).
 - Update `docs/mavlink.md`: Add section on UDP network transport usage
 - Add example configuration in `docs/mavlink.md`: WiFi environment variable setup
 - Update `README.md`: Mention network transport capability
-- Update build script documentation: Document WIFI_SSID and WIFI_PASSWORD variables
+- Update build script documentation: Document NET_SSID and NET_PASS variables
 
 ## External References (optional)
 
@@ -711,9 +711,9 @@ async fn main(spawner: Spawner) {
 
 ```bash
 # Set environment variables
-export WIFI_SSID="MyNetwork"
-export WIFI_PASSWORD="SecurePassword123"
-export WIFI_DHCP=true
+export NET_SSID="MyNetwork"
+export NET_PASS="SecurePassword123"
+export NET_DHCP=true
 
 # Build for RP2350
 ./scripts/build-rp2350.sh --release

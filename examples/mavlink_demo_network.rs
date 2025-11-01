@@ -57,10 +57,8 @@ use {defmt_rtt as _, panic_probe as _};
 #[cfg(feature = "pico2_w")]
 use pico_trail::{
     communication::mavlink::{
-        handlers::param::ParamHandler,
-        parser::MavlinkParser,
-        transport::udp::UdpTransport,
-        transport_router::TransportRouter,
+        handlers::param::ParamHandler, parser::MavlinkParser, performance::PerformanceMetrics,
+        transport::udp::UdpTransport, transport_router::TransportRouter,
     },
     parameters::wifi::WifiParams,
     platform::rp2350::{network::WifiConfig, Rp2350Flash},
@@ -127,8 +125,7 @@ async fn main(spawner: Spawner) {
                     info!("Transport router initialized with UDP");
 
                     // Spawn message routing task
-                    spawner
-                        .spawn(network_mavlink_task(router, param_handler).unwrap());
+                    spawner.spawn(network_mavlink_task(router, param_handler).unwrap());
                 }
                 Err(e) => {
                     warn!("WiFi initialization failed: {:?}", e);
@@ -171,7 +168,10 @@ struct ByteReader<'a> {
 
 impl<'a> ByteReader<'a> {
     fn new(buffer: &'a [u8]) -> Self {
-        Self { buffer, position: 0 }
+        Self {
+            buffer,
+            position: 0,
+        }
     }
 }
 
@@ -208,8 +208,10 @@ async fn network_mavlink_task(
     use mavlink::Message;
 
     info!("MAVLink network task started");
+    info!("Performance metrics enabled");
 
     let mut parser = MavlinkParser::new();
+    let mut metrics = PerformanceMetrics::new();
     let mut last_heartbeat = Instant::now();
     let heartbeat_interval = Duration::from_secs(1); // 1Hz
     let mut sequence: u8 = 0;
@@ -236,24 +238,79 @@ async fn network_mavlink_task(
                 loop {
                     match parser.read_message(&mut reader).await {
                         Ok((header, msg)) => {
-                            defmt::debug!("RX MAVLink message: sys={}, comp={}, msgid={}",
-                                header.system_id, header.component_id, msg.message_id());
+                            defmt::debug!(
+                                "RX MAVLink message: sys={}, comp={}, msgid={}",
+                                header.system_id,
+                                header.component_id,
+                                msg.message_id()
+                            );
 
+                            let timestamp_us = Instant::now().as_micros();
+
+                            // Track HEARTBEAT for connection health monitoring
+                            if let mavlink::common::MavMessage::HEARTBEAT(_) = msg {
+                                metrics.track_heartbeat(header.system_id, timestamp_us);
+                            }
+
+                            // Handle COMMAND_LONG (for latency measurement)
+                            if let mavlink::common::MavMessage::COMMAND_LONG(data) = msg {
+                                let cmd_id = data.command as u16;
+                                defmt::info!("Received COMMAND_LONG: cmd={}", cmd_id);
+                                metrics.track_command_received(cmd_id, timestamp_us);
+
+                                // Send COMMAND_ACK
+                                let ack = mavlink::common::MavMessage::COMMAND_ACK(
+                                    mavlink::common::COMMAND_ACK_DATA {
+                                        command: data.command,
+                                        result: mavlink::common::MavResult::MAV_RESULT_ACCEPTED,
+                                    },
+                                );
+
+                                let ack_header = mavlink::MavHeader {
+                                    system_id: 1,
+                                    component_id: 1,
+                                    sequence,
+                                };
+
+                                let mut msg_buf = [0u8; 280];
+                                let mut msg_cursor = &mut msg_buf[..];
+
+                                if let Ok(_) =
+                                    mavlink::write_v2_msg(&mut msg_cursor, ack_header, &ack)
+                                {
+                                    let len = 280 - msg_cursor.len();
+                                    if let Ok(_) = router.send_bytes(&msg_buf[..len]).await {
+                                        sequence = sequence.wrapping_add(1);
+                                        let ack_timestamp = Instant::now().as_micros();
+                                        metrics.track_command_ack(cmd_id, ack_timestamp);
+                                        defmt::info!("Sent COMMAND_ACK for cmd={}", cmd_id);
+                                    }
+                                }
+                            }
                             // Handle PARAM_REQUEST_LIST
-                            if let mavlink::common::MavMessage::PARAM_REQUEST_LIST(data) = msg {
+                            else if let mavlink::common::MavMessage::PARAM_REQUEST_LIST(data) =
+                                msg
+                            {
                                 defmt::info!("Received PARAM_REQUEST_LIST");
                                 let param_messages = param_handler.handle_request_list(&data);
                                 defmt::info!("Sending {} parameter values", param_messages.len());
 
                                 // Send each PARAM_VALUE message
                                 for (idx, param_msg) in param_messages.iter().enumerate() {
-                                    if let mavlink::common::MavMessage::PARAM_VALUE(pv) = param_msg {
+                                    if let mavlink::common::MavMessage::PARAM_VALUE(pv) = param_msg
+                                    {
                                         let name = core::str::from_utf8(&pv.param_id)
                                             .unwrap_or("?")
                                             .trim_end_matches('\0');
-                                        defmt::info!("Sending param {}/{}: {} = {} (index={}, count={})",
-                                            idx + 1, param_messages.len(), name, pv.param_value,
-                                            pv.param_index, pv.param_count);
+                                        defmt::info!(
+                                            "Sending param {}/{}: {} = {} (index={}, count={})",
+                                            idx + 1,
+                                            param_messages.len(),
+                                            name,
+                                            pv.param_value,
+                                            pv.param_index,
+                                            pv.param_count
+                                        );
                                     }
 
                                     let param_header = mavlink::MavHeader {
@@ -265,7 +322,11 @@ async fn network_mavlink_task(
                                     let mut msg_buf = [0u8; 280];
                                     let mut msg_cursor = &mut msg_buf[..];
 
-                                    if let Ok(_) = mavlink::write_v2_msg(&mut msg_cursor, param_header, param_msg) {
+                                    if let Ok(_) = mavlink::write_v2_msg(
+                                        &mut msg_cursor,
+                                        param_header,
+                                        param_msg,
+                                    ) {
                                         let len = 280 - msg_cursor.len();
                                         match router.send_bytes(&msg_buf[..len]).await {
                                             Ok(n) => {
@@ -283,9 +344,10 @@ async fn network_mavlink_task(
                                 }
                                 defmt::info!("Finished sending all parameters");
                             }
-
                             // Handle PARAM_REQUEST_READ
-                            else if let mavlink::common::MavMessage::PARAM_REQUEST_READ(data) = msg {
+                            else if let mavlink::common::MavMessage::PARAM_REQUEST_READ(data) =
+                                msg
+                            {
                                 let name = core::str::from_utf8(&data.param_id)
                                     .unwrap_or("?")
                                     .trim_end_matches('\0');
@@ -301,7 +363,11 @@ async fn network_mavlink_task(
                                     let mut msg_buf = [0u8; 280];
                                     let mut msg_cursor = &mut msg_buf[..];
 
-                                    if let Ok(_) = mavlink::write_v2_msg(&mut msg_cursor, param_header, &param_msg) {
+                                    if let Ok(_) = mavlink::write_v2_msg(
+                                        &mut msg_cursor,
+                                        param_header,
+                                        &param_msg,
+                                    ) {
                                         let len = 280 - msg_cursor.len();
                                         if let Ok(_) = router.send_bytes(&msg_buf[..len]).await {
                                             sequence = sequence.wrapping_add(1);
@@ -330,16 +396,15 @@ async fn network_mavlink_task(
         // Send periodic heartbeat
         if last_heartbeat.elapsed() >= heartbeat_interval {
             // Create HEARTBEAT message using mavlink common message set
-            let heartbeat = mavlink::common::MavMessage::HEARTBEAT(
-                mavlink::common::HEARTBEAT_DATA {
+            let heartbeat =
+                mavlink::common::MavMessage::HEARTBEAT(mavlink::common::HEARTBEAT_DATA {
                     custom_mode: 0,
                     mavtype: mavlink::common::MavType::MAV_TYPE_QUADROTOR,
                     autopilot: mavlink::common::MavAutopilot::MAV_AUTOPILOT_GENERIC,
                     base_mode: mavlink::common::MavModeFlag::empty(),
                     system_status: mavlink::common::MavState::MAV_STATE_STANDBY,
                     mavlink_version: 3,
-                },
-            );
+                });
 
             let header = mavlink::MavHeader {
                 system_id: 1,
@@ -366,6 +431,10 @@ async fn network_mavlink_task(
 
             last_heartbeat = Instant::now();
         }
+
+        // Generate performance report if due
+        let timestamp_us = Instant::now().as_micros();
+        metrics.report_if_due(timestamp_us);
 
         Timer::after_millis(1).await;
     }
