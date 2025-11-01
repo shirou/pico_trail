@@ -177,6 +177,9 @@ pub fn update_total_deadline_misses() {
 /// This function should only be called in tests before any tasks are running.
 #[cfg(test)]
 pub fn reset_stats() {
+    use super::registry::reset_registry;
+
+    reset_registry();
     critical_section::with(|_cs| unsafe {
         TASK_STATS_STORAGE = [TaskStats::default(); MAX_TASKS];
         SCHEDULER_STATS = SchedulerStats::default();
@@ -243,7 +246,30 @@ mod tests {
 
     #[test]
     fn test_update_total_deadline_misses() {
+        use super::super::registry::register_task;
+        use super::super::types::TaskMetadata;
+
         reset_stats();
+
+        // Register test tasks so task_count() returns the correct value
+        register_task(TaskMetadata {
+            name: "test_task_0",
+            rate_hz: 400,
+            priority: 100,
+            budget_us: 2000,
+        });
+        register_task(TaskMetadata {
+            name: "test_task_1",
+            rate_hz: 50,
+            priority: 100,
+            budget_us: 15000,
+        });
+        register_task(TaskMetadata {
+            name: "test_task_2",
+            rate_hz: 100,
+            priority: 100,
+            budget_us: 5000,
+        });
 
         // Create deadline misses in multiple tasks
         update_task_stats(0, 2100, 2500, 2500, 2000); // 1 miss

@@ -59,9 +59,9 @@ use embedded_io_async::{Read, Write};
 ///
 /// # Example Types
 ///
-/// On RP2350 with Embassy:
-/// - `R = embassy_rp::uart::BufferedUartRx<'static>`
-/// - `W = embassy_rp::uart::BufferedUartTx<'static>`
+/// For a buffered UART implementation:
+/// - `R`: Buffered UART receiver implementing `embedded_io_async::Read`
+/// - `W`: Buffered UART transmitter implementing `embedded_io_async::Write`
 pub struct UartTransport<R, W> {
     /// UART receiver
     rx: R,
@@ -80,17 +80,8 @@ impl<R, W> UartTransport<R, W> {
     /// # Examples
     ///
     /// ```ignore
-    /// use embassy_rp::uart::{Config, BufferedUart};
-    ///
-    /// let uart = BufferedUart::new(
-    ///     uart0,
-    ///     irq,
-    ///     tx_pin,
-    ///     rx_pin,
-    ///     tx_buffer,
-    ///     rx_buffer,
-    ///     config,
-    /// );
+    /// // Create buffered UART using platform-specific HAL (via platform abstraction layer)
+    /// let uart = platform::create_uart(/* uart config */);
     /// let (rx, tx) = uart.split();
     ///
     /// let transport = UartTransport::new(rx, tx);
