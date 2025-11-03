@@ -14,6 +14,8 @@
   - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)
   - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md)
   - [FR-sxsvw-failsafe-mechanisms](FR-sxsvw-failsafe-mechanisms.md)
+  - [FR-q2sjt-vehicle-mode-framework](FR-q2sjt-vehicle-mode-framework.md)
+  - [FR-uk0us-manual-mode](FR-uk0us-manual-mode.md)
   - [NFR-ukjvr-control-loop-latency](NFR-ukjvr-control-loop-latency.md)
   - [NFR-3wlo1-imu-sampling-rate](NFR-3wlo1-imu-sampling-rate.md)
 - Related Tasks: N/A - Tasks will be created after ADRs

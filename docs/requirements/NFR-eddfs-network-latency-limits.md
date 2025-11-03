@@ -8,10 +8,11 @@
 ## Links
 
 - Prerequisite Requirements:
-  - [FR-ydttj-udp-network-transport](FR-ydttj-udp-network-transport.md)
-- Dependent Requirements:
   - [NFR-ukjvr-control-loop-latency](NFR-ukjvr-control-loop-latency.md)
-- Related Tasks: N/A - Tasks will be created after ADRs
+  - [FR-ydttj-udp-network-transport](FR-ydttj-udp-network-transport.md)
+- Dependent Requirements: N/A
+- Related Tasks:
+  - [T-oq110-mavlink-network-transport](../tasks/T-oq110-mavlink-network-transport/README.md)
 
 ## Requirement Statement
 

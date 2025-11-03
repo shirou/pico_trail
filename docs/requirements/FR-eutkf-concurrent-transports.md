@@ -11,8 +11,10 @@
   - [FR-gpzpz-mavlink-protocol](FR-gpzpz-mavlink-protocol.md)
   - [FR-6jkia-transport-abstraction](FR-6jkia-transport-abstraction.md)
   - [FR-ydttj-udp-network-transport](FR-ydttj-udp-network-transport.md)
-- Dependent Requirements: N/A
-- Related Tasks: N/A - Tasks will be created after ADRs
+- Dependent Requirements:
+  - [NFR-ypgpm-transport-independence](NFR-ypgpm-transport-independence.md)
+- Related Tasks:
+  - [T-oq110-mavlink-network-transport](../tasks/T-oq110-mavlink-network-transport/README.md)
 
 ## Requirement Statement
 

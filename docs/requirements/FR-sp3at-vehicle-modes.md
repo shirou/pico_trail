@@ -10,6 +10,9 @@
 - Prerequisite Requirements:
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
   - [FR-333ym-gps-waypoint-navigation](FR-333ym-gps-waypoint-navigation.md)
+  - [FR-q2sjt-vehicle-mode-framework](FR-q2sjt-vehicle-mode-framework.md)
+  - [FR-uk0us-manual-mode](FR-uk0us-manual-mode.md)
+  - [FR-uo1p5-actuator-abstraction](FR-uo1p5-actuator-abstraction.md)
 - Dependent Requirements:
   - [FR-sxsvw-failsafe-mechanisms](FR-sxsvw-failsafe-mechanisms.md)
 - Related Tasks: N/A - Tasks will be created after ADRs

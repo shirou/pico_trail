@@ -8,11 +8,12 @@
 ## Links
 
 - Prerequisite Requirements:
+  - [NFR-z2iuk-memory-limits](NFR-z2iuk-memory-limits.md)
   - [FR-ydttj-udp-network-transport](FR-ydttj-udp-network-transport.md)
   - [FR-6jkia-transport-abstraction](FR-6jkia-transport-abstraction.md)
-- Dependent Requirements:
-  - [NFR-z2iuk-memory-limits](NFR-z2iuk-memory-limits.md)
-- Related Tasks: N/A - Tasks will be created after ADRs
+- Dependent Requirements: N/A
+- Related Tasks:
+  - [T-oq110-mavlink-network-transport](../tasks/T-oq110-mavlink-network-transport/README.md)
 
 ## Requirement Statement
 

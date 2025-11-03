@@ -10,7 +10,8 @@
 - Related Analyses:
   - [AN-cp76d-ardupilot-analysis](AN-cp76d-ardupilot-analysis.md)
   - [AN-5nucb-core-systems](AN-5nucb-core-systems.md)
-- Related Requirements: N/A - Requirements will be created based on this analysis
+- Related Requirements:
+  - [FR-333ym-gps-waypoint-navigation](../requirements/FR-333ym-gps-waypoint-navigation.md)
 - Related ADRs: N/A - ADRs will be created based on this analysis
 - Related Tasks: N/A - Tasks will be created after requirements and ADRs
 

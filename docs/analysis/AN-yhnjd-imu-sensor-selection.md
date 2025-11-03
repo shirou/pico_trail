@@ -12,6 +12,9 @@
   - [FR-eyuh8-ahrs-attitude-estimation](../requirements/FR-eyuh8-ahrs-attitude-estimation.md)
 - Related ADRs:
   - [ADR-6twis-ahrs-algorithm-selection](../adr/ADR-6twis-ahrs-algorithm-selection.md)
+  - [ADR-wjcrn-imu-driver-architecture](../adr/ADR-wjcrn-imu-driver-architecture.md)
+- Related Tasks:
+  - [T-49k7n-ahrs-dcm-implementation](../tasks/T-49k7n-ahrs-dcm-implementation/README.md)
 
 ## Executive Summary
 

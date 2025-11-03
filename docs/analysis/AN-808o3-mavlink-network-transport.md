@@ -23,7 +23,8 @@
   - [ADR-ckv8z-transport-abstraction](../adr/ADR-ckv8z-transport-abstraction.md)
   - [ADR-aul2v-udp-primary-transport](../adr/ADR-aul2v-udp-primary-transport.md)
   - [ADR-dxdj0-wifi-config-strategy](../adr/ADR-dxdj0-wifi-config-strategy.md)
-- Related Tasks: N/A
+- Related Tasks:
+  - [T-oq110-mavlink-network-transport](../tasks/T-oq110-mavlink-network-transport/README.md)
 
 ## Executive Summary
 

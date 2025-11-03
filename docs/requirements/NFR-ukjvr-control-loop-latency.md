@@ -9,7 +9,9 @@
 
 - Prerequisite Requirements:
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
-- Dependent Requirements: N/A
+- Dependent Requirements:
+  - [NFR-eddfs-network-latency-limits](NFR-eddfs-network-latency-limits.md)
+  - [NFR-kqvyf-manual-control-latency](NFR-kqvyf-manual-control-latency.md)
 - Related Tasks: N/A - Tasks will be created after ADRs
 
 ## Requirement Statement

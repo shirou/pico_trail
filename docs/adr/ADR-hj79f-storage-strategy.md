@@ -7,6 +7,8 @@
 
 ## Links
 
+- Related Analyses:
+  - [AN-5nucb-core-systems](../analysis/AN-5nucb-core-systems.md)
 - Impacted Requirements:
   - [FR-a1cuu-runtime-parameters](../requirements/FR-a1cuu-runtime-parameters.md)
   - [FR-4e922-data-logging](../requirements/FR-4e922-data-logging.md)

@@ -12,7 +12,8 @@
   - [FR-eutkf-concurrent-transports](../requirements/FR-eutkf-concurrent-transports.md)
   - [NFR-ypgpm-transport-independence](../requirements/NFR-ypgpm-transport-independence.md)
 - Supersedes ADRs: N/A
-- Related Tasks: Will be created after approval
+- Related Tasks:
+  - [T-oq110-mavlink-network-transport](../tasks/T-oq110-mavlink-network-transport/README.md)
 
 ## Context
 

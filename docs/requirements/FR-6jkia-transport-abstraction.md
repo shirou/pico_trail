@@ -12,7 +12,10 @@
 - Dependent Requirements:
   - [FR-ydttj-udp-network-transport](FR-ydttj-udp-network-transport.md)
   - [FR-eutkf-concurrent-transports](FR-eutkf-concurrent-transports.md)
-- Related Tasks: N/A - Tasks will be created after ADRs
+  - [NFR-ukx3a-network-memory-overhead](NFR-ukx3a-network-memory-overhead.md)
+  - [NFR-ypgpm-transport-independence](NFR-ypgpm-transport-independence.md)
+- Related Tasks:
+  - [T-oq110-mavlink-network-transport](../tasks/T-oq110-mavlink-network-transport/README.md)
 
 ## Requirement Statement
 

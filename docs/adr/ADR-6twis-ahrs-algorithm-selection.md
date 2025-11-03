@@ -12,7 +12,8 @@
   - [NFR-z2iuk-memory-limits](../requirements/NFR-z2iuk-memory-limits.md)
   - [NFR-3wlo1-imu-sampling-rate](../requirements/NFR-3wlo1-imu-sampling-rate.md)
 - Supersedes ADRs: N/A
-- Related Tasks: Will be created after approval
+- Related Tasks:
+  - [T-49k7n-ahrs-dcm-implementation](../tasks/T-49k7n-ahrs-dcm-implementation/README.md)
 
 ## Context
 

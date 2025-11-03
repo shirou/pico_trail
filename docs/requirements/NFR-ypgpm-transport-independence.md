@@ -11,7 +11,8 @@
   - [FR-6jkia-transport-abstraction](FR-6jkia-transport-abstraction.md)
   - [FR-eutkf-concurrent-transports](FR-eutkf-concurrent-transports.md)
 - Dependent Requirements: N/A
-- Related Tasks: N/A - Tasks will be created after ADRs
+- Related Tasks:
+  - [T-oq110-*](../tasks/T-oq110-*/README.md)
 
 ## Requirement Statement
 

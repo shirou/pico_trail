@@ -10,7 +10,8 @@
 - Impacted Requirements:
   - [FR-dxvrs-wifi-configuration](../requirements/FR-dxvrs-wifi-configuration.md)
 - Supersedes ADRs: N/A
-- Related Tasks: Will be created after approval
+- Related Tasks:
+  - [T-oq110-mavlink-network-transport](../tasks/T-oq110-mavlink-network-transport/README.md)
 
 ## Context
 

@@ -8,8 +8,11 @@
 ## Links
 
 - Prerequisite Requirements: N/A
-- Dependent Requirements: N/A
-- Related Tasks: N/A - Tasks will be created after ADRs
+- Dependent Requirements:
+  - [NFR-ukx3a-network-memory-overhead](NFR-ukx3a-network-memory-overhead.md)
+  - [NFR-v6kvd-vehicle-layer-memory](NFR-v6kvd-vehicle-layer-memory.md)
+- Related Tasks:
+  - [T-49k7n-ahrs-dcm-implementation](../tasks/T-49k7n-ahrs-dcm-implementation/README.md)
 
 ## Requirement Statement
 

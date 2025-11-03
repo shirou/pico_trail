@@ -10,8 +10,11 @@
 - Related Analyses:
   - [AN-cp76d-ardupilot-analysis](AN-cp76d-ardupilot-analysis.md)
   - [AN-kir7h-platform-abstraction](AN-kir7h-platform-abstraction.md)
-- Related Requirements: N/A - Requirements will be created based on this analysis
-- Related ADRs: N/A - ADRs will be created based on this analysis
+- Related Requirements:
+  - [FR-sxsvw-failsafe-mechanisms](../requirements/FR-sxsvw-failsafe-mechanisms.md)
+- Related ADRs:
+  - [ADR-hj79f-storage-strategy](../adr/ADR-hj79f-storage-strategy.md)
+  - [ADR-vywkw-task-scheduler-selection](../adr/ADR-vywkw-task-scheduler-selection.md)
 - Related Tasks: N/A - Tasks will be created after requirements and ADRs
 
 ## Executive Summary

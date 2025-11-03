@@ -7,6 +7,8 @@
 
 ## Links
 
+- Related Analyses:
+  - [AN-7ix56-navigation-approach](../analysis/AN-7ix56-navigation-approach.md)
 - Prerequisite Requirements:
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
   - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)

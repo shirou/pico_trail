@@ -1,35 +1,29 @@
 # T-49k7n AHRS DCM Implementation
 
-## Overview
+## Metadata
+
+- Type: Task
+- Status: Phase 3 Complete
+
+## Links
+
+- Related Analyses:
+  - [AN-yhnjd-imu-sensor-selection](../../analysis/AN-yhnjd-imu-sensor-selection.md)
+- Related Requirements:
+  - [FR-eyuh8-ahrs-attitude-estimation](../../requirements/FR-eyuh8-ahrs-attitude-estimation.md)
+  - [NFR-3wlo1-imu-sampling-rate](../../requirements/NFR-3wlo1-imu-sampling-rate.md)
+  - [NFR-z2iuk-memory-limits](../../requirements/NFR-z2iuk-memory-limits.md)
+- Related ADRs:
+  - [ADR-6twis-ahrs-algorithm-selection](../../adr/ADR-6twis-ahrs-algorithm-selection.md)
+  - [ADR-wjcrn-imu-driver-architecture](../../adr/ADR-wjcrn-imu-driver-architecture.md)
+- Associated Design Document:
+  - [design.md](./design.md)
+- Associated Plan Document:
+  - [plan.md](./plan.md)
+
+## Summary
 
 Implement Direction Cosine Matrix (DCM) based Attitude and Heading Reference System (AHRS) for real-time attitude estimation. Fuses gyroscope, accelerometer, and magnetometer data to provide accurate roll, pitch, and heading estimates at 100Hz for autonomous navigation and control.
-
-## Status
-
-- **Current Phase**: Draft
-- **Last Updated**: 2025-10-30
-
-## Quick Links
-
-- [Design Document](design.md) - Architecture and technical design
-- [Implementation Plan](plan.md) - Phased implementation tasks
-
-## Related Artifacts
-
-### Requirements
-
-- [FR-eyuh8-ahrs-attitude-estimation](../../requirements/FR-eyuh8-ahrs-attitude-estimation.md) - AHRS attitude estimation requirements
-- [NFR-3wlo1-imu-sampling-rate](../../requirements/NFR-3wlo1-imu-sampling-rate.md) - IMU sampling rate requirements
-- [NFR-z2iuk-memory-limits](../../requirements/NFR-z2iuk-memory-limits.md) - Memory constraints
-
-### Architecture Decisions
-
-- [ADR-6twis-ahrs-algorithm-selection](../../adr/ADR-6twis-ahrs-algorithm-selection.md) - DCM algorithm selection over EKF and complementary filters
-
-### Dependencies
-
-- **Upstream**: T-g729p (Embassy Task Scheduler - provides 100Hz execution slot), T-ex2h7 (Parameter Persistence - stores calibration data)
-- **Downstream**: FR-333ym (GPS Waypoint Navigation - consumes attitude estimates)
 
 ## Implementation Phases
 

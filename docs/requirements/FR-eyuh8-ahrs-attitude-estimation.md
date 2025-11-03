@@ -12,7 +12,8 @@
   - [NFR-3wlo1-imu-sampling-rate](NFR-3wlo1-imu-sampling-rate.md)
 - Dependent Requirements:
   - [FR-333ym-gps-waypoint-navigation](FR-333ym-gps-waypoint-navigation.md)
-- Related Tasks: N/A - Tasks will be created after ADRs
+- Related Tasks:
+  - [T-49k7n-*](../tasks/T-49k7n-*/README.md)
 
 ## Requirement Statement
 

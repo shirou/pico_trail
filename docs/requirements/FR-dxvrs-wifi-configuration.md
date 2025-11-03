@@ -10,7 +10,8 @@
 - Prerequisite Requirements: N/A
 - Dependent Requirements:
   - [FR-ydttj-udp-network-transport](FR-ydttj-udp-network-transport.md)
-- Related Tasks: N/A - Tasks will be created after ADRs
+- Related Tasks:
+  - [T-oq110-*](../tasks/T-oq110-*/README.md)
 
 ## Requirement Statement
 

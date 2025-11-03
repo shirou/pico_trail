@@ -12,7 +12,8 @@
   - [NFR-eddfs-network-latency-limits](../requirements/NFR-eddfs-network-latency-limits.md)
   - [NFR-ukx3a-network-memory-overhead](../requirements/NFR-ukx3a-network-memory-overhead.md)
 - Supersedes ADRs: N/A
-- Related Tasks: Will be created after approval
+- Related Tasks:
+  - [T-oq110-mavlink-network-transport](../tasks/T-oq110-mavlink-network-transport/README.md)
 
 ## Context
 

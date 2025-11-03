@@ -15,6 +15,8 @@
 - Related ADRs:
   - [ADR-6twis-ahrs-algorithm-selection](../adr/ADR-6twis-ahrs-algorithm-selection.md)
   - [ADR-oa2qa-platform-abstraction](../adr/ADR-oa2qa-platform-abstraction.md)
+- Related Tasks:
+  - [T-49k7n-ahrs-dcm-implementation](../tasks/T-49k7n-ahrs-dcm-implementation/README.md)
 
 ## Context
 

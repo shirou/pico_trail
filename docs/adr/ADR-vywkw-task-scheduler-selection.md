@@ -7,6 +7,8 @@
 
 ## Links
 
+- Related Analyses:
+  - [AN-5nucb-core-systems](../analysis/AN-5nucb-core-systems.md)
 - Impacted Requirements:
   - [FR-5inw2-task-scheduler](../requirements/FR-5inw2-task-scheduler.md)
   - [NFR-ukjvr-control-loop-latency](../requirements/NFR-ukjvr-control-loop-latency.md)

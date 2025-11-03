@@ -11,7 +11,8 @@
   - [AN-cp76d-ardupilot-analysis](AN-cp76d-ardupilot-analysis.md)
   - [AN-5nucb-core-systems](AN-5nucb-core-systems.md)
 - Related Requirements: N/A - Requirements will be created based on this analysis
-- Related ADRs: N/A - ADRs will be created based on this analysis
+- Related ADRs:
+  - [ADR-oa2qa-platform-abstraction](../adr/ADR-oa2qa-platform-abstraction.md)
 - Related Tasks: N/A - Tasks will be created after requirements and ADRs
 
 ## Executive Summary
