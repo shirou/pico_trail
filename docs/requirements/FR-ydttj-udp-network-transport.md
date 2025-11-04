@@ -8,13 +8,15 @@
 ## Links
 
 - Prerequisite Requirements:
-  - [FR-gpzpz-mavlink-protocol](FR-gpzpz-mavlink-protocol.md)
   - [FR-6jkia-transport-abstraction](FR-6jkia-transport-abstraction.md)
   - [FR-dxvrs-wifi-configuration](FR-dxvrs-wifi-configuration.md)
+  - [FR-gpzpz-mavlink-protocol](FR-gpzpz-mavlink-protocol.md)
+
 - Dependent Requirements:
   - [FR-eutkf-concurrent-transports](FR-eutkf-concurrent-transports.md)
   - [NFR-eddfs-network-latency-limits](NFR-eddfs-network-latency-limits.md)
   - [NFR-ukx3a-network-memory-overhead](NFR-ukx3a-network-memory-overhead.md)
+
 - Related Tasks:
   - [T-oq110-mavlink-network-transport](../tasks/T-oq110-mavlink-network-transport/README.md)
 

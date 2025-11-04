@@ -8,13 +8,18 @@
 ## Links
 
 - Prerequisite Requirements: N/A
+
 - Dependent Requirements:
+  - [FR-1k7yd-health-telemetry-reporting](FR-1k7yd-health-telemetry-reporting.md)
   - [FR-4e922-data-logging](FR-4e922-data-logging.md)
-  - [FR-a1cuu-runtime-parameters](FR-a1cuu-runtime-parameters.md)
   - [FR-6jkia-transport-abstraction](FR-6jkia-transport-abstraction.md)
   - [FR-993xy-rc-channels-processing](FR-993xy-rc-channels-processing.md)
+  - [FR-a1cuu-runtime-parameters](FR-a1cuu-runtime-parameters.md)
   - [FR-eutkf-concurrent-transports](FR-eutkf-concurrent-transports.md)
+  - [FR-993xy-rc-channels-processing](FR-993xy-rc-channels-processing.md)
   - [FR-ydttj-udp-network-transport](FR-ydttj-udp-network-transport.md)
+  - [FR-zwsr5-gcs-loss-failsafe](FR-zwsr5-gcs-loss-failsafe.md)
+
 - Related Tasks: N/A - Tasks will be created after ADRs
 
 ## Requirement Statement

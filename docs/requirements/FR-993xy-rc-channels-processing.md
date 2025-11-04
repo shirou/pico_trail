@@ -9,9 +9,14 @@
 
 - Prerequisite Requirements:
   - [FR-gpzpz-mavlink-protocol](FR-gpzpz-mavlink-protocol.md)
+
 - Dependent Requirements:
+  - [FR-knp1u-rc-input-health-monitoring](FR-knp1u-rc-input-health-monitoring.md)
+  - [FR-p3lx0-emergency-stop-triggers](FR-p3lx0-emergency-stop-triggers.md)
   - [FR-uk0us-manual-mode](FR-uk0us-manual-mode.md)
+  - [FR-meyja-manual-mode-implementation](FR-meyja-manual-mode-implementation.md)
   - [NFR-kqvyf-manual-control-latency](NFR-kqvyf-manual-control-latency.md)
+
 - Related Tasks:
   - [T-3irm5-manual-control-implementation](../tasks/T-3irm5-manual-control-implementation/README.md)
 

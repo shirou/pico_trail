@@ -8,11 +8,13 @@
 ## Links
 
 - Prerequisite Requirements:
-  - [FR-gpzpz-mavlink-protocol](FR-gpzpz-mavlink-protocol.md)
   - [FR-6jkia-transport-abstraction](FR-6jkia-transport-abstraction.md)
+  - [FR-gpzpz-mavlink-protocol](FR-gpzpz-mavlink-protocol.md)
   - [FR-ydttj-udp-network-transport](FR-ydttj-udp-network-transport.md)
+
 - Dependent Requirements:
   - [NFR-ypgpm-transport-independence](NFR-ypgpm-transport-independence.md)
+
 - Related Tasks:
   - [T-oq110-mavlink-network-transport](../tasks/T-oq110-mavlink-network-transport/README.md)
 

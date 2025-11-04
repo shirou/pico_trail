@@ -10,10 +10,13 @@
 - Prerequisite Requirements:
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
   - [NFR-3wlo1-imu-sampling-rate](NFR-3wlo1-imu-sampling-rate.md)
+
 - Dependent Requirements:
   - [FR-333ym-gps-waypoint-navigation](FR-333ym-gps-waypoint-navigation.md)
+  - [FR-ap18p-ekf-health-validation](FR-ap18p-ekf-health-validation.md)
+
 - Related Tasks:
-  - [T-49k7n-*](../tasks/T-49k7n-*/README.md)
+  - [T-49k7n-\*](../tasks/T-49k7n-*/README.md)
 
 ## Requirement Statement
 

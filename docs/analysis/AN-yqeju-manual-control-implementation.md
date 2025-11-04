@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Analysis
-- Status: Draft
+- Status: Approved
 
 ## Links
 
@@ -11,8 +11,13 @@
   - [AN-cp76d-ardupilot-analysis](AN-cp76d-ardupilot-analysis.md)
   - [AN-808o3-mavlink-network-transport](AN-808o3-mavlink-network-transport.md)
 - Related Requirements:
-  - [FR-sp3at-vehicle-modes](../requirements/FR-sp3at-vehicle-modes.md)
-  - [FR-gpzpz-mavlink-protocol](../requirements/FR-gpzpz-mavlink-protocol.md)
+  - [FR-2e00g-mode-execution-framework](../requirements/FR-2e00g-mode-execution-framework.md)
+  - [FR-fap3d-actuator-abstraction-rover](../requirements/FR-fap3d-actuator-abstraction-rover.md)
+  - [FR-meyja-manual-mode-implementation](../requirements/FR-meyja-manual-mode-implementation.md)
+  - [FR-wr6oo-rc-channels-processing](../requirements/FR-wr6oo-rc-channels-processing.md)
+  - [NFR-2b7mx-manual-control-latency](../requirements/NFR-2b7mx-manual-control-latency.md)
+  - [NFR-duake-actuator-failsafe-neutral](../requirements/NFR-duake-actuator-failsafe-neutral.md)
+  - [NFR-zlvpr-vehicle-layer-memory-overhead](../requirements/NFR-zlvpr-vehicle-layer-memory-overhead.md)
 - Related ADRs:
   - [ADR-w9zpl-vehicle-mode-architecture](../adr/ADR-w9zpl-vehicle-mode-architecture.md)
   - [ADR-ea7fw-rc-input-processing](../adr/ADR-ea7fw-rc-input-processing.md)

@@ -43,7 +43,12 @@
       "Bash(cargo search:*)",
       "Bash(xargs cat:*)",
       "Bash(wget:*)",
-      "Bash(./scripts/check-platform-isolation.sh:*)"
+      "Bash(./scripts/check-platform-isolation.sh:*)",
+      "Bash(ls:*)",
+      "Bash(for i in {1..33})",
+      "Bash(do node scripts/tdl-new-id.ts)",
+      "Bash(done)",
+      "Bash(for:*)"
     ],
     "deny": [],
     "ask": []

@@ -8,13 +8,20 @@
 ## Links
 
 - Prerequisite Requirements:
-  - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
   - [FR-333ym-gps-waypoint-navigation](FR-333ym-gps-waypoint-navigation.md)
+  - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
   - [FR-q2sjt-vehicle-mode-framework](FR-q2sjt-vehicle-mode-framework.md)
   - [FR-uk0us-manual-mode](FR-uk0us-manual-mode.md)
   - [FR-uo1p5-actuator-abstraction](FR-uo1p5-actuator-abstraction.md)
+
 - Dependent Requirements:
+  - [FR-2e00g-mode-execution-framework](FR-2e00g-mode-execution-framework.md)
+  - [FR-cxts2-controlled-emergency-stop](FR-cxts2-controlled-emergency-stop.md)
+  - [FR-lusbw-rc-signal-loss-failsafe](FR-lusbw-rc-signal-loss-failsafe.md)
+  - [FR-meyja-manual-mode-implementation](FR-meyja-manual-mode-implementation.md)
   - [FR-sxsvw-failsafe-mechanisms](FR-sxsvw-failsafe-mechanisms.md)
+  - [FR-zwsr5-gcs-loss-failsafe](FR-zwsr5-gcs-loss-failsafe.md)
+
 - Related Tasks: N/A - Tasks will be created after ADRs
 
 ## Requirement Statement

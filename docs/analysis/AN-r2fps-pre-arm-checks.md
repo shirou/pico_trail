@@ -10,7 +10,9 @@
 - Related Analyses:
   - [AN-yqeju-manual-control-implementation](AN-yqeju-manual-control-implementation.md)
   - [AN-cp76d-ardupilot-analysis](AN-cp76d-ardupilot-analysis.md)
-- Related Requirements: N/A - Requirements will be created based on this analysis
+- Related Requirements:
+  - [FR-n1mte-prearm-capability-enforcement](../requirements/FR-n1mte-prearm-capability-enforcement.md)
+  - [FR-qj0d1-mode-capability-declaration](../requirements/FR-qj0d1-mode-capability-declaration.md)
 - Related ADRs: N/A - ADRs will be created based on this analysis
 - Related Tasks: N/A - Tasks will be created after requirements and ADRs
 

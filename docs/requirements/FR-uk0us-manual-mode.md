@@ -10,12 +10,14 @@
 - Prerequisite Requirements:
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
   - [FR-993xy-rc-channels-processing](FR-993xy-rc-channels-processing.md)
-  - [FR-uo1p5-actuator-abstraction](FR-uo1p5-actuator-abstraction.md)
   - [FR-q2sjt-vehicle-mode-framework](FR-q2sjt-vehicle-mode-framework.md)
+  - [FR-uo1p5-actuator-abstraction](FR-uo1p5-actuator-abstraction.md)
+
 - Dependent Requirements:
-  - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md) (Manual mode is one of the required modes)
+  - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md)
   - [NFR-jng15-actuator-failsafe](NFR-jng15-actuator-failsafe.md)
   - [NFR-kqvyf-manual-control-latency](NFR-kqvyf-manual-control-latency.md)
+
 - Related Tasks:
   - [T-3irm5-manual-control-implementation](../tasks/T-3irm5-manual-control-implementation/README.md)
 

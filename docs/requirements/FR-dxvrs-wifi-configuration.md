@@ -11,7 +11,7 @@
 - Dependent Requirements:
   - [FR-ydttj-udp-network-transport](FR-ydttj-udp-network-transport.md)
 - Related Tasks:
-  - [T-oq110-*](../tasks/T-oq110-*/README.md)
+  - [T-oq110-\*](../tasks/T-oq110-*/README.md)
 
 ## Requirement Statement
 

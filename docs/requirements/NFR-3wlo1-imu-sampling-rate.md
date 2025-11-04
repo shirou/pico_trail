@@ -12,7 +12,7 @@
 - Dependent Requirements:
   - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)
 - Related Tasks:
-  - [T-49k7n-*](../tasks/T-49k7n-*/README.md)
+  - [T-49k7n-\*](../tasks/T-49k7n-*/README.md)
 
 ## Requirement Statement
 

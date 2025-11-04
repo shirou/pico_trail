@@ -8,10 +8,16 @@
 ## Links
 
 - Prerequisite Requirements: N/A - Foundation layer
+
 - Dependent Requirements:
-  - [FR-uk0us-manual-mode](FR-uk0us-manual-mode.md)
+  - [FR-cxts2-controlled-emergency-stop](FR-cxts2-controlled-emergency-stop.md)
+  - [FR-uo1p5-actuator-abstraction](FR-uo1p5-actuator-abstraction.md)
   - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md)
+  - [FR-uk0us-manual-mode](FR-uk0us-manual-mode.md)
+  - [FR-meyja-manual-mode-implementation](FR-meyja-manual-mode-implementation.md)
   - [NFR-jng15-actuator-failsafe](NFR-jng15-actuator-failsafe.md)
+  - [NFR-duake-actuator-failsafe-neutral](NFR-duake-actuator-failsafe-neutral.md)
+
 - Related Tasks:
   - [T-3irm5-manual-control-implementation](../tasks/T-3irm5-manual-control-implementation/README.md)
 
