@@ -17,6 +17,7 @@
   - [ADR-oa2qa-platform-abstraction](../adr/ADR-oa2qa-platform-abstraction.md)
 - Related Tasks:
   - [T-49k7n-ahrs-dcm-implementation](../tasks/T-49k7n-ahrs-dcm-implementation/README.md)
+  - [T-qwvco-bmi088-imu-driver-implementation](../tasks/T-qwvco-bmi088-imu-driver-implementation/README.md)
 
 ## Context
 

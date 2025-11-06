@@ -13,6 +13,8 @@
 - Prerequisite Requirements:
   - [FR-jvydv-disarm-armed-state-check](FR-jvydv-disarm-armed-state-check.md)
 - Dependent Requirements: N/A – No dependent requirements
+- Related Tasks:
+  - [T-zmv9u-arming-system-implementation](../tasks/T-zmv9u-arming-system-implementation/README.md)
 
 ## Requirement Statement
 

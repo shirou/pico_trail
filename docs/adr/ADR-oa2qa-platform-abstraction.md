@@ -13,7 +13,8 @@
   - [NFR-nmmu0-platform-code-isolation](../requirements/NFR-nmmu0-platform-code-isolation.md)
   - [NFR-pj11s-no-unsafe-rust](../requirements/NFR-pj11s-no-unsafe-rust.md)
 - Supersedes ADRs: N/A
-- Related Tasks: Will be created after approval
+- Related Tasks:
+  - [T-qwvco-bmi088-imu-driver-implementation](../tasks/T-qwvco-bmi088-imu-driver-implementation/README.md)
 
 ## Context
 

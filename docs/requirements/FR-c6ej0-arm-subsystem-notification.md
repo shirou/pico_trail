@@ -18,7 +18,8 @@
   - [AN-dgpck-armed-state-monitoring](../analysis/AN-dgpck-armed-state-monitoring.md)
   - [AN-kajh6-failsafe-system](../analysis/AN-kajh6-failsafe-system.md)
 
-- Related Tasks: N/A - Tasks will be created after ADRs
+- Related Tasks:
+  - [T-zmv9u-arming-system-implementation](../tasks/T-zmv9u-arming-system-implementation/README.md)
 
 ## Requirement Statement
 

@@ -183,23 +183,29 @@ Address any errors from each command before proceeding to the next. All must pas
 
 #### Markdown Documentation
 
-When working on Markdown documentation (`.md` files), run the following commands:
+When working on Markdown documentation (`.md` files), run the following commands in order:
 
-1. `bun format` - Auto-format markdown files
+1. `bun scripts/trace-status.ts --check` - Verify traceability integrity
+   - Checks for missing or incorrect links between documents
+   - Validates dependency consistency (prerequisite/dependent requirements)
+   - Ensures task reciprocal links are correct
+   - Fix any issues reported before proceeding to formatting
+
+2. `bun format` - Auto-format markdown files
    - Automatically fixes formatting issues
    - Ensures consistent markdown style across all documentation
 
-2. `bun lint` - Check markdown linting
+3. `bun lint` - Check markdown linting
    - Identifies potential issues and violations
    - Common issues: trailing spaces, inconsistent indentation, missing blank lines
    - Fix any warnings or errors reported
 
-Both commands must pass successfully before considering the documentation work complete. After the document is finalized, compare it against the source template (for example, `docs/templates/analysis.md`) to confirm the Metadata, Links, and status selections remain consistent with the current standards.
+All commands must pass successfully before considering the documentation work complete. After the document is finalized, compare it against the source template (for example, `docs/templates/analysis.md`) to confirm the Metadata, Links, and status selections remain consistent with the current standards.
 
 ### Documentation Updates
 
 - Ensure documentation, comments, and messages remain in English.
-- For Markdown changes, run `bun format` followed by `bun lint` and resolve any reported issues before finalizing.
+- For Markdown changes, run `bun scripts/trace-status.ts --check` to verify traceability, then `bun format` followed by `bun lint` and resolve any reported issues before finalizing.
 - If `docs/traceability.md` is missing or you add or remove any files under `docs/`, run `bun scripts/trace-status.ts --write` to regenerate the traceability matrix before completing the work.
 - During implementation, mark the completed phase checkboxes in the relevant documents at the end of each phase so progress stays transparent and auditable.
 

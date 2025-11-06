@@ -24,8 +24,10 @@
   - [NFR-lmj1x-monitoring-ram-overhead](../requirements/NFR-lmj1x-monitoring-ram-overhead.md)
   - [NFR-yybnm-graceful-degradation-support](../requirements/NFR-yybnm-graceful-degradation-support.md)
   - [NFR-z9g39-high-frequency-monitor-detection-time](../requirements/NFR-z9g39-high-frequency-monitor-detection-time.md)
-- Related ADRs: N/A - ADRs will be created based on this analysis
-- Related Tasks: N/A - Tasks will be created after requirements and ADRs
+- Related ADRs:
+  - [ADR-w8d02-arming-system-architecture](../adr/ADR-w8d02-arming-system-architecture.md)
+- Related Tasks:
+  - [T-zmv9u-arming-system-implementation](../tasks/T-zmv9u-arming-system-implementation/README.md)
 
 ## Executive Summary
 

@@ -12,10 +12,10 @@
   - [AN-808o3-mavlink-network-transport](AN-808o3-mavlink-network-transport.md)
 - Related Requirements:
   - [FR-2e00g-mode-execution-framework](../requirements/FR-2e00g-mode-execution-framework.md)
-  - [FR-fap3d-actuator-abstraction-rover](../requirements/FR-fap3d-actuator-abstraction-rover.md)
+  - [FR-uo1p5-actuator-abstraction](../requirements/FR-uo1p5-actuator-abstraction.md)
   - [FR-meyja-manual-mode-implementation](../requirements/FR-meyja-manual-mode-implementation.md)
-  - [FR-wr6oo-rc-channels-processing](../requirements/FR-wr6oo-rc-channels-processing.md)
-  - [NFR-2b7mx-manual-control-latency](../requirements/NFR-2b7mx-manual-control-latency.md)
+  - [FR-993xy-rc-channels-processing](../requirements/FR-993xy-rc-channels-processing.md)
+  - [NFR-kqvyf-manual-control-latency](../requirements/NFR-kqvyf-manual-control-latency.md)
   - [NFR-duake-actuator-failsafe-neutral](../requirements/NFR-duake-actuator-failsafe-neutral.md)
   - [NFR-zlvpr-vehicle-layer-memory-overhead](../requirements/NFR-zlvpr-vehicle-layer-memory-overhead.md)
 - Related ADRs:

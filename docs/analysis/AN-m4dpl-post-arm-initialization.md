@@ -22,8 +22,10 @@
   - [NFR-9ko79-post-arm-performance](../requirements/NFR-9ko79-post-arm-performance.md)
   - [NFR-9s8i3-post-arm-safety](../requirements/NFR-9s8i3-post-arm-safety.md)
   - [NFR-aa1z4-arm-logging-non-blocking](../requirements/NFR-aa1z4-arm-logging-non-blocking.md)
-- Related ADRs: N/A - ADRs will be created based on this analysis
-- Related Tasks: N/A - Tasks will be created after requirements and ADRs
+- Related ADRs:
+  - [ADR-w8d02-arming-system-architecture](../adr/ADR-w8d02-arming-system-architecture.md)
+- Related Tasks:
+  - [T-zmv9u-arming-system-implementation](../tasks/T-zmv9u-arming-system-implementation/README.md)
 
 ## Executive Summary
 

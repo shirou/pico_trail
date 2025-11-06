@@ -12,7 +12,8 @@
 - Dependent Requirements:
   - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)
 - Related Tasks:
-  - [T-49k7n-\*](../tasks/T-49k7n-*/README.md)
+  - [T-49k7n-ahrs-dcm-implementation](../tasks/T-49k7n-ahrs-dcm-implementation/README.md)
+  - [T-qwvco-bmi088-imu-driver-implementation](../tasks/T-qwvco-bmi088-imu-driver-implementation/README.md)
 
 ## Requirement Statement
 

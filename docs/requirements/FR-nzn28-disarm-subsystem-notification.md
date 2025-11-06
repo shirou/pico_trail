@@ -9,7 +9,7 @@
 
 - Related Analyses:
   - [AN-081u0-post-disarm-cleanup](../analysis/AN-081u0-post-disarm-cleanup.md)
-  - [AN-3ntt5-post-disarm-cleanup](../analysis/AN-3ntt5-post-disarm-cleanup.md)
+  - [AN-081u0-post-disarm-cleanup](../analysis/AN-081u0-post-disarm-cleanup.md)
 - Prerequisite Requirements:
   - [FR-0xjwy-post-disarm-event-recording](FR-0xjwy-post-disarm-event-recording.md)
 - Dependent Requirements:

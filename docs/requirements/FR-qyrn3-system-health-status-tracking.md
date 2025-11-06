@@ -16,3 +16,6 @@
   - [FR-1k7yd-health-telemetry-reporting](FR-1k7yd-health-telemetry-reporting.md)
   - [NFR-7bgf3-health-status-change-logging](NFR-7bgf3-health-status-change-logging.md)
   - [NFR-lmj1x-monitoring-ram-overhead](NFR-lmj1x-monitoring-ram-overhead.md)
+
+- Related Tasks:
+  - [T-zmv9u-arming-system-implementation](../tasks/T-zmv9u-arming-system-implementation/README.md)

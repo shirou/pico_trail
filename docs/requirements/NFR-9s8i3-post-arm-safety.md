@@ -11,7 +11,8 @@
 - Dependent Requirements: N/A - No dependent requirements
 - Related Analysis:
   - [AN-m4dpl-post-arm-initialization](../analysis/AN-m4dpl-post-arm-initialization.md)
-- Related Tasks: N/A - Tasks will be created after requirements approval
+- Related Tasks:
+  - [T-zmv9u-arming-system-implementation](../tasks/T-zmv9u-arming-system-implementation/README.md)
 
 ## Requirement Statement
 

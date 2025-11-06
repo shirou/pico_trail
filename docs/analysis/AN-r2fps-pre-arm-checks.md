@@ -13,8 +13,11 @@
 - Related Requirements:
   - [FR-n1mte-prearm-capability-enforcement](../requirements/FR-n1mte-prearm-capability-enforcement.md)
   - [FR-qj0d1-mode-capability-declaration](../requirements/FR-qj0d1-mode-capability-declaration.md)
-- Related ADRs: N/A - ADRs will be created based on this analysis
-- Related Tasks: N/A - Tasks will be created after requirements and ADRs
+  - [FR-exazo-force-arm-override](../requirements/FR-exazo-force-arm-override.md)
+- Related ADRs:
+  - [ADR-w8d02-arming-system-architecture](../adr/ADR-w8d02-arming-system-architecture.md)
+- Related Tasks:
+  - [T-zmv9u-arming-system-implementation](../tasks/T-zmv9u-arming-system-implementation/README.md)
 
 ## Executive Summary
 
@@ -538,6 +541,32 @@ Examples:
    - Require vehicle location (GPS lock or other position source) before arming
    - Vehicle-specific defaults (Copter requires, Rover may not)
 
+**Force Arm via MAVLink**:
+
+ArduPilot provides an alternative mechanism to bypass pre-arm checks without disabling ARMING_CHECK parameter:
+
+- **MAV_CMD_COMPONENT_ARM_DISARM** with param2 = 21196 (magic number)
+  - param1 = 1.0 (arm request) + param2 = 21196.0 → Force arm (bypass all pre-arm checks)
+  - param1 = 0.0 (disarm request) + param2 = 21196.0 → Force disarm (bypass all pre-disarm checks)
+  - Purpose: Temporary bypass for testing/emergency without permanently disabling ARMING_CHECK
+  - Use case: Bench testing, SITL environment, emergency recovery
+  - Safety: Logged as warning with audit trail, operator explicitly acknowledges risk
+
+Advantages of force-arm over ARMING_CHECK=0:
+
+- One-time bypass (doesn't persist across reboots)
+- Explicit operator action required each time
+- Clear audit trail (force arm logged separately)
+- Doesn't mask check configuration issues (checks remain enabled for normal arming)
+
+Usage example (MAVProxy):
+
+```
+arm throttle force
+```
+
+This is safer than setting ARMING_CHECK=0 because it requires explicit confirmation for each arming attempt and doesn't hide underlying check configuration problems.
+
 ### Data Analysis
 
 **Check Execution Performance**:
@@ -610,6 +639,17 @@ Examples:
     - Checks executed in priority order (critical first)
     - New checks added via register() method (no core code changes)
     - Checks can be unit tested in isolation
+
+- [ ] **FR-DRAFT-7**: The system shall support force-arm override via MAVLink command parameter to bypass pre-arm checks → Will become FR-<id>
+  - Rationale: Enable temporary bypass of pre-arm checks for bench testing, SITL, or emergency recovery without permanently disabling ARMING_CHECK
+  - Acceptance Criteria:
+    - MAV_CMD_COMPONENT_ARM_DISARM with param1=1.0 and param2=21196.0 bypasses all pre-arm checks
+    - Force arm attempt logged with WARNING severity and audit trail
+    - STATUSTEXT message sent to GCS: "Armed (FORCED)"
+    - Normal arming (param2=0.0) still executes pre-arm checks
+    - Force arm succeeds even when pre-arm checks would fail
+    - Force arm only bypasses checks, still validates already-armed state
+    - ARMING_CHECK parameter remains unchanged (not disabled by force-arm)
 
 ### Non-Functional Requirements (Potential)
 
@@ -772,10 +812,11 @@ Examples:
 2. **Implement Phase 1 checks only**: RC input, system state, actuator readiness (minimal viable safety)
 3. **Default ARMING_CHECK to 1**: All checks enabled (conservative, safe default)
 4. **Follow ArduPilot patterns**: Check categories, failure message format, bitmask parameter
+5. **Implement force-arm support**: MAVLink param2=21196 for temporary check bypass (testing/emergency)
 
 ### Next Steps
 
-1. [ ] Create formal requirements: FR-<id> (check framework), FR-<id> (RC check), FR-<id> (system check), FR-<id> (actuator check), FR-<id> (ARMING_CHECK param), NFR-<id> (latency), NFR-<id> (reporting), NFR-<id> (memory), NFR-<id> (logging)
+1. [ ] Create formal requirements: FR-<id> (check framework), FR-<id> (RC check), FR-<id> (system check), FR-<id> (actuator check), FR-<id> (ARMING_CHECK param), FR-<id> (force-arm override), NFR-<id> (latency), NFR-<id> (reporting), NFR-<id> (memory), NFR-<id> (logging)
 2. [ ] Draft ADR for: Pre-arm check framework architecture (trait design, registry pattern, execution flow)
 3. [ ] Draft ADR for: Pre-arm check categories (which checks, priority order, failure messages)
 4. [ ] Create task for: Implementation (check framework + initial 3 checks)
@@ -871,20 +912,38 @@ fn setup_prearm_checks() -> PreArmChecker {
     checker
 }
 
-// Modified arming flow
+// Modified arming flow with force-arm support
 fn handle_arm_command(cmd: &COMMAND_LONG_DATA) -> MavResult {
     if cmd.param1 == 1.0 {
         // Arm request
-        match system_state.arm(&prearm_checker) {
-            Ok(()) => {
-                // Arming successful
-                send_statustext("Armed", MAV_SEVERITY_INFO);
-                MavResult::MAV_RESULT_ACCEPTED
+        let force_arm = cmd.param2 == 21196.0;  // ArduPilot magic number for force arm
+
+        if force_arm {
+            // Force arm bypasses all pre-arm checks (emergency/testing only)
+            log::warn!("FORCE ARM requested - bypassing all pre-arm checks");
+            match system_state.arm_forced() {
+                Ok(()) => {
+                    send_statustext("Armed (FORCED)", MAV_SEVERITY_WARNING);
+                    MavResult::MAV_RESULT_ACCEPTED
+                }
+                Err(reason) => {
+                    send_statustext(&format!("Force arm failed: {}", reason), MAV_SEVERITY_CRITICAL);
+                    MavResult::MAV_RESULT_FAILED
+                }
             }
-            Err(reason) => {
-                // Pre-arm check failed
-                send_statustext(&format!("PreArm: {}", reason), MAV_SEVERITY_CRITICAL);
-                MavResult::MAV_RESULT_FAILED
+        } else {
+            // Normal arm with pre-arm checks
+            match system_state.arm(&prearm_checker) {
+                Ok(()) => {
+                    // Arming successful
+                    send_statustext("Armed", MAV_SEVERITY_INFO);
+                    MavResult::MAV_RESULT_ACCEPTED
+                }
+                Err(reason) => {
+                    // Pre-arm check failed
+                    send_statustext(&format!("PreArm: {}", reason), MAV_SEVERITY_CRITICAL);
+                    MavResult::MAV_RESULT_FAILED
+                }
             }
         }
     }

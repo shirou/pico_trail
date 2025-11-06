@@ -9,10 +9,12 @@
 
 - Related Analyses:
   - [AN-081u0-post-disarm-cleanup](../analysis/AN-081u0-post-disarm-cleanup.md)
-  - [AN-3ntt5-post-disarm-cleanup](../analysis/AN-3ntt5-post-disarm-cleanup.md)
+  - [AN-081u0-post-disarm-cleanup](../analysis/AN-081u0-post-disarm-cleanup.md)
 - Prerequisite Requirements:
   - [FR-nzn28-disarm-subsystem-notification](FR-nzn28-disarm-subsystem-notification.md)
 - Dependent Requirements: N/A – No dependent requirements
+- Related Tasks:
+  - [T-zmv9u-arming-system-implementation](../tasks/T-zmv9u-arming-system-implementation/README.md)
 
 ## Requirement Statement
 

@@ -10,7 +10,8 @@
 - Prerequisite Requirements:
   - [FR-knp1u-rc-input-health-monitoring](FR-knp1u-rc-input-health-monitoring.md)
 - Dependent Requirements: N/A
-- Related Tasks: N/A - Tasks will be created after ADRs
+- Related Tasks:
+  - [T-zmv9u-arming-system-implementation](../tasks/T-zmv9u-arming-system-implementation/README.md)
 
 ## Requirement Statement
 

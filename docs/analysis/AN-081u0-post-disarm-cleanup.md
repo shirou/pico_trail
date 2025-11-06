@@ -22,8 +22,10 @@
   - [FR-5xrji-actuator-safety-verification](../requirements/FR-5xrji-actuator-safety-verification.md)
   - [FR-jiotb-configuration-persistence](../requirements/FR-jiotb-configuration-persistence.md)
   - [NFR-a697g-actuator-verification-mandatory](../requirements/NFR-a697g-actuator-verification-mandatory.md)
-- Related ADRs: N/A - ADRs will be created based on this analysis
-- Related Tasks: N/A - Tasks will be created after requirements and ADRs
+- Related ADRs:
+  - [ADR-w8d02-arming-system-architecture](../adr/ADR-w8d02-arming-system-architecture.md)
+- Related Tasks:
+  - [T-zmv9u-arming-system-implementation](../tasks/T-zmv9u-arming-system-implementation/README.md)
 
 ## Executive Summary
 

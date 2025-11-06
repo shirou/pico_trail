@@ -14,9 +14,10 @@
 - Related Requirements:
   - [FR-qj0d1-mode-capability-declaration](FR-qj0d1-mode-capability-declaration.md)
 - Related ADRs: TBD
-- Related Tasks: TBD
+- Related Tasks:
+  - [T-zmv9u-arming-system-implementation](../tasks/T-zmv9u-arming-system-implementation/README.md)
 - Dependent Requirements:
-  N/A – No dependent requirements
+  - [FR-exazo-force-arm-override](FR-exazo-force-arm-override.md)
 
 ## Requirement Statement
 
