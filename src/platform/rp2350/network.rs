@@ -52,6 +52,7 @@ use embassy_executor::Spawner;
 use embassy_net::{
     Config as NetConfig, Ipv4Address, Ipv4Cidr, Stack, StackResources, StaticConfigV4,
 };
+use embassy_rp::clocks::RoscRng;
 use embassy_time::{Duration, Timer};
 
 #[cfg(feature = "pico2_w")]
@@ -73,9 +74,6 @@ const MAX_WIFI_RETRIES: u8 = 5;
 
 /// Initial retry delay (1 second)
 const INITIAL_RETRY_DELAY_MS: u64 = 1000;
-
-/// WiFi connection timeout (30 seconds)
-const WIFI_CONNECT_TIMEOUT_MS: u64 = 30_000;
 
 /// WiFi configuration loaded from parameters
 #[derive(Debug, Clone)]
@@ -181,6 +179,7 @@ pub async fn initialize_wifi(
         defmt::info!("WiFi not configured (empty SSID), skipping WiFi initialization");
         return Err(WifiError::NotConfigured);
     }
+    let mut rng = RoscRng;
 
     defmt::info!("Initializing WiFi with SSID: {}", config.ssid.as_str());
 
@@ -211,7 +210,31 @@ pub async fn initialize_wifi(
     // 5. Spawn WiFi driver task
     spawner.spawn(wifi_task(runner).unwrap());
 
-    // 6. Configure network stack
+    // Give WiFi driver task time to start
+    Timer::after_millis(100).await;
+
+    // 6. Initialize CLM (Country Locale Matrix) BEFORE network stack
+    // This is critical - CLM must be loaded before network operations
+    control.init(clm).await;
+
+    // 7. Configure power management (embassy official recommendation)
+    control
+        .set_power_management(cyw43::PowerManagementMode::PowerSave)
+        .await;
+
+    // Log MAC address for debugging
+    let mac = control.address().await;
+    defmt::debug!(
+        "WiFi MAC address: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+        mac[0],
+        mac[1],
+        mac[2],
+        mac[3],
+        mac[4],
+        mac[5]
+    );
+
+    // 8. Configure network stack
     let net_config = if config.use_dhcp {
         defmt::info!("Configuring DHCP");
         NetConfig::dhcpv4(Default::default())
@@ -243,25 +266,29 @@ pub async fn initialize_wifi(
         })
     };
 
-    // Generate random seed for network stack
-    let seed = 0x0123_4567_89ab_cdef; // TODO: Use proper RNG
+    // Generate random seed
+    let seed = rng.next_u64();
 
-    // 7. Create network stack
-    static STACK: StaticCell<Stack<'static>> = StaticCell::new();
-    static RESOURCES: StaticCell<StackResources<8>> = StaticCell::new();
+    // 7. Create network stack using StaticCell (following embassy official examples)
+    static STACK_RESOURCES: StaticCell<StackResources<8>> = StaticCell::new();
     let (stack, runner) = embassy_net::new(
         net_device,
         net_config,
-        RESOURCES.init(StackResources::<8>::new()),
+        STACK_RESOURCES.init(StackResources::new()),
         seed,
     );
+
+    // Store stack reference in static for global access
+    static STACK: StaticCell<Stack<'static>> = StaticCell::new();
     let stack = STACK.init(stack);
 
-    // 8. Spawn network stack task
+    // 9. Spawn network stack task
     spawner.spawn(net_task(runner).unwrap());
 
-    // 9. Initialize CLM (Country Locale Matrix)
-    control.init(clm).await;
+    // Give the network stack task time to fully start
+    // This ensures the stack is ready to handle DHCP requests
+    defmt::debug!("Waiting for network stack to initialize...");
+    Timer::after_millis(500).await;
 
     // 10. Join WPA2 network with retry logic
     let mut retries = 0;
@@ -297,25 +324,29 @@ pub async fn initialize_wifi(
 
     // 11. Wait for network configuration (DHCP or static)
     if config.use_dhcp {
-        defmt::info!("Waiting for DHCP...");
-        let timeout = Duration::from_secs(30);
-        let start = embassy_time::Instant::now();
+        // Give extra time for router DHCP server to be ready
+        // On cold boot, routers may need time to initialize DHCP service
+        // and learn the new MAC address
+        defmt::debug!("Waiting for router DHCP server to be ready (5 seconds)...");
+        Timer::after_millis(5000).await;
 
-        loop {
-            if stack.is_config_up() {
-                break;
-            }
+        // Wait for link and DHCP using embassy's official wait methods
+        defmt::info!("Waiting for link up...");
+        stack.wait_link_up().await;
+        defmt::info!("Link is up");
 
-            if embassy_time::Instant::now().duration_since(start) > timeout {
-                defmt::error!("DHCP timeout");
-                return Err(WifiError::ConnectionFailed);
-            }
-
-            Timer::after_millis(100).await;
-        }
+        defmt::info!("Waiting for DHCP configuration...");
+        stack.wait_config_up().await;
 
         if let Some(config) = stack.config_v4() {
-            defmt::info!("DHCP IP configured");
+            let ip = config.address.address().octets();
+            defmt::info!(
+                "DHCP IP configured: {}.{}.{}.{}",
+                ip[0],
+                ip[1],
+                ip[2],
+                ip[3]
+            );
         }
     } else {
         defmt::info!("Static IP configured");

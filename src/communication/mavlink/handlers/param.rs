@@ -34,6 +34,7 @@ use mavlink::common::{
 
 /// Parameter handler error
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum ParamHandlerError {
     /// Parameter not found
     NotFound,
@@ -72,6 +73,18 @@ impl ParamHandler {
 
         // Register WiFi parameters with defaults (only if not already loaded)
         let _ = crate::parameters::WifiParams::register_defaults(&mut store);
+
+        // Register arming parameters with defaults
+        let _ = crate::parameters::ArmingParams::register_defaults(&mut store);
+
+        // Register battery parameters with defaults
+        let _ = crate::parameters::BatteryParams::register_defaults(&mut store);
+
+        // Register failsafe parameters with defaults
+        let _ = crate::parameters::FailsafeParams::register_defaults(&mut store);
+
+        // Register fence parameters with defaults
+        let _ = crate::parameters::FenceParams::register_defaults(&mut store);
 
         // Register default MAVLink stream rate parameters
         // SR_* parameters control telemetry stream rates (Hz)
@@ -382,10 +395,18 @@ mod tests {
         let mut flash = MockFlash::new();
         let handler = ParamHandler::new(&mut flash);
 
-        // Should have WiFi parameters (6) + SR parameters (4) + SYSID_THISMAV (1) = 11 total
-        // NET_PASS is hidden, so count() excludes it: 10 visible parameters
-        // Note: NET_SSID and NET_PASS are String type, cannot be sent via MAVLink PARAM_VALUE
-        assert_eq!(handler.count(), 10);
+        // Parameter count breakdown:
+        // - WiFi: 6 (NET_SSID, NET_PASS are String type, excluded from MAVLink count)
+        // - SR_*: 4 stream rate parameters
+        // - SYSID_THISMAV: 1
+        // - Arming: 5 (ARMING_CHECK, ARMING_OPTIONS, ARMING_REQUIRE, ARMING_ACCTHRESH, ARMING_RUDDER)
+        // - Battery: 3 (BATT_ARM_VOLT, BATT_CRT_VOLT, BATT_FS_CRT_ACT)
+        // - Failsafe: 3 (FS_ACTION, FS_TIMEOUT, FS_GCS_ENABLE)
+        // - Fence: 2 (FENCE_AUTOENABLE, FENCE_ACTION)
+        // Total: 6 + 4 + 1 + 5 + 3 + 3 + 2 = 24 parameters
+        // String type parameters (NET_SSID, NET_PASS) excluded from MAVLink = 23 sendable
+        // Hidden parameter (NET_PASS) further excluded from count() = 23 visible
+        assert_eq!(handler.count(), 23);
     }
 
     #[test]
@@ -402,8 +423,10 @@ mod tests {
 
         // Should return all non-String parameters except NET_PASS (hidden)
         // NET_SSID (String) and NET_PASS (String, hidden) cannot be sent via MAVLink
-        // So we get: 4 WiFi params (DHCP, IP, NETMASK, GATEWAY) + 4 SR params + 1 SYSID = 9
-        assert_eq!(messages.len(), 9);
+        // Count: 4 WiFi (DHCP, IP, NETMASK, GATEWAY) + 4 SR + 1 SYSID
+        //        + 5 Arming + 3 Battery + 3 Failsafe + 2 Fence = 22
+        // Note: NET_PASS is hidden, so even if it weren't String, it wouldn't appear
+        assert_eq!(messages.len(), 22);
 
         // Verify NET_PASS is not in the list
         for msg in &messages {

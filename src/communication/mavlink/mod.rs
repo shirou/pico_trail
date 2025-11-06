@@ -26,16 +26,15 @@
 //!
 //! Supports multiple transport types via trait abstraction:
 //! - UART: Primary transport for GCS communication (115200 baud)
-//! - UDP: Network transport over WiFi (Phase 2+)
+//! - UDP: Network transport over WiFi
 //! - TCP: Reliable network transport (future)
 
-// Module structure populated during Phase 1-2
-pub mod handlers; // Message handlers (Phase 2+)
-pub mod parser; // Message parsing (Phase 1)
-pub mod performance; // Performance metrics tracking (Phase 3)
-pub mod router; // Protocol message routing (Phase 1)
-pub mod state; // System state (Phase 1)
-pub mod task; // MAVLink task (Phase 1)
-pub mod transport; // Transport abstraction layer (Phase 1+)
-pub mod transport_router; // Multi-transport routing (Phase 1+)
-pub mod writer; // Message writing (Phase 1)
+pub mod dispatcher; // Message dispatcher (routing to handlers)
+pub mod handlers; // Message handlers
+pub mod parser; // Message parsing
+pub mod router; // Protocol message routing
+pub mod state; // System state
+pub mod task; // MAVLink task
+pub mod transport; // Transport abstraction layer
+pub mod transport_router; // Multi-transport routing
+pub mod writer; // Message writing

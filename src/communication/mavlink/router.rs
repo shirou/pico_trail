@@ -94,6 +94,8 @@ pub struct MavlinkRouter<F: FlashInterface> {
     command_handler: CommandHandler,
     /// Mission handler
     mission_handler: MissionHandler,
+    /// Pending outgoing messages (responses to commands, one-time messages)
+    pending_messages: heapless::Vec<MavMessage, 8>,
     /// Flash interface marker (not used directly, but needed for generic type)
     _flash: core::marker::PhantomData<F>,
 }
@@ -116,6 +118,7 @@ impl<F: FlashInterface> MavlinkRouter<F> {
             telemetry: TelemetryStreamer::new(system_id, component_id),
             command_handler: CommandHandler::new(system_state),
             mission_handler: MissionHandler::new(system_id, component_id),
+            pending_messages: heapless::Vec::new(),
             _flash: core::marker::PhantomData,
         }
     }
@@ -191,6 +194,14 @@ impl<F: FlashInterface> MavlinkRouter<F> {
         }
 
         self.telemetry.update(&self.system_state, current_time_us)
+    }
+
+    /// Get pending outgoing messages
+    ///
+    /// Returns and clears the queue of pending messages (COMMAND_ACK, PROTOCOL_VERSION, etc.)
+    /// that should be sent to GCS.
+    pub fn take_pending_messages(&mut self) -> heapless::Vec<MavMessage, 8> {
+        core::mem::replace(&mut self.pending_messages, heapless::Vec::new())
     }
 
     /// Handle incoming MAVLink message
@@ -324,13 +335,32 @@ impl<F: FlashInterface> MavlinkRouter<F> {
         *self.command_handler.state_mut() = self.system_state;
 
         // Process command
-        let _ack = self.command_handler.handle_command_long(data);
+        let (ack, additional_messages) = self.command_handler.handle_command_long(data);
 
         // Sync router state with command handler state (capture arm/mode changes)
         self.system_state = *self.command_handler.state();
 
-        // In Phase 4, we just call the handler
-        // In future phases, COMMAND_ACK will be queued to the writer
+        // Queue COMMAND_ACK message
+        let ack_msg = MavMessage::COMMAND_ACK(ack);
+        let _ = self.pending_messages.push(ack_msg);
+
+        // Queue any additional messages (HEARTBEAT, STATUSTEXT, etc.)
+        for msg in additional_messages {
+            let _ = self.pending_messages.push(msg);
+            #[cfg(feature = "defmt")]
+            defmt::debug!("Additional message queued after command");
+        }
+
+        // Special handling for MAV_CMD_REQUEST_PROTOCOL_VERSION
+        // Queue PROTOCOL_VERSION message to be sent to GCS
+        use mavlink::common::MavCmd;
+        if data.command == MavCmd::MAV_CMD_REQUEST_PROTOCOL_VERSION {
+            use crate::communication::mavlink::handlers::telemetry::TelemetryStreamer;
+            let protocol_version_msg = TelemetryStreamer::build_protocol_version();
+            let _ = self.pending_messages.push(protocol_version_msg);
+            #[cfg(feature = "defmt")]
+            defmt::debug!("PROTOCOL_VERSION message queued for sending");
+        }
     }
 
     /// Handle MISSION_REQUEST_LIST message
@@ -417,9 +447,9 @@ mod tests {
         let router = MavlinkRouter::new(&mut flash, 1, 1);
         assert!(!router.connection().connected);
         assert_eq!(router.stats().messages_processed, 0);
-        // WiFi params (5 visible: SSID/PASS are String, DHCP/IP/NETMASK/GATEWAY/... = 4)
-        // + SR params (4) + SYSID (1) + WiFi SSID visible = 10
-        assert_eq!(router.param_handler().count(), 10);
+        // Parameter count: WiFi (4 non-String) + SR (4) + SYSID (1)
+        // + Arming (5) + Battery (3) + Failsafe (3) + Fence (2) = 23
+        assert_eq!(router.param_handler().count(), 23);
     }
 
     #[test]
@@ -665,6 +695,66 @@ mod tests {
             router.system_state().mode,
             crate::communication::mavlink::state::FlightMode::Auto
         );
+    }
+
+    #[test]
+    fn test_protocol_version_request_integration() {
+        let mut flash = MockFlash::new();
+        let mut router = MavlinkRouter::new(&mut flash, 1, 1);
+
+        // Send REQUEST_PROTOCOL_VERSION command
+        let command = MavMessage::COMMAND_LONG(mavlink::common::COMMAND_LONG_DATA {
+            target_system: 1,
+            target_component: 1,
+            command: mavlink::common::MavCmd::MAV_CMD_REQUEST_PROTOCOL_VERSION,
+            confirmation: 0,
+            param1: 0.0,
+            param2: 0.0,
+            param3: 0.0,
+            param4: 0.0,
+            param5: 0.0,
+            param6: 0.0,
+            param7: 0.0,
+        });
+
+        let header = mavlink::MavHeader {
+            system_id: 255,
+            component_id: 1,
+            sequence: 0,
+        };
+
+        let result = router.handle_message(&header, &command, 0);
+        assert!(result.is_ok());
+
+        // Check that COMMAND_ACK and PROTOCOL_VERSION messages were queued
+        let pending = router.take_pending_messages();
+        assert_eq!(pending.len(), 2);
+
+        // First message should be COMMAND_ACK
+        match &pending[0] {
+            MavMessage::COMMAND_ACK(data) => {
+                assert_eq!(
+                    data.command,
+                    mavlink::common::MavCmd::MAV_CMD_REQUEST_PROTOCOL_VERSION
+                );
+                assert_eq!(data.result, mavlink::common::MavResult::MAV_RESULT_ACCEPTED);
+            }
+            _ => panic!("Expected COMMAND_ACK message"),
+        }
+
+        // Second message should be PROTOCOL_VERSION
+        match &pending[1] {
+            MavMessage::PROTOCOL_VERSION(data) => {
+                assert_eq!(data.version, 200);
+                assert_eq!(data.min_version, 200);
+                assert_eq!(data.max_version, 200);
+            }
+            _ => panic!("Expected PROTOCOL_VERSION message"),
+        }
+
+        // After taking pending messages, queue should be empty
+        let pending_again = router.take_pending_messages();
+        assert_eq!(pending_again.len(), 0);
     }
 
     #[test]

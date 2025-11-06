@@ -19,6 +19,15 @@
 //! Use appropriate synchronization primitives (Mutex, critical sections)
 //! when accessing state from multiple tasks.
 
+#[cfg(feature = "defmt")]
+use defmt::warn;
+
+// Stub macro when defmt is not available
+#[cfg(not(feature = "defmt"))]
+macro_rules! warn {
+    ($($arg:tt)*) => {{}};
+}
+
 /// Vehicle arming state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArmedState {
@@ -130,6 +139,9 @@ pub struct SystemState {
     pub uptime_us: u64,
     /// CPU load (percentage, 0.0-100.0)
     pub cpu_load: f32,
+    /// Enabled pre-arm check categories bitmask (ARMING_CHECK parameter)
+    /// Default: 0xFFFF (all checks enabled)
+    pub arming_checks: u16,
 }
 
 impl Default for SystemState {
@@ -140,6 +152,7 @@ impl Default for SystemState {
             battery: BatteryState::placeholder(),
             uptime_us: 0,
             cpu_load: 0.0,
+            arming_checks: 0xFFFF, // All checks enabled by default
         }
     }
 }
@@ -150,6 +163,40 @@ impl SystemState {
         Self::default()
     }
 
+    /// Create a new system state with configuration loaded from parameter store
+    ///
+    /// Initializes SystemState with all configurable parameters from the parameter store.
+    /// Runtime state fields (armed, uptime_us, cpu_load) are set to default values.
+    ///
+    /// Currently loaded parameters:
+    /// - ARMING_CHECK - Pre-arm check bitmask (stored in arming_checks field)
+    ///
+    /// Future parameters (not yet implemented):
+    /// - INITIAL_MODE - Initial flight mode
+    /// - BATT_* - Battery configuration
+    /// - Other system configuration parameters
+    ///
+    /// # Arguments
+    ///
+    /// * `param_store` - Parameter store to read configuration from
+    ///
+    /// # Returns
+    ///
+    /// SystemState with configurable fields loaded from parameter store
+    pub fn from_param_store(param_store: &crate::parameters::storage::ParameterStore) -> Self {
+        use crate::parameters::arming::ArmingParams;
+        let arming_params = ArmingParams::from_store(param_store);
+
+        Self {
+            armed: ArmedState::Disarmed,
+            mode: FlightMode::Manual,
+            battery: BatteryState::placeholder(),
+            uptime_us: 0,
+            cpu_load: 0.0,
+            arming_checks: arming_params.check_bitmask as u16,
+        }
+    }
+
     /// Check if vehicle is armed
     pub fn is_armed(&self) -> bool {
         self.armed == ArmedState::Armed
@@ -157,29 +204,164 @@ impl SystemState {
 
     /// Arm the vehicle
     ///
+    /// Executes pre-arm checks and post-arm initialization sequence.
+    ///
     /// Returns Ok if arming is successful, or Err with reason if denied.
-    pub fn arm(&mut self) -> Result<(), &'static str> {
-        if self.is_armed() {
-            return Err("Already armed");
-        }
+    ///
+    /// # Pre-arm Checks
+    ///
+    /// Validates system health before allowing arming. Checks are controlled
+    /// by the `arming_checks` bitmask (ARMING_CHECK parameter).
+    ///
+    /// # Post-arm Initialization
+    ///
+    /// After successful arming:
+    /// - Records arm timestamp
+    /// - Logs arm event
+    /// - Initializes actuators (placeholder)
+    /// - Notifies subsystems (placeholder)
+    /// - Enables geofence if configured (placeholder)
+    pub fn arm(&mut self) -> Result<(), crate::core::arming::ArmingError> {
+        use crate::core::arming::{create_default_checker, ArmMethod, PostArmInitializer};
 
-        if self.battery.is_critical() {
-            return Err("Battery voltage too low");
-        }
+        // Run pre-arm checks
+        let checker = create_default_checker(self.arming_checks);
+        checker.run_checks(self)?;
 
+        // Set armed state
         self.armed = ArmedState::Armed;
+
+        // Execute post-arm initialization
+        let mut initializer = PostArmInitializer::new(self.arming_checks);
+        initializer.execute(self, ArmMethod::GcsCommand)?;
+
+        Ok(())
+    }
+
+    /// Force-arm the vehicle (bypasses pre-arm checks)
+    ///
+    /// **WARNING**: This bypasses all safety checks and should only be used
+    /// in emergency situations or for bench testing. This action is logged
+    /// with WARNING severity for audit trail.
+    ///
+    /// # Arguments
+    ///
+    /// None - force-arm always bypasses all checks regardless of ARMING_CHECK parameter
+    ///
+    /// # Returns
+    ///
+    /// Ok if arming is successful, or Err if already armed or initialization fails.
+    ///
+    /// # Audit Trail
+    ///
+    /// All force-arm operations are logged with:
+    /// - WARNING severity
+    /// - "FORCE ARM" audit marker
+    /// - Timestamp and uptime
+    pub fn arm_forced(&mut self) -> Result<(), crate::core::arming::ArmingError> {
+        use crate::core::arming::{ArmMethod, ArmingError, PostArmInitializer};
+
+        // Only check if already armed
+        if self.is_armed() {
+            return Err(ArmingError::AlreadyArmed);
+        }
+
+        // Log force-arm with WARNING for audit trail
+        warn!("FORCE ARM: Bypassing all pre-arm checks (param2=21196)");
+
+        // Set armed state
+        self.armed = ArmedState::Armed;
+
+        // Execute post-arm initialization
+        let mut initializer = PostArmInitializer::new(self.arming_checks);
+        initializer.execute(self, ArmMethod::GcsCommand)?;
+
         Ok(())
     }
 
     /// Disarm the vehicle
     ///
+    /// Executes pre-disarm validation and post-disarm cleanup sequence.
+    ///
     /// Returns Ok if disarming is successful, or Err with reason if denied.
-    pub fn disarm(&mut self) -> Result<(), &'static str> {
+    ///
+    /// # Pre-disarm Validation
+    ///
+    /// Validates safety conditions before allowing disarm:
+    /// - Throttle low (< 10%)
+    /// - Velocity safe (< 0.5 m/s for RC stick disarm)
+    ///
+    /// # Post-disarm Cleanup
+    ///
+    /// After successful disarm:
+    /// - Logs disarm event
+    /// - Verifies actuators neutral (placeholder)
+    /// - Notifies subsystems (placeholder)
+    /// - Disables geofence if auto-enabled (placeholder)
+    /// - Persists configuration changes (placeholder)
+    pub fn disarm(&mut self) -> Result<(), crate::core::arming::DisarmError> {
+        use crate::core::arming::{DisarmMethod, DisarmReason, DisarmValidator, PostDisarmCleanup};
+
+        // Run pre-disarm validation
+        let validator = DisarmValidator::new();
+        validator.validate(self, DisarmMethod::GcsCommand, false)?;
+
+        // Set disarmed state
+        self.armed = ArmedState::Disarmed;
+
+        // Execute post-disarm cleanup
+        let mut cleanup = PostDisarmCleanup::new(false); // TODO: Track FENCE_AUTOENABLE
+        cleanup
+            .execute(self, DisarmMethod::GcsCommand, DisarmReason::UserRequest)
+            .map_err(|_| crate::core::arming::DisarmError::ValidationFailed {
+                reason: "Cleanup failed",
+            })?;
+
+        Ok(())
+    }
+
+    /// Force-disarm the vehicle (bypasses pre-disarm validation)
+    ///
+    /// **WARNING**: This bypasses all safety checks and should only be used
+    /// in emergency situations. This action is logged with WARNING severity
+    /// for audit trail.
+    ///
+    /// # Arguments
+    ///
+    /// None - force-disarm always bypasses all checks
+    ///
+    /// # Returns
+    ///
+    /// Ok if disarming is successful, or Err if not armed or cleanup fails.
+    ///
+    /// # Audit Trail
+    ///
+    /// All force-disarm operations are logged with:
+    /// - WARNING severity
+    /// - "FORCE DISARM" audit marker
+    /// - Timestamp and uptime
+    pub fn disarm_forced(&mut self) -> Result<(), crate::core::arming::DisarmError> {
+        use crate::core::arming::{DisarmMethod, DisarmReason, PostDisarmCleanup};
+
+        // Only check if armed
         if !self.is_armed() {
-            return Err("Already disarmed");
+            return Err(crate::core::arming::DisarmError::NotArmed);
         }
 
+        // Log force-disarm with WARNING for audit trail
+        warn!("FORCE DISARM: Bypassing all pre-disarm validation (param2=21196)");
+
+        // Set disarmed state
         self.armed = ArmedState::Disarmed;
+
+        // Execute post-disarm cleanup (still need to clean up even with forced disarm)
+        let mut cleanup = PostDisarmCleanup::new(false); // TODO: Track FENCE_AUTOENABLE
+        cleanup
+            .execute(self, DisarmMethod::GcsCommand, DisarmReason::UserRequest)
+            .map_err(|_| crate::core::arming::DisarmError::ValidationFailed {
+                reason: "Cleanup failed",
+            })?;
+
         Ok(())
     }
 
@@ -266,8 +448,71 @@ mod tests {
 
         let result = state.arm();
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Battery voltage too low");
+
+        // Check that it's a battery check failure
+        if let Err(crate::core::arming::ArmingError::CheckFailed { category, .. }) = result {
+            assert_eq!(category, crate::core::arming::CheckCategory::Battery);
+        } else {
+            panic!("Expected CheckFailed error with Battery category");
+        }
+
         assert!(!state.is_armed());
+    }
+
+    #[test]
+    fn test_arm_forced_bypasses_checks() {
+        let mut state = SystemState::new();
+        state.battery.voltage = 9.0; // Critical - would fail normal arm
+
+        // Force-arm should succeed even with low battery
+        let result = state.arm_forced();
+        assert!(result.is_ok());
+        assert!(state.is_armed());
+    }
+
+    #[test]
+    fn test_arm_forced_already_armed() {
+        let mut state = SystemState::new();
+        state.battery.voltage = 12.0;
+
+        // First arm succeeds
+        assert!(state.arm().is_ok());
+
+        // Second force-arm fails (already armed)
+        let result = state.arm_forced();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            crate::core::arming::ArmingError::AlreadyArmed
+        );
+    }
+
+    #[test]
+    fn test_disarm_forced_bypasses_checks() {
+        let mut state = SystemState::new();
+        state.battery.voltage = 12.0;
+
+        // Arm first
+        assert!(state.arm().is_ok());
+        assert!(state.is_armed());
+
+        // Force-disarm should succeed
+        let result = state.disarm_forced();
+        assert!(result.is_ok());
+        assert!(!state.is_armed());
+    }
+
+    #[test]
+    fn test_disarm_forced_not_armed() {
+        let mut state = SystemState::new();
+
+        // Force-disarm when not armed should fail
+        let result = state.disarm_forced();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            crate::core::arming::DisarmError::NotArmed
+        );
     }
 
     #[test]

@@ -52,8 +52,16 @@
 //! - **Redundancy**: Multiple Flash blocks for reliability
 //! - **CRC Validation**: Data integrity checking
 
+pub mod arming;
+pub mod battery;
+pub mod failsafe;
+pub mod fence;
 pub mod storage;
 pub mod wifi;
 
+pub use arming::ArmingParams;
+pub use battery::BatteryParams;
+pub use failsafe::FailsafeParams;
+pub use fence::FenceParams;
 pub use storage::{ParamValue, ParameterStore};
 pub use wifi::WifiParams;

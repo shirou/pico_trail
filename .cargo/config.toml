@@ -12,7 +12,8 @@ rustflags = [
 ]
 
 [env]
-DEFMT_LOG = "info"
+DEFMT_LOG = "debug"
+#DEFMT_LOG = "info"
 
 [build]
 # TODO(3) Adjust the compilation target.

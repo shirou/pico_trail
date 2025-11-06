@@ -1,27 +1,22 @@
-//! MAVLink Network Transport Demonstration
+//! Pico Trail Rover Implementation
 //!
-//! Demonstrates concurrent UART and UDP network transport for MAVLink communication.
+//! Main rover implementation using MAVLink protocol over WiFi/UDP.
 //!
 //! # Features
 //!
-//! - Concurrent UART and UDP transport operation
+//! - MAVLink communication via UDP network transport
 //! - WiFi configuration via parameter storage
-//! - GCS endpoint auto-discovery
-//! - Message broadcasting to all active transports
+//! - Command handling (ARM/DISARM, mode changes)
+//! - Telemetry streaming
+//! - Mission handling
 //!
 //! # Hardware Setup
-//!
-//! ## UART Wiring
-//!
-//! - UART0 TX (GPIO 0) → USB-serial RX
-//! - UART0 RX (GPIO 1) → USB-serial TX
-//! - GND → GND
 //!
 //! ## WiFi Configuration
 //!
 //! WiFi credentials are stored in Flash parameters. Configure via MAVLink parameter protocol:
 //!
-//! 1. Connect via UART (115200 baud)
+//! 1. Connect via UART (115200 baud) initially for setup
 //! 2. Set NET_SSID parameter to your WiFi network name
 //! 3. Set NET_PASS parameter to your WiFi password
 //! 4. Optionally configure NET_DHCP, NET_IP, NET_NETMASK, NET_GATEWAY
@@ -31,10 +26,10 @@
 //!
 //! ```bash
 //! # Build for RP2350
-//! ./scripts/build-rp2350.sh --release mavlink_demo_network
+//! ./scripts/build-rp2350.sh --release pico_trail_rover
 //!
 //! # Flash to Pico 2 W
-//! probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/mavlink_demo_network
+//! probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/pico_trail_rover
 //! ```
 //!
 //! # Testing
@@ -43,7 +38,7 @@
 //! 2. Reboot device - should connect to WiFi automatically
 //! 3. Open QGroundControl UDP connection (port 14550)
 //! 4. Verify heartbeat and telemetry appear
-//! 5. Verify concurrent UART and UDP operation
+//! 5. Test ARM/DISARM commands
 
 #![no_std]
 #![no_main]
@@ -72,8 +67,8 @@ use pico_trail::{
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    info!("pico_trail MAVLink Network Demo");
-    info!("==================================");
+    info!("pico_trail Rover");
+    info!("================");
     info!("");
 
     // Initialize Flash for parameter storage
@@ -82,7 +77,7 @@ async fn main(spawner: Spawner) {
     // Initialize ParamHandler which loads/registers parameters
     let param_handler = ParamHandler::new(&mut flash);
 
-    // Initialize WiFi and UDP transport first (if configured)
+    // Initialize WiFi and UDP transport
     #[cfg(feature = "pico2_w")]
     {
         // Initialize platform
@@ -131,7 +126,11 @@ async fn main(spawner: Spawner) {
                     info!("Transport router initialized with UDP");
 
                     // Initialize handlers
-                    let state = pico_trail::communication::mavlink::state::SystemState::default();
+                    // Load system state with ARMING_CHECK parameter from parameter store
+                    let state =
+                        pico_trail::communication::mavlink::state::SystemState::from_param_store(
+                            param_handler.store(),
+                        );
                     let command_handler = CommandHandler::new(state);
                     let telemetry_streamer = TelemetryStreamer::new(1, 1);
                     let mission_handler = MissionHandler::new(1, 1);
@@ -146,8 +145,8 @@ async fn main(spawner: Spawner) {
 
                     info!("Message dispatcher initialized");
 
-                    // Spawn message routing task
-                    spawner.spawn(network_mavlink_task(router, dispatcher).unwrap());
+                    // Spawn MAVLink task
+                    spawner.spawn(rover_mavlink_task(router, dispatcher).unwrap());
                 }
                 Err(e) => {
                     warn!("WiFi initialization failed: {:?}", e);
@@ -215,10 +214,10 @@ impl<'a> embedded_io_async::Read for ByteReader<'a> {
     }
 }
 
-/// MAVLink task using TransportRouter and MessageDispatcher
+/// Main MAVLink task for rover operation
 #[cfg(feature = "pico2_w")]
 #[embassy_executor::task]
-async fn network_mavlink_task(
+async fn rover_mavlink_task(
     mut router: TransportRouter<
         'static,
         embassy_rp::uart::BufferedUartRx,
@@ -229,15 +228,11 @@ async fn network_mavlink_task(
     use embassy_time::Instant;
     use mavlink::Message;
 
-    info!("MAVLink network task started");
-    info!("Using message dispatcher architecture");
+    info!("Rover MAVLink task started");
 
     let mut parser = MavlinkParser::new();
     let mut sequence: u8 = 0;
     let mut buf = [0u8; 512];
-
-    // Get system state for telemetry
-    let state = dispatcher.command_handler().state().clone();
 
     loop {
         // Non-blocking receive with timeout
@@ -270,9 +265,15 @@ async fn network_mavlink_task(
 
                             // Dispatch message to appropriate handler
                             let responses = dispatcher.dispatch(&header, &msg, timestamp_us);
+                            defmt::info!("Dispatch returned {} responses", responses.len());
 
                             // Send all response messages
                             for response_msg in responses {
+                                defmt::info!(
+                                    "Sending response: msgid={}",
+                                    response_msg.message_id()
+                                );
+
                                 let response_header = mavlink::MavHeader {
                                     system_id: 1,
                                     component_id: 1,
@@ -291,6 +292,7 @@ async fn network_mavlink_task(
                                 {
                                     let len = 280 - msg_cursor.len();
                                     if router.send_bytes(&msg_buf[..len]).await.is_ok() {
+                                        defmt::trace!("TX {} bytes", len);
                                         sequence = sequence.wrapping_add(1);
                                     }
                                 }
@@ -320,9 +322,10 @@ async fn network_mavlink_task(
             }
         }
 
-        // Update telemetry streams
+        // Update telemetry streams (get latest state from command handler)
         let timestamp_us = Instant::now().as_micros();
-        let telemetry_messages = dispatcher.update_telemetry(&state, timestamp_us);
+        let current_state = dispatcher.command_handler().state().clone();
+        let telemetry_messages = dispatcher.update_telemetry(&current_state, timestamp_us);
 
         // Send telemetry messages
         for telem_msg in telemetry_messages {
@@ -361,80 +364,6 @@ async fn network_mavlink_task(
                     sequence = sequence.wrapping_add(1);
                 }
             }
-        }
-
-        Timer::after_millis(1).await;
-    }
-}
-
-/// MAVLink task for non-pico2_w builds (UART-only)
-#[cfg(not(feature = "pico2_w"))]
-#[embassy_executor::task]
-async fn network_mavlink_task(
-    mut router: TransportRouter<
-        'static,
-        embassy_rp::uart::BufferedUartRx<'static>,
-        embassy_rp::uart::BufferedUartTx<'static>,
-    >,
-    _param_store: ParameterStore,
-) {
-    use embassy_time::Instant;
-    use pico_trail::communication::mavlink::{parser::MavlinkParser, writer::MavlinkWriter};
-
-    info!("MAVLink task started (UART-only mode)");
-
-    let mut parser = MavlinkParser::new();
-    let mut writer = MavlinkWriter::new(1, 1);
-
-    let mut last_heartbeat = Instant::now();
-    let heartbeat_interval = Duration::from_secs(1);
-
-    let mut buf = [0u8; 512];
-
-    loop {
-        let read_result = embassy_futures::select::select(
-            Timer::after(Duration::from_millis(10)),
-            router.receive_bytes(&mut buf),
-        )
-        .await;
-
-        match read_result {
-            embassy_futures::select::Either::Second(Ok((n, _transport_id))) => {
-                for byte in &buf[..n] {
-                    if let Ok(Some((header, msg))) = parser.parse_byte(*byte) {
-                        if let Ok(bytes) = writer.encode_message(&header, &msg) {
-                            let _ = router.send_bytes(bytes).await;
-                        }
-                    }
-                }
-            }
-            embassy_futures::select::Either::Second(Err(_)) => {}
-            embassy_futures::select::Either::First(_) => {}
-        }
-
-        if last_heartbeat.elapsed() >= heartbeat_interval {
-            let heartbeat = mavlink::ardupilotmega::MavMessage::HEARTBEAT(
-                mavlink::ardupilotmega::HEARTBEAT_DATA {
-                    custom_mode: 0,
-                    mavtype: mavlink::ardupilotmega::MavType::MAV_TYPE_QUADROTOR,
-                    autopilot: mavlink::ardupilotmega::MavAutopilot::MAV_AUTOPILOT_GENERIC,
-                    base_mode: mavlink::ardupilotmega::MavModeFlag::empty(),
-                    system_status: mavlink::ardupilotmega::MavState::MAV_STATE_STANDBY,
-                    mavlink_version: 3,
-                },
-            );
-
-            let header = mavlink::MavHeader {
-                system_id: 1,
-                component_id: 1,
-                sequence: 0,
-            };
-
-            if let Ok(bytes) = writer.encode_message(&header, &heartbeat) {
-                let _ = router.send_bytes(bytes).await;
-            }
-
-            last_heartbeat = Instant::now();
         }
 
         Timer::after_millis(1).await;
