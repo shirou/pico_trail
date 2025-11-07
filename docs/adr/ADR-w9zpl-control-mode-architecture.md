@@ -452,17 +452,26 @@ fn handle_do_set_mode(
 
 ### Module Structure
 
+Following ArduPilot's architecture with common libraries and vehicle-specific implementations:
+
 ```
-src/vehicle/
-├── mod.rs              # Vehicle module root, exports Mode trait
-├── mode_manager.rs     # Mode manager implementation
-└── modes/
-    ├── mod.rs          # Mode module root
-    ├── manual.rs       # Manual mode
-    ├── hold.rs         # Hold mode (future)
-    ├── auto.rs         # Auto mode (future)
-    └── rtl.rs          # RTL mode (future)
+src/
+├── libraries/          # Vehicle-agnostic libraries (ArduPilot libraries/)
+│   ├── rc_channel/    # RC input processing (RC_Channel equivalent)
+│   └── srv_channel/   # Servo output processing (SRV_Channel equivalent)
+│
+└── rover/              # Rover vehicle implementation (ArduPilot Rover/)
+    ├── mod.rs          # Rover module root, exports Mode trait
+    ├── mode_manager.rs # Mode manager implementation
+    └── mode/
+        ├── mod.rs      # Mode trait definition
+        ├── manual.rs   # Manual mode
+        ├── hold.rs     # Hold mode (future)
+        ├── auto.rs     # Auto mode (future)
+        └── rtl.rs      # RTL mode (future)
 ```
+
+**Rationale**: Separates vehicle-agnostic libraries (RC, servo) from vehicle-specific control logic (modes), enabling code reuse for future vehicle types (Boat, Copter).
 
 ## Platform Considerations
 

@@ -30,7 +30,8 @@ This task implements manual control capability for rover vehicles by creating a 
   - Mode definition exists: `FlightMode::Manual` enum in `src/communication/mavlink/state.rs:41`
   - PWM interface: `PwmInterface` trait defined in `src/platform/traits/pwm.rs`
   - MAVLink communication: Message parsing and routing in `src/communication/mavlink/`
-  - No vehicle layer: Missing `src/vehicle/` module for mode implementations
+  - No libraries layer: Missing `src/libraries/` for RC/servo processing
+  - No rover layer: Missing `src/rover/` module for mode implementations
   - No RC processing: RC_CHANNELS messages defined but not handled
   - No actuator layer: No abstraction between modes and PWM hardware
 - Pain points:
@@ -136,7 +137,7 @@ This task implements manual control capability for rover vehicles by creating a 
 
 ### Components
 
-#### 1. RC Input State (`src/vehicle/rc_input.rs`)
+#### 1. RC Input State (`src/libraries/rc_channel/mod.rs`)
 
 ```rust
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -189,7 +190,7 @@ impl RcInput {
 pub static RC_INPUT: Mutex<CriticalSectionRawMutex, RcInput> = Mutex::new(RcInput::new());
 ```
 
-#### 2. Control Mode Trait (`src/vehicle/mod.rs`)
+#### 2. Control Mode Trait (`src/rover/mode/mod.rs`)
 
 ```rust
 /// Control mode trait
@@ -216,7 +217,7 @@ pub trait Mode {
 }
 ```
 
-#### 3. Mode Manager (`src/vehicle/mode_manager.rs`)
+#### 3. Mode Manager (`src/rover/mode_manager.rs`)
 
 ```rust
 pub struct ModeManager {
@@ -246,7 +247,7 @@ impl ModeManager {
 }
 ```
 
-#### 4. Actuator Abstraction (`src/vehicle/actuators.rs`)
+#### 4. Actuator Abstraction (`src/libraries/srv_channel/mod.rs`)
 
 ```rust
 /// Actuator abstraction for rover steering and throttle
@@ -288,7 +289,7 @@ pub struct ActuatorConfig {
 }
 ```
 
-#### 5. Manual Mode (`src/vehicle/modes/manual.rs`)
+#### 5. Manual Mode (`src/rover/mode/manual.rs`)
 
 ```rust
 pub struct ManualMode {
@@ -440,6 +441,37 @@ pub struct Actuators {
   - RC timeout check: called at 50 Hz (critical path)
   - Actuator commands: called at 50 Hz (critical path)
   - RC_CHANNELS handler: called at 5-10 Hz (non-critical)
+
+### Module Structure
+
+Following ArduPilot's architecture with vehicle-agnostic libraries and vehicle-specific implementations:
+
+```
+src/
+├── libraries/              # Common libraries (ArduPilot libraries/)
+│   ├── mod.rs
+│   ├── rc_channel/        # RC input processing (RC_Channel equivalent)
+│   │   └── mod.rs         # RcInput, RC_INPUT global, normalization
+│   └── srv_channel/       # Servo output processing (SRV_Channel equivalent)
+│       └── mod.rs         # ActuatorInterface, Actuators, calibration
+│
+├── rover/                  # Rover vehicle implementation (ArduPilot Rover/)
+│   ├── mod.rs
+│   ├── mode/              # Control mode implementations
+│   │   ├── mod.rs         # Mode trait definition
+│   │   └── manual.rs      # ManualMode (Phase 1)
+│   └── mode_manager.rs    # ModeManager (Phase 2)
+│
+└── communication/mavlink/handlers/
+    └── rc_input.rs        # RC_CHANNELS message handler
+```
+
+**Design Rationale**:
+
+- `libraries/`: Vehicle-agnostic functionality shared across Rover, Boat, Copter
+- `rover/`: Rover-specific control logic and modes
+- Follows ArduPilot's separation between common libraries and vehicle types
+- Enables future vehicle types (Boat, Copter) to reuse RC/servo libraries
 
 ### Platform Considerations
 

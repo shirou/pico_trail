@@ -12,6 +12,7 @@
 pub mod command;
 pub mod mission;
 pub mod param;
+pub mod rc_input;
 pub mod telemetry;
 
 // Re-export commonly used types

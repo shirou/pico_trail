@@ -49,7 +49,8 @@
       "Bash(do node scripts/tdl-new-id.ts)",
       "Bash(done)",
       "Bash(for:*)",
-      "mcp__serena__write_memory"
+      "mcp__serena__write_memory",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

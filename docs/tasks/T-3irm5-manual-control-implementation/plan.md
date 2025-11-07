@@ -50,7 +50,7 @@ Implement manual control capability for rover vehicles by creating complete vehi
   - [ADR-ea7fw-rc-input-processing](../../adr/ADR-ea7fw-rc-input-processing.md) - RC_CHANNELS handling
 - [ ] Legacy patterns to address:
   - Current `FlightMode::Manual` enum exists but not implemented
-  - No vehicle layer module structure yet (need to create `src/vehicle/`)
+  - No vehicle layer module structure yet (need to create `src/rover/`)
   - MAVLink handlers need RC_CHANNELS processing added
   - System state needs mode reporting integration
 
@@ -95,11 +95,11 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask. If an
 ### Tasks
 
 - [ ] **Create vehicle module structure**
-  - [ ] Create `src/vehicle/mod.rs` with module documentation
+  - [ ] Create `src/rover/mod.rs` with module documentation
   - [ ] Add `pub mod vehicle;` to `src/lib.rs`
   - [ ] Export public types: `RcInput`, `ActuatorInterface`, `Actuators`
 - [ ] **Implement RC input state**
-  - [ ] Create `src/vehicle/rc_input.rs`
+  - [ ] Create `src/libraries/rc_channel/mod.rs`
   - [ ] Define `RcInput` struct (channels\[18], channel_count, last_update_us, status)
   - [ ] Define `RcStatus` enum (Active, Lost, NeverConnected)
   - [ ] Implement `RcInput::new()` constructor
@@ -119,7 +119,7 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask. If an
   - [ ] Register handler in MAVLink router (update `handlers/mod.rs`)
   - [ ] Add integration to MAVLink task message dispatch
 - [ ] **Implement actuator abstraction**
-  - [ ] Create `src/vehicle/actuators.rs`
+  - [ ] Create `src/libraries/srv_channel/mod.rs`
   - [ ] Define `ActuatorInterface` trait (set_steering, set_throttle, get_steering, get_throttle)
   - [ ] Define `ActuatorConfig` struct (steering_min/neutral/max, throttle_min/neutral/max)
   - [ ] Implement `ActuatorConfig::default()` (1000/1500/2000 for all)
@@ -140,10 +140,10 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask. If an
 
 ### Deliverables
 
-- `src/vehicle/mod.rs` - Vehicle module root
-- `src/vehicle/rc_input.rs` - RC input state and processing
+- `src/rover/mod.rs` - Vehicle module root
+- `src/libraries/rc_channel/mod.rs` - RC input state and processing
 - `src/communication/mavlink/handlers/rc_input.rs` - RC_CHANNELS handler
-- `src/vehicle/actuators.rs` - Actuator abstraction implementation
+- `src/libraries/srv_channel/mod.rs` - Actuator abstraction implementation
 - Unit tests for RC normalization, timeout, actuator conversion, armed state
 
 ### Verification
@@ -192,7 +192,7 @@ cargo test --lib --quiet actuators
   - `docs/adr/ADR-w9zpl-control-mode-architecture.md` – Mode framework design
   - `docs/requirements/FR-q2sjt-control-mode-framework.md` – Framework requirements
 - Source Code to Modify:
-  - `src/vehicle/mod.rs` – Add mode framework exports
+  - `src/rover/mod.rs` – Add mode framework exports
   - `src/core/scheduler/tasks/` – Add vehicle control task
 - Dependencies:
   - Phase 1: RC input and actuator abstraction must be complete
@@ -202,7 +202,7 @@ cargo test --lib --quiet actuators
 ### Tasks
 
 - [ ] **Define VehicleMode trait**
-  - [ ] Create `src/vehicle/mode.rs`
+  - [ ] Create `src/rover/mode/mod.rs`
   - [ ] Define `VehicleMode` trait with methods:
     - [ ] `fn enter(&mut self) -> Result<(), &'static str>` - Initialize mode
     - [ ] `fn update(&mut self, dt: f32) -> Result<(), &'static str>` - Execute mode (50 Hz)
@@ -211,7 +211,7 @@ cargo test --lib --quiet actuators
   - [ ] Add comprehensive trait documentation with examples
   - [ ] Add `#[allow(async_fn_in_trait)]` if using async methods
 - [ ] **Implement Mode Manager**
-  - [ ] Create `src/vehicle/mode_manager.rs`
+  - [ ] Create `src/rover/mode_manager.rs`
   - [ ] Define `ModeManager` struct (current_mode: Box<dyn Mode>, system_state, last_update_us)
   - [ ] Implement `ModeManager::new(initial_mode, system_state)`
   - [ ] Implement `ModeManager::execute(current_time_us) -> Result<(), &'static str>`
@@ -242,8 +242,8 @@ cargo test --lib --quiet actuators
 
 ### Deliverables
 
-- `src/vehicle/mode.rs` - VehicleMode trait definition
-- `src/vehicle/mode_manager.rs` - Mode manager implementation
+- `src/rover/mode/mod.rs` - VehicleMode trait definition
+- `src/rover/mode_manager.rs` - Mode manager implementation
 - `src/core/scheduler/tasks/vehicle.rs` - Vehicle control task (50 Hz)
 - Unit tests for mode manager (transitions, delta time calculation)
 
@@ -292,22 +292,22 @@ cargo test --lib --quiet mode_manager
 - Documentation:
   - `docs/requirements/FR-uk0us-manual-mode.md` – Manual mode requirements
 - Source Code to Modify:
-  - `src/vehicle/modes/` – Create modes directory
+  - `src/rover/modes/` – Create modes directory
   - `src/communication/mavlink/handlers/command.rs` – Add DO_SET_MODE handler
 - Dependencies:
   - Phase 1: RC input and actuators complete
   - Phase 2: Mode framework complete
-  - Internal: `src/vehicle/` – Mode framework and actuators
+  - Internal: `src/rover/` – Mode framework and actuators
   - External crates: None (reuse existing)
 
 ### Tasks
 
 - [ ] **Create modes module**
-  - [ ] Create `src/vehicle/modes/mod.rs`
+  - [ ] Create `src/rover/mode/mod.rs`
   - [ ] Export `ManualMode` struct
   - [ ] Add module documentation
 - [ ] **Implement Manual Mode**
-  - [ ] Create `src/vehicle/modes/manual.rs`
+  - [ ] Create `src/rover/mode/manual.rs`
   - [ ] Define `ManualMode` struct (rc_input: &'static Mutex<RcInput>, actuators: &'static mut dyn ActuatorInterface)
   - [ ] Implement `ManualMode::new(rc_input, actuators)`
   - [ ] Implement `VehicleMode::enter()`
@@ -348,8 +348,8 @@ cargo test --lib --quiet mode_manager
 
 ### Deliverables
 
-- `src/vehicle/modes/mod.rs` - Modes module root
-- `src/vehicle/modes/manual.rs` - Manual mode implementation
+- `src/rover/mode/mod.rs` - Modes module root
+- `src/rover/mode/manual.rs` - Manual mode implementation
 - Updated `src/communication/mavlink/handlers/command.rs` - DO_SET_MODE handler
 - Unit tests for Manual mode (RC pass-through, timeout, disarmed)
 
@@ -453,7 +453,7 @@ probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/debug/examples/manua
     - [ ] Verify total < 5 KB
 - [ ] **Documentation**
   - [ ] Update `docs/architecture.md`: Add vehicle layer section
-  - [ ] Document module structure: `src/vehicle/` hierarchy
+  - [ ] Document module structure: `src/rover/` hierarchy
   - [ ] Document known limitations:
     - [ ] MAVLink RC only (no physical RC receiver)
     - [ ] Manual mode only (no autonomous modes yet)

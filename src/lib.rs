@@ -23,5 +23,9 @@ pub mod parameters;
 // Subsystems (FR-eyuh8: AHRS, Navigation, Control)
 pub mod subsystems;
 
-// Future modules (to be implemented in subsequent phases):
-// pub mod vehicle;       // Vehicle logic and flight modes
+// Common libraries (ArduPilot libraries/ equivalent)
+// RC input, servo output, and other vehicle-agnostic functionality
+pub mod libraries;
+
+// Rover vehicle implementation (ArduPilot Rover/ equivalent)
+pub mod rover;
