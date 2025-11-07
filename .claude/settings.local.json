@@ -48,7 +48,8 @@
       "Bash(for i in {1..33})",
       "Bash(do node scripts/tdl-new-id.ts)",
       "Bash(done)",
-      "Bash(for:*)"
+      "Bash(for:*)",
+      "mcp__serena__write_memory"
     ],
     "deny": [],
     "ask": []
