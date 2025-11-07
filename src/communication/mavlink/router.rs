@@ -351,15 +351,20 @@ impl<F: FlashInterface> MavlinkRouter<F> {
             defmt::debug!("Additional message queued after command");
         }
 
-        // Special handling for MAV_CMD_REQUEST_PROTOCOL_VERSION
-        // Queue PROTOCOL_VERSION message to be sent to GCS
+        // Special handling for MAV_CMD_REQUEST_MESSAGE
+        // Queue requested message to be sent to GCS
         use mavlink::common::MavCmd;
-        if data.command == MavCmd::MAV_CMD_REQUEST_PROTOCOL_VERSION {
-            use crate::communication::mavlink::handlers::telemetry::TelemetryStreamer;
-            let protocol_version_msg = TelemetryStreamer::build_protocol_version();
-            let _ = self.pending_messages.push(protocol_version_msg);
-            #[cfg(feature = "defmt")]
-            defmt::debug!("PROTOCOL_VERSION message queued for sending");
+        if data.command == MavCmd::MAV_CMD_REQUEST_MESSAGE {
+            const MAVLINK_MSG_ID_PROTOCOL_VERSION: u32 = 300;
+            let message_id = data.param1 as u32;
+
+            if message_id == MAVLINK_MSG_ID_PROTOCOL_VERSION {
+                use crate::communication::mavlink::handlers::telemetry::TelemetryStreamer;
+                let protocol_version_msg = TelemetryStreamer::build_protocol_version();
+                let _ = self.pending_messages.push(protocol_version_msg);
+                #[cfg(feature = "defmt")]
+                defmt::debug!("PROTOCOL_VERSION message queued for sending");
+            }
         }
     }
 
@@ -535,7 +540,7 @@ mod tests {
         let param_set = MavMessage::PARAM_SET(mavlink::common::PARAM_SET_DATA {
             target_system: 1,
             target_component: 1,
-            param_id,
+            param_id: param_id.into(),
             param_value: 20.0,
             param_type: mavlink::common::MavParamType::MAV_PARAM_TYPE_UINT32,
         });
@@ -702,13 +707,13 @@ mod tests {
         let mut flash = MockFlash::new();
         let mut router = MavlinkRouter::new(&mut flash, 1, 1);
 
-        // Send REQUEST_PROTOCOL_VERSION command
+        // Send REQUEST_MESSAGE command with param1=300 (PROTOCOL_VERSION message ID)
         let command = MavMessage::COMMAND_LONG(mavlink::common::COMMAND_LONG_DATA {
             target_system: 1,
             target_component: 1,
-            command: mavlink::common::MavCmd::MAV_CMD_REQUEST_PROTOCOL_VERSION,
+            command: mavlink::common::MavCmd::MAV_CMD_REQUEST_MESSAGE,
             confirmation: 0,
-            param1: 0.0,
+            param1: 300.0, // PROTOCOL_VERSION message ID
             param2: 0.0,
             param3: 0.0,
             param4: 0.0,
@@ -735,7 +740,7 @@ mod tests {
             MavMessage::COMMAND_ACK(data) => {
                 assert_eq!(
                     data.command,
-                    mavlink::common::MavCmd::MAV_CMD_REQUEST_PROTOCOL_VERSION
+                    mavlink::common::MavCmd::MAV_CMD_REQUEST_MESSAGE
                 );
                 assert_eq!(data.result, mavlink::common::MavResult::MAV_RESULT_ACCEPTED);
             }

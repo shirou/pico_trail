@@ -214,7 +214,7 @@ impl ParamHandler {
         }
 
         // Try by name
-        let param_id = core::str::from_utf8(&data.param_id)
+        let param_id = core::str::from_utf8(&*data.param_id)
             .ok()?
             .trim_end_matches('\0');
 
@@ -258,7 +258,7 @@ impl ParamHandler {
     ///
     /// PARAM_VALUE message with updated value on success.
     pub fn handle_set(&mut self, data: &PARAM_SET_DATA) -> Result<MavMessage, ParamHandlerError> {
-        let param_id = core::str::from_utf8(&data.param_id)
+        let param_id = core::str::from_utf8(&*data.param_id)
             .map_err(|_| ParamHandlerError::NotFound)?
             .trim_end_matches('\0');
 
@@ -346,7 +346,7 @@ impl ParamHandler {
             param_value,
             param_count: count,
             param_index: index,
-            param_id,
+            param_id: param_id.into(),
             param_type,
         }))
     }
@@ -431,7 +431,7 @@ mod tests {
         // Verify NET_PASS is not in the list
         for msg in &messages {
             if let MavMessage::PARAM_VALUE(data) = msg {
-                let name = core::str::from_utf8(&data.param_id)
+                let name = core::str::from_utf8(&*data.param_id)
                     .unwrap()
                     .trim_end_matches('\0');
                 assert_ne!(name, "NET_PASS", "NET_PASS should be hidden");
@@ -450,7 +450,7 @@ mod tests {
         let request = PARAM_REQUEST_READ_DATA {
             target_system: 1,
             target_component: 1,
-            param_id,
+            param_id: param_id.into(),
             param_index: -1,
         };
 
@@ -471,7 +471,7 @@ mod tests {
         let request = PARAM_REQUEST_READ_DATA {
             target_system: 1,
             target_component: 1,
-            param_id,
+            param_id: param_id.into(),
             param_index: -1,
         };
 
@@ -490,7 +490,7 @@ mod tests {
         let set_msg = PARAM_SET_DATA {
             target_system: 1,
             target_component: 1,
-            param_id,
+            param_id: param_id.into(),
             param_value: 20.0,
             param_type: MavParamType::MAV_PARAM_TYPE_INT32,
         };
@@ -516,7 +516,7 @@ mod tests {
         let set_msg = PARAM_SET_DATA {
             target_system: 1,
             target_component: 1,
-            param_id,
+            param_id: param_id.into(),
             param_value: 0.0, // String parameters not directly supported
             param_type: MavParamType::MAV_PARAM_TYPE_REAL32,
         };
@@ -543,7 +543,7 @@ mod tests {
         let set_msg = PARAM_SET_DATA {
             target_system: 1,
             target_component: 1,
-            param_id,
+            param_id: param_id.into(),
             param_value: 25.0,
             param_type: MavParamType::MAV_PARAM_TYPE_INT32,
         };

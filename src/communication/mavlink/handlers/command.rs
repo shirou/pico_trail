@@ -7,7 +7,7 @@
 //! - **MAV_CMD_COMPONENT_ARM_DISARM**: Arm or disarm vehicle
 //! - **MAV_CMD_DO_SET_MODE**: Change flight mode
 //! - **MAV_CMD_PREFLIGHT_CALIBRATION**: Sensor calibration (placeholder)
-//! - **MAV_CMD_REQUEST_PROTOCOL_VERSION**: Request MAVLink protocol version
+//! - **MAV_CMD_REQUEST_MESSAGE**: Request specific message (e.g., PROTOCOL_VERSION)
 //!
 //! # Command Flow
 //!
@@ -90,8 +90,8 @@ impl CommandHandler {
             MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION => {
                 (self.handle_preflight_calibration(cmd), false, Vec::new())
             }
-            MavCmd::MAV_CMD_REQUEST_PROTOCOL_VERSION => {
-                (self.handle_request_protocol_version(cmd), false, Vec::new())
+            MavCmd::MAV_CMD_REQUEST_MESSAGE => {
+                (self.handle_request_message(cmd), false, Vec::new())
             }
             _ => {
                 warn!("Unsupported command: {}", cmd.command as u32);
@@ -222,28 +222,35 @@ impl CommandHandler {
         MavResult::MAV_RESULT_ACCEPTED
     }
 
-    /// Handle MAV_CMD_REQUEST_PROTOCOL_VERSION command
+    /// Handle MAV_CMD_REQUEST_MESSAGE command
     ///
-    /// GCS requests the MAVLink protocol version being used.
-    /// Response should be sent via PROTOCOL_VERSION message, not COMMAND_ACK result_param2.
-    /// For now, we just acknowledge the command; actual PROTOCOL_VERSION message
-    /// should be sent separately by the router/telemetry system.
-    fn handle_request_protocol_version(&mut self, _cmd: &COMMAND_LONG_DATA) -> MavResult {
-        debug!("Protocol version requested");
-        // TODO: Send PROTOCOL_VERSION message via telemetry system
-        // PROTOCOL_VERSION should contain:
-        // - version: MAVLink protocol version (e.g., 200 for MAVLink 2.0)
-        // - min_version: Minimum supported version
-        // - max_version: Maximum supported version
-        // - spec_version_hash: Git hash of mavlink/mavlink XML spec
-        // - library_version_hash: Git hash of mavlink rust implementation
-        MavResult::MAV_RESULT_ACCEPTED
+    /// GCS requests a specific message to be sent.
+    /// param1: Message ID to request (e.g., 300 for PROTOCOL_VERSION)
+    ///
+    /// Response should be sent via the requested message type, not COMMAND_ACK result_param2.
+    /// The router/telemetry system handles sending the actual requested message.
+    fn handle_request_message(&mut self, cmd: &COMMAND_LONG_DATA) -> MavResult {
+        let message_id = cmd.param1 as u32;
+
+        // PROTOCOL_VERSION message ID is 300
+        const MAVLINK_MSG_ID_PROTOCOL_VERSION: u32 = 300;
+
+        match message_id {
+            MAVLINK_MSG_ID_PROTOCOL_VERSION => {
+                debug!("Protocol version requested via MAV_CMD_REQUEST_MESSAGE");
+                MavResult::MAV_RESULT_ACCEPTED
+            }
+            _ => {
+                warn!("Unsupported message ID in REQUEST_MESSAGE: {}", message_id);
+                MavResult::MAV_RESULT_UNSUPPORTED
+            }
+        }
     }
 
     /// Create PROTOCOL_VERSION message
     ///
     /// Returns a PROTOCOL_VERSION message containing MAVLink version information.
-    /// This should be sent in response to MAV_CMD_REQUEST_PROTOCOL_VERSION.
+    /// This should be sent in response to MAV_CMD_REQUEST_MESSAGE with param1=300.
     pub fn create_protocol_version_message() -> PROTOCOL_VERSION_DATA {
         PROTOCOL_VERSION_DATA {
             version: MAVLINK_VERSION,
@@ -271,7 +278,7 @@ impl CommandHandler {
 
         STATUSTEXT_DATA {
             severity,
-            text: text_bytes,
+            text: text_bytes.into(),
         }
     }
 
@@ -456,10 +463,11 @@ mod tests {
         let state = SystemState::new();
         let mut handler = CommandHandler::new(state);
 
-        let cmd = create_command_long(MavCmd::MAV_CMD_REQUEST_PROTOCOL_VERSION, 0.0, 0.0);
+        // MAV_CMD_REQUEST_MESSAGE with param1=300 (PROTOCOL_VERSION message ID)
+        let cmd = create_command_long(MavCmd::MAV_CMD_REQUEST_MESSAGE, 300.0, 0.0);
         let (ack, _) = handler.handle_command_long(&cmd);
 
-        assert_eq!(ack.command, MavCmd::MAV_CMD_REQUEST_PROTOCOL_VERSION);
+        assert_eq!(ack.command, MavCmd::MAV_CMD_REQUEST_MESSAGE);
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
     }
 
