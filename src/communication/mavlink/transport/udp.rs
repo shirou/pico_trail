@@ -142,9 +142,9 @@ impl<'a> UdpTransport<'a> {
 
         // Bind to port
         if let Err(_) = socket.bind(port) {
-            defmt::error!("Failed to bind UDP socket to port {}", port);
+            crate::log_error!("Failed to bind UDP socket to port {}", port);
         } else {
-            defmt::info!("UDP socket bound to port {}", port);
+            crate::log_info!("UDP socket bound to port {}", port);
         }
 
         Self {
@@ -176,7 +176,7 @@ impl<'a> UdpTransport<'a> {
 
         let _ = self.gcs_endpoints.push(endpoint);
 
-        defmt::info!("New GCS endpoint registered");
+        crate::log_info!("New GCS endpoint registered");
     }
 
     /// Cleanup inactive GCS endpoints
@@ -288,7 +288,7 @@ impl<'a> MavlinkTransport for UdpTransport<'a> {
                     total_sent += buf.len();
                 }
                 Err(_) => {
-                    defmt::warn!("Failed to send to endpoint");
+                    crate::log_warn!("Failed to send to endpoint");
                 }
             }
         }

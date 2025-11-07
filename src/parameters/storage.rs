@@ -263,8 +263,7 @@ impl ParameterStore {
 
             match Self::load_from_block(flash, address) {
                 Ok(loaded_store) => {
-                    #[cfg(feature = "pico2_w")]
-                    defmt::info!("Loaded parameters from block {}", block_id);
+                    crate::log_info!("Loaded parameters from block {}", block_id);
                     return Ok(loaded_store);
                 }
                 Err(_) => {
@@ -274,8 +273,7 @@ impl ParameterStore {
             }
         }
 
-        #[cfg(feature = "pico2_w")]
-        defmt::warn!("No valid parameter blocks found, using defaults");
+        crate::log_warn!("No valid parameter blocks found, using defaults");
 
         Ok(Self::new())
     }
@@ -440,8 +438,7 @@ impl ParameterStore {
 
         self.dirty = false;
 
-        #[cfg(feature = "pico2_w")]
-        defmt::info!("Saved {} parameters to Flash", param_count);
+        crate::log_info!("Saved {} parameters to Flash", param_count);
 
         Ok(())
     }

@@ -293,11 +293,10 @@ fn orthonormalize(mut dcm: Matrix3<f32>) -> Matrix3<f32> {
     dcm.set_row(2, &z.transpose());
 
     // Determinant check (optional, for debugging)
-    #[cfg(feature = "defmt")]
     {
         let det = dcm.determinant();
         if (det - 1.0).abs() > 0.1 {
-            defmt::warn!("DCM determinant drift: {}", det);
+            crate::log_warn!("DCM determinant drift: {}", det);
         }
     }
 

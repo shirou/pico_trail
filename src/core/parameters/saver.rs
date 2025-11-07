@@ -116,22 +116,18 @@ impl ParamSaver {
         let mut reg = registry.lock().await;
 
         if !reg.has_modified() {
-            #[cfg(feature = "defmt")]
-            defmt::debug!("No modified parameters, skipping save");
+            crate::log_debug!("No modified parameters, skipping save");
             return;
         }
 
-        #[cfg(feature = "defmt")]
-        defmt::info!("Saving parameters to Flash...");
+        crate::log_info!("Saving parameters to Flash...");
 
         match reg.save_to_flash() {
             Ok(_) => {
-                #[cfg(feature = "defmt")]
-                defmt::info!("Parameters saved successfully");
+                crate::log_info!("Parameters saved successfully");
             }
             Err(e) => {
-                #[cfg(feature = "defmt")]
-                defmt::error!("Failed to save parameters: {:?}", e);
+                crate::log_error!("Failed to save parameters: {:?}", e);
             }
         }
     }

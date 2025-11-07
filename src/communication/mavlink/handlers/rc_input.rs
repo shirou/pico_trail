@@ -33,8 +33,7 @@ pub async fn handle_rc_channels(raw_channels: &[u16], channel_count: u8, current
     rc.update_from_mavlink(raw_channels, channel_count, current_time_us);
 
     // Log RC channel values at trace level
-    #[cfg(feature = "defmt")]
-    defmt::trace!(
+    crate::log_trace!(
         "RC_CHANNELS: ch1={}, ch3={}, count={}",
         rc.get_channel(1),
         rc.get_channel(3),

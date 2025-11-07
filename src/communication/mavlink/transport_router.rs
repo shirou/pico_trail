@@ -332,7 +332,7 @@ where
                     }
                     Err(_) => {
                         self.stats.send_errors += 1;
-                        defmt::warn!("UART send failed");
+                        crate::log_warn!("UART send failed");
                     }
                 }
             }
@@ -347,7 +347,7 @@ where
                     }
                     Err(_) => {
                         self.stats.send_errors += 1;
-                        defmt::warn!("UDP send failed");
+                        crate::log_warn!("UDP send failed");
                     }
                 }
             }

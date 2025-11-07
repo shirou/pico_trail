@@ -119,8 +119,7 @@ impl MessageDispatcher {
                 let _ = responses.push(COMMAND_ACK(ack));
                 // Add any additional messages (HEARTBEAT, STATUSTEXT, etc.)
                 for msg in additional_messages {
-                    #[cfg(feature = "defmt")]
-                    defmt::info!("Sending additional message after command");
+                    crate::log_info!("Sending additional message after command");
                     let _ = responses.push(msg);
                 }
                 responses

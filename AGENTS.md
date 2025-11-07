@@ -93,6 +93,22 @@ All documentation output in this project must be written in English, including:
 - If a new dependency would close a cycle, refactor by extracting shared functionality into a dedicated module documented in the architecture references.
 - Run dependency analysis tools or targeted `cargo check` commands when restructuring to confirm cycles are not introduced.
 
+### Logging Standards
+
+- **Always use the abstracted logging macros** defined in `src/core/logging.rs` for all log output
+- **Never use `defmt` directly** - use the crate-level macros instead:
+  - `crate::log_info!(...)` - Informational messages
+  - `crate::log_warn!(...)` - Warning messages
+  - `crate::log_error!(...)` - Error messages
+  - `crate::log_debug!(...)` - Debug messages
+  - `crate::log_trace!(...)` - Trace-level messages
+- **DO NOT add `#[cfg(feature = "pico2_w")]`** guards around logging calls - the macros handle target-specific behavior internally
+- The logging macros automatically:
+  - Use `defmt` on embedded targets (pico2_w feature)
+  - Use `println!` in host tests
+  - Compile to no-op in other contexts
+- This abstraction centralizes conditional compilation and keeps logging code clean and portable
+
 ## Traceable Development Lifecycle (TDL)
 
 _Structured phases, linked artifacts, verifiable outcomes_

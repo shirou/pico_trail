@@ -36,9 +36,6 @@ use super::{
 };
 use crate::platform::traits::flash::FlashInterface;
 
-#[cfg(feature = "pico2_w")]
-use mavlink::Message;
-
 /// MAVLink task configuration
 #[derive(Debug, Clone, Copy)]
 pub struct MavlinkConfig {
@@ -106,9 +103,9 @@ async fn mavlink_task_impl<R, W, F>(
 {
     use embassy_time::{Duration, Instant, Timer};
 
-    defmt::info!("MAVLink task started");
-    defmt::info!("  System ID: {}", config.system_id);
-    defmt::info!("  Component ID: {}", config.component_id);
+    crate::log_info!("MAVLink task started");
+    crate::log_info!("  System ID: {}", config.system_id);
+    crate::log_info!("  Component ID: {}", config.component_id);
 
     let mut context = MavlinkContext::new(config, &mut flash);
     let mut last_telemetry = Instant::now();
@@ -126,7 +123,7 @@ async fn mavlink_task_impl<R, W, F>(
         // Handle message if one was received
         match read_result {
             embassy_futures::select::Either::Second(Ok((header, msg))) => {
-                defmt::trace!("RX MAVLink msg ID={}", msg.message_id());
+                crate::log_trace!("RX MAVLink msg ID={}", msg.message_id());
 
                 // Get current timestamp
                 let timestamp_us = Instant::now().as_micros();
@@ -134,12 +131,12 @@ async fn mavlink_task_impl<R, W, F>(
                 // Route message to handlers
                 if let Err(e) = context.router.handle_message(&header, &msg, timestamp_us) {
                     if !matches!(e, super::router::RouterError::NoHandler) {
-                        defmt::warn!("Handler error: {:?}", e);
+                        crate::log_warn!("Handler error: {:?}", e);
                     }
                 }
             }
             embassy_futures::select::Either::Second(Err(e)) => {
-                defmt::warn!("Parse error: {:?}", e);
+                crate::log_warn!("Parse error: {:?}", e);
             }
             embassy_futures::select::Either::First(_) => {
                 // Timeout - no message received, continue to telemetry
@@ -153,7 +150,7 @@ async fn mavlink_task_impl<R, W, F>(
 
             for msg in &telemetry_msgs {
                 if let Err(e) = context.writer.write_message(&mut uart_tx, msg).await {
-                    defmt::warn!("TX error: {:?}", e);
+                    crate::log_warn!("TX error: {:?}", e);
                 }
             }
 

@@ -47,25 +47,12 @@ pub fn collect_and_report_stats(uptime_ms: u64) {
 /// Log scheduler summary
 #[allow(unused_variables)]
 fn log_scheduler_summary(scheduler_stats: &super::types::SchedulerStats, cpu_load: u8) {
-    #[cfg(feature = "pico2_w")]
-    {
-        defmt::info!(
-            "Scheduler: uptime={}ms cpu={}% deadline_misses={}",
-            scheduler_stats.uptime_ms,
-            cpu_load,
-            scheduler_stats.total_deadline_misses
-        );
-    }
-
-    #[cfg(not(feature = "pico2_w"))]
-    {
-        // For testing/host builds
-        #[cfg(test)]
-        println!(
-            "Scheduler: uptime={}ms cpu={}% deadline_misses={}",
-            scheduler_stats.uptime_ms, cpu_load, scheduler_stats.total_deadline_misses
-        );
-    }
+    crate::log_info!(
+        "Scheduler: uptime={}ms cpu={}% deadline_misses={}",
+        scheduler_stats.uptime_ms,
+        cpu_load,
+        scheduler_stats.total_deadline_misses
+    );
 }
 
 /// Check for warning conditions
@@ -73,14 +60,7 @@ fn log_scheduler_summary(scheduler_stats: &super::types::SchedulerStats, cpu_loa
 fn check_warnings(cpu_load: u8) {
     // CPU load warning
     if cpu_load >= CPU_LOAD_WARNING_THRESHOLD {
-        #[cfg(feature = "pico2_w")]
-        defmt::warn!("High CPU load: {}%", cpu_load);
-
-        #[cfg(not(feature = "pico2_w"))]
-        {
-            #[cfg(test)]
-            println!("WARNING: High CPU load: {}%", cpu_load);
-        }
+        crate::log_warn!("High CPU load: {}%", cpu_load);
     }
 
     // Check per-task warnings
@@ -89,43 +69,21 @@ fn check_warnings(cpu_load: u8) {
 
         // Deadline miss warning
         if stats.deadline_misses > 0 {
-            #[cfg(feature = "pico2_w")]
-            defmt::warn!(
+            crate::log_warn!(
                 "Task '{}': {} deadline misses",
                 metadata.name,
                 stats.deadline_misses
             );
-
-            #[cfg(not(feature = "pico2_w"))]
-            {
-                #[cfg(test)]
-                println!(
-                    "WARNING: Task '{}': {} deadline misses",
-                    metadata.name, stats.deadline_misses
-                );
-            }
         }
 
         // High jitter warning
         if stats.avg_jitter_us > HIGH_JITTER_WARNING_US {
-            #[cfg(feature = "pico2_w")]
-            defmt::warn!(
+            crate::log_warn!(
                 "Task '{}': high jitter {}us (target period: {}us)",
                 metadata.name,
                 stats.avg_jitter_us,
                 metadata.period_us()
             );
-
-            #[cfg(not(feature = "pico2_w"))]
-            {
-                #[cfg(test)]
-                println!(
-                    "WARNING: Task '{}': high jitter {}us (target period: {}us)",
-                    metadata.name,
-                    stats.avg_jitter_us,
-                    metadata.period_us()
-                );
-            }
         }
     }
 }
@@ -138,20 +96,12 @@ fn report_task_stats() {
         return;
     }
 
-    #[cfg(feature = "pico2_w")]
-    defmt::info!("Task statistics ({} tasks):", count);
-
-    #[cfg(not(feature = "pico2_w"))]
-    {
-        #[cfg(test)]
-        println!("Task statistics ({} tasks):", count);
-    }
+    crate::log_info!("Task statistics ({} tasks):", count);
 
     for (task_id, metadata) in iter_tasks() {
         let stats = get_task_stats(task_id);
 
-        #[cfg(feature = "pico2_w")]
-        defmt::info!(
+        crate::log_info!(
             "  {}: exec={}us (avg={}us, max={}us) jitter={}us misses={} count={}",
             metadata.name,
             stats.last_execution_us,
@@ -161,21 +111,6 @@ fn report_task_stats() {
             stats.deadline_misses,
             stats.execution_count
         );
-
-        #[cfg(not(feature = "pico2_w"))]
-        {
-            #[cfg(test)]
-            println!(
-                "  {}: exec={}us (avg={}us, max={}us) jitter={}us misses={} count={}",
-                metadata.name,
-                stats.last_execution_us,
-                stats.avg_execution_us,
-                stats.max_execution_us,
-                stats.avg_jitter_us,
-                stats.deadline_misses,
-                stats.execution_count
-            );
-        }
     }
 }
 

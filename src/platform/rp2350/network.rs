@@ -176,12 +176,12 @@ pub async fn initialize_wifi(
     p: embassy_rp::Peripherals,
 ) -> Result<(&'static Stack<'static>, &'static mut Control<'static>), WifiError> {
     if !config.is_configured() {
-        defmt::info!("WiFi not configured (empty SSID), skipping WiFi initialization");
+        crate::log_info!("WiFi not configured (empty SSID), skipping WiFi initialization");
         return Err(WifiError::NotConfigured);
     }
     let mut rng = RoscRng;
 
-    defmt::info!("Initializing WiFi with SSID: {}", config.ssid.as_str());
+    crate::log_info!("Initializing WiFi with SSID: {}", config.ssid.as_str());
 
     // 1. Load CYW43439 firmware
     let fw = include_bytes!("../../../cyw43-firmware/43439A0.bin");
@@ -224,7 +224,7 @@ pub async fn initialize_wifi(
 
     // Log MAC address for debugging
     let mac = control.address().await;
-    defmt::debug!(
+    crate::log_debug!(
         "WiFi MAC address: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
         mac[0],
         mac[1],
@@ -236,10 +236,10 @@ pub async fn initialize_wifi(
 
     // 8. Configure network stack
     let net_config = if config.use_dhcp {
-        defmt::info!("Configuring DHCP");
+        crate::log_info!("Configuring DHCP");
         NetConfig::dhcpv4(Default::default())
     } else {
-        defmt::info!(
+        crate::log_info!(
             "Configuring static IP: {}.{}.{}.{}",
             config.static_ip[0],
             config.static_ip[1],
@@ -287,13 +287,13 @@ pub async fn initialize_wifi(
 
     // Give the network stack task time to fully start
     // This ensures the stack is ready to handle DHCP requests
-    defmt::debug!("Waiting for network stack to initialize...");
+    crate::log_debug!("Waiting for network stack to initialize...");
     Timer::after_millis(500).await;
 
     // 10. Join WPA2 network with retry logic
     let mut retries = 0;
     loop {
-        defmt::info!(
+        crate::log_info!(
             "Attempting to join WiFi network (attempt {}/{})",
             retries + 1,
             MAX_WIFI_RETRIES
@@ -302,21 +302,21 @@ pub async fn initialize_wifi(
         let options = JoinOptions::new(config.password.as_bytes());
         match control.join(config.ssid.as_str(), options).await {
             Ok(_) => {
-                defmt::info!("WiFi connected successfully");
+                crate::log_info!("WiFi connected successfully");
                 break;
             }
             Err(_e) => {
-                defmt::warn!("WiFi connection failed");
+                crate::log_warn!("WiFi connection failed");
                 retries += 1;
 
                 if retries >= MAX_WIFI_RETRIES {
-                    defmt::error!("WiFi connection failed after {} attempts", MAX_WIFI_RETRIES);
+                    crate::log_error!("WiFi connection failed after {} attempts", MAX_WIFI_RETRIES);
                     return Err(WifiError::ConnectionFailed);
                 }
 
                 // Wait before retry with exponential backoff
                 let delay = get_retry_delay(retries - 1);
-                defmt::info!("Retrying in {} ms", delay.as_millis());
+                crate::log_info!("Retrying in {} ms", delay.as_millis());
                 Timer::after(delay).await;
             }
         }
@@ -327,20 +327,20 @@ pub async fn initialize_wifi(
         // Give extra time for router DHCP server to be ready
         // On cold boot, routers may need time to initialize DHCP service
         // and learn the new MAC address
-        defmt::debug!("Waiting for router DHCP server to be ready (5 seconds)...");
+        crate::log_debug!("Waiting for router DHCP server to be ready (5 seconds)...");
         Timer::after_millis(5000).await;
 
         // Wait for link and DHCP using embassy's official wait methods
-        defmt::info!("Waiting for link up...");
+        crate::log_info!("Waiting for link up...");
         stack.wait_link_up().await;
-        defmt::info!("Link is up");
+        crate::log_info!("Link is up");
 
-        defmt::info!("Waiting for DHCP configuration...");
+        crate::log_info!("Waiting for DHCP configuration...");
         stack.wait_config_up().await;
 
         if let Some(config) = stack.config_v4() {
             let ip = config.address.address().octets();
-            defmt::info!(
+            crate::log_info!(
                 "DHCP IP configured: {}.{}.{}.{}",
                 ip[0],
                 ip[1],
@@ -349,10 +349,10 @@ pub async fn initialize_wifi(
             );
         }
     } else {
-        defmt::info!("Static IP configured");
+        crate::log_info!("Static IP configured");
     }
 
-    defmt::info!("WiFi initialization complete");
+    crate::log_info!("WiFi initialization complete");
 
     // SAFETY: We need to return a mutable reference to Control, but it's stored in a static.
     // This is safe because:

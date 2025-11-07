@@ -4,6 +4,7 @@
 //! including the task scheduler and other fundamental infrastructure.
 
 pub mod arming;
+pub mod logging;
 pub mod mission;
 pub mod parameters;
 pub mod scheduler;

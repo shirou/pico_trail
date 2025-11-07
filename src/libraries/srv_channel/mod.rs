@@ -264,7 +264,7 @@ mod tests {
 
     impl PwmInterface for MockPwm {
         fn set_duty_cycle(&mut self, duty_cycle: f32) -> Result<()> {
-            if duty_cycle < 0.0 || duty_cycle > 1.0 {
+            if !(0.0..=1.0).contains(&duty_cycle) {
                 return Err(crate::platform::PlatformError::Pwm(
                     crate::platform::error::PwmError::InvalidDutyCycle,
                 ));
