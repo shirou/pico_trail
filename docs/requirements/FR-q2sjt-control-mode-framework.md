@@ -1,4 +1,4 @@
-# FR-q2sjt Vehicle Mode Execution Framework
+# FR-q2sjt Control Mode Execution Framework
 
 ## Metadata
 
@@ -11,17 +11,17 @@
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
 - Dependent Requirements:
   - [FR-uk0us-manual-mode](FR-uk0us-manual-mode.md)
-  - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md)
+  - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
 - Related Tasks:
   - [T-3irm5-manual-control-implementation](../tasks/T-3irm5-manual-control-implementation/README.md)
 
 ## Requirement Statement
 
-The system shall provide a vehicle mode execution framework that manages mode lifecycle (enter, update, exit), handles mode transitions with validation, executes the active mode at 50 Hz, and processes mode change requests via MAVLink commands.
+The system shall provide a control mode execution framework that manages mode lifecycle (enter, update, exit), handles mode transitions with validation, executes the active mode at 50 Hz, and processes mode change requests via MAVLink commands.
 
 ## Rationale
 
-A vehicle mode framework provides the infrastructure for all vehicle control modes (Manual, Hold, Auto, RTL, Guided), enabling:
+A control mode framework provides the infrastructure for all control modes (Manual, Hold, Auto, RTL, Guided), enabling:
 
 - **Consistent interface**: All modes implement common trait (enter, update, exit)
 - **Safe transitions**: Mode manager validates transitions and handles cleanup
@@ -33,11 +33,11 @@ The framework is the foundation for all autonomous and manual control modes requ
 
 ## User Story (if applicable)
 
-As a developer implementing a new vehicle mode, I want a common framework with enter/update/exit lifecycle hooks, so that I can focus on mode-specific logic without reimplementing mode management and execution infrastructure.
+As a developer implementing a new control mode, I want a common framework with enter/update/exit lifecycle hooks, so that I can focus on mode-specific logic without reimplementing mode management and execution infrastructure.
 
 ## Acceptance Criteria
 
-- [ ] Define `VehicleMode` trait with `enter()`, `update(dt)`, `exit()`, and `name()` methods
+- [ ] Define `Mode` trait with `enter()`, `update(dt)`, `exit()`, and `name()` methods
 - [ ] Implement `ModeManager` to handle mode transitions and execute active mode
 - [ ] Execute active mode `update()` method at 50 Hz (every 20ms)
 - [ ] Call `enter()` on mode entry (once per transition)
@@ -55,13 +55,13 @@ As a developer implementing a new vehicle mode, I want a common framework with e
 
 ### Functional Requirement Details
 
-**Vehicle Mode Trait:**
+**Control Mode Trait:**
 
 ```rust
-/// Vehicle mode trait
+/// Control mode trait
 ///
-/// All vehicle modes (Manual, Hold, Auto, RTL, Guided) implement this trait.
-pub trait VehicleMode {
+/// All control modes (Manual, Hold, Auto, RTL, Guided) implement this trait.
+pub trait Mode {
     /// Initialize mode (called once on mode entry)
     ///
     /// Returns Err if mode cannot be entered (e.g., Auto without GPS).
@@ -87,7 +87,7 @@ pub trait VehicleMode {
 ```rust
 pub struct ModeManager {
     /// Current active mode
-    current_mode: Box<dyn VehicleMode>,
+    current_mode: Box<dyn Mode>,
     /// System state (for mode reporting)
     system_state: &mut SystemState,
     /// Last update timestamp
@@ -96,7 +96,7 @@ pub struct ModeManager {
 
 impl ModeManager {
     /// Create mode manager with initial mode (Manual)
-    pub fn new(initial_mode: Box<dyn VehicleMode>) -> Self {
+    pub fn new(initial_mode: Box<dyn Mode>) -> Self {
         // ...
     }
 
@@ -112,7 +112,7 @@ impl ModeManager {
     }
 
     /// Request mode change (from MAVLink command or internal logic)
-    pub fn set_mode(&mut self, new_mode: Box<dyn VehicleMode>) -> Result<(), &'static str> {
+    pub fn set_mode(&mut self, new_mode: Box<dyn Mode>) -> Result<(), &'static str> {
         // Exit current mode
         self.current_mode.exit()?;
 
@@ -156,7 +156,7 @@ Mode transitions follow rules defined in FR-sp3at:
 Validation logic in `set_mode()`:
 
 ```rust
-fn validate_mode_transition(new_mode: &dyn VehicleMode) -> Result<(), &'static str> {
+fn validate_mode_transition(new_mode: &dyn Mode) -> Result<(), &'static str> {
     match new_mode.name() {
         "Manual" => Ok(()), // Always allowed
         "Hold" => Ok(()),   // Always allowed
@@ -250,7 +250,7 @@ N/A - Platform agnostic
 
 ### Cross-Platform
 
-Vehicle mode framework is fully cross-platform. Platform-specific details abstracted via:
+Control mode framework is fully cross-platform. Platform-specific details abstracted via:
 
 - `PwmInterface` (actuator control)
 - `Timer` (delta time calculation)

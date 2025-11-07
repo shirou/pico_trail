@@ -19,7 +19,7 @@
   - [NFR-duake-actuator-failsafe-neutral](../requirements/NFR-duake-actuator-failsafe-neutral.md)
   - [NFR-zlvpr-vehicle-layer-memory-overhead](../requirements/NFR-zlvpr-vehicle-layer-memory-overhead.md)
 - Related ADRs:
-  - [ADR-w9zpl-vehicle-mode-architecture](../adr/ADR-w9zpl-vehicle-mode-architecture.md)
+  - [ADR-w9zpl-control-mode-architecture](../adr/ADR-w9zpl-control-mode-architecture.md)
   - [ADR-ea7fw-rc-input-processing](../adr/ADR-ea7fw-rc-input-processing.md)
   - [ADR-b8snw-actuator-abstraction-rover](../adr/ADR-b8snw-actuator-abstraction-rover.md)
 - Related Tasks:
@@ -27,9 +27,9 @@
 
 ## Executive Summary
 
-This analysis explores implementing Manual mode control for rover vehicles using RC_CHANNELS messages from Mission Planner over MAVLink. Manual mode is defined in FR-sp3at but not yet implemented. This capability enables direct operator control via ground control station (GCS) before implementing autonomous navigation, providing a foundation for testing actuators, validating communication, and enabling safe manual override. The implementation requires three new layers: (1) RC input processing from MAVLink RC_CHANNELS messages, (2) Vehicle mode implementation framework, and (3) Actuator abstraction for steering servo and throttle motor control.
+This analysis explores implementing Manual mode control for rover vehicles using RC_CHANNELS messages from Mission Planner over MAVLink. Manual mode is defined in FR-sp3at but not yet implemented. This capability enables direct operator control via ground control station (GCS) before implementing autonomous navigation, providing a foundation for testing actuators, validating communication, and enabling safe manual override. The implementation requires three new layers: (1) RC input processing from MAVLink RC_CHANNELS messages, (2) Control mode implementation framework, and (3) Actuator abstraction for steering servo and throttle motor control.
 
-Key findings: ArduPilot's Manual mode architecture separates RC decoding, vehicle mode logic, and actuator mixing. For rover vehicles, Manual mode performs simple pass-through mapping (RC channel 1 → steering, RC channel 3 → throttle) without stabilization. Mission Planner can send RC_CHANNELS messages when connected, simulating a physical RC receiver for testing and development.
+Key findings: ArduPilot's Manual mode architecture separates RC decoding, control mode logic, and actuator mixing. For rover vehicles, Manual mode performs simple pass-through mapping (RC channel 1 → steering, RC channel 3 → throttle) without stabilization. Mission Planner can send RC_CHANNELS messages when connected, simulating a physical RC receiver for testing and development.
 
 ## Problem Space
 
@@ -48,7 +48,7 @@ Gaps:
 
 - Cannot receive or process RC_CHANNELS from Mission Planner
 - Manual mode cannot translate RC inputs to actuator commands
-- No vehicle mode execution framework
+- No control mode execution framework
 - No actuator mixing logic (RC values → PWM duty cycles)
 
 ### Desired State
@@ -75,7 +75,7 @@ Success criteria:
 **Missing components**:
 
 1. **RC Input Handler**: Parse RC_CHANNELS messages, extract channel values
-2. **Vehicle Mode Framework**: Infrastructure to run mode-specific logic
+2. **Control Mode Framework**: Infrastructure to run mode-specific logic
 3. **Manual Mode Implementation**: Simple pass-through mapping (RC → actuator)
 4. **Actuator Abstraction**: Interface for steering/throttle commands independent of PWM details
 5. **Actuator Mixer**: Convert normalized commands (-1.0 to +1.0) to PWM duty cycles
@@ -218,7 +218,7 @@ PWM duty cycle conversion:
 | Component             | RAM Usage   | Notes                            |
 | --------------------- | ----------- | -------------------------------- |
 | RC input state        | \~100 B     | 18 channels × 2 bytes + metadata |
-| Vehicle mode instance | \~200 B     | Mode state machine               |
+| Control mode instance | \~200 B     | Mode state machine               |
 | Actuator mixer        | \~100 B     | Steering/throttle calibration    |
 | **Total**             | **\~400 B** | Negligible overhead              |
 
@@ -248,7 +248,7 @@ PWM duty cycle conversion:
     - Parse RC_CHANNELS messages (ID 65) from any active transport
     - Extract channel values (chan1_raw through chan18_raw)
     - Normalize channel values to -1.0 to +1.0 range
-    - Provide RC input state to vehicle modes
+    - Provide RC input state to control modes
     - Timeout detection: RC loss if no message for 1 second
 
 - [ ] **FR-DRAFT-2**: The system shall implement Manual mode with direct RC-to-actuator pass-through → Will become FR-<id>
@@ -274,8 +274,8 @@ PWM duty cycle conversion:
     - **CRITICAL SAFETY: On disarm event, immediately set neutral PWM (1500 μs)**
     - Calibration: adjustable min/max/trim values per actuator
 
-- [ ] **FR-DRAFT-4**: The system shall implement vehicle mode execution framework → Will become FR-<id>
-  - Rationale: Infrastructure for all vehicle modes (Manual, Auto, RTL, etc.)
+- [ ] **FR-DRAFT-4**: The system shall implement control mode execution framework → Will become FR-<id>
+  - Rationale: Infrastructure for all control modes (Manual, Auto, RTL, etc.)
   - Acceptance Criteria:
     - Mode trait with `enter()`, `update()`, `exit()` methods
     - Mode manager handles mode transitions
@@ -375,7 +375,7 @@ PWM duty cycle conversion:
 
 **New ADRs required**:
 
-- **ADR-<id> Vehicle Mode Architecture**: Mode trait design, manager pattern, mode transitions
+- **ADR-<id> Control Mode Architecture**: Mode trait design, manager pattern, mode transitions
 - **ADR-<id> Actuator Abstraction for Rover**: Steering/throttle interface, mixer design, PWM mapping
 - **ADR-<id> RC Input Processing**: RC_CHANNELS parsing, normalization, timeout handling
 
@@ -424,7 +424,7 @@ PWM duty cycle conversion:
 ### Next Steps
 
 1. [ ] Create formal requirements: FR-<id> (RC input), FR-<id> (Manual mode), FR-<id> (Actuator abstraction), FR-<id> (Mode framework), NFR-<id> (Latency), NFR-<id> (Fail-safe)
-2. [ ] Draft ADR for: Vehicle mode architecture (trait design, manager pattern)
+2. [ ] Draft ADR for: Control mode architecture (trait design, manager pattern)
 3. [ ] Draft ADR for: Actuator abstraction (trait interface, mixer design)
 4. [ ] Draft ADR for: RC input processing (normalization, timeout)
 5. [ ] Create task for: Implementation (vehicle layer + Manual mode)
@@ -489,7 +489,7 @@ fn normalized_to_duty_cycle(normalized: f32) -> f32 {
 
 **ArduPilot Parameters**:
 
-ArduPilot Rover defines multiple parameters for controlling RC input, servo outputs, and vehicle modes:
+ArduPilot Rover defines multiple parameters for controlling RC input, servo outputs, and control modes:
 
 1. **RC Input Mapping (RCMAP)**: Map RC channels to vehicle functions
 
@@ -589,8 +589,8 @@ Example configuration for 3-position mode switch:
 **Mode Trait Design Sketch**:
 
 ```rust
-/// Vehicle mode trait
-pub trait VehicleMode {
+/// Control mode trait
+pub trait Mode {
     /// Initialize mode (called once on mode entry)
     fn enter(&mut self) -> Result<(), &'static str>;
 
@@ -610,7 +610,7 @@ pub struct ManualMode {
     actuators: &Actuators,
 }
 
-impl VehicleMode for ManualMode {
+impl Mode for ManualMode {
     fn enter(&mut self) -> Result<(), &'static str> {
         // No initialization needed
         Ok(())

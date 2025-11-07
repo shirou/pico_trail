@@ -88,7 +88,7 @@ The system shall immediately disable all actuator outputs (steering centered, th
 **Defense Layer 1 (Mode Layer):**
 
 ```rust
-impl VehicleMode for ManualMode {
+impl Mode for ManualMode {
     fn update(&mut self, _dt: f32) -> Result<(), &'static str> {
         // Check RC status
         if self.rc_input.status == RcStatus::Lost {

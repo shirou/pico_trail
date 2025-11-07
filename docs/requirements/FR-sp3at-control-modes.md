@@ -1,4 +1,4 @@
-# FR-sp3at Vehicle Operational Modes
+# FR-sp3at Control Modes
 
 ## Metadata
 
@@ -10,7 +10,7 @@
 - Prerequisite Requirements:
   - [FR-333ym-gps-waypoint-navigation](FR-333ym-gps-waypoint-navigation.md)
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
-  - [FR-q2sjt-vehicle-mode-framework](FR-q2sjt-vehicle-mode-framework.md)
+  - [FR-q2sjt-control-mode-framework](FR-q2sjt-control-mode-framework.md)
   - [FR-uk0us-manual-mode](FR-uk0us-manual-mode.md)
   - [FR-uo1p5-actuator-abstraction](FR-uo1p5-actuator-abstraction.md)
 
@@ -26,11 +26,11 @@
 
 ## Requirement Statement
 
-The system shall support at minimum 5 vehicle operational modes (Manual, Hold, Auto, RTL, Guided) with mode transitions completing within 100ms and no mode switching during critical maneuvers.
+The system shall support at minimum 5 control modes (Manual, Hold, Auto, RTL, Guided) with mode transitions completing within 100ms and no mode switching during critical maneuvers.
 
 ## Rationale
 
-Multiple operational modes provide flexibility for different mission phases and safety scenarios:
+Multiple control modes provide flexibility for different mission phases and safety scenarios:
 
 - **Manual**: Direct operator control via RC - for testing, recovery, manual operation
 - **Hold**: Stop in place - for troubleshooting, waiting, emergency stop
@@ -42,7 +42,7 @@ Mode-based architecture is standard in ArduPilot and PX4, providing clear separa
 
 ## User Story (if applicable)
 
-As an operator, I want to switch between operational modes (Manual for direct control, Auto for waypoint missions, RTL to return home), so that I can adapt the vehicle's behavior to different mission phases and respond to changing conditions.
+As an operator, I want to switch between control modes (Manual for direct control, Auto for waypoint missions, RTL to return home), so that I can adapt the vehicle's behavior to different mission phases and respond to changing conditions.
 
 ## Acceptance Criteria
 
@@ -166,7 +166,7 @@ Preferred approaches:
 
 - Implement **mode as trait** with common interface:
   ```rust
-  pub trait VehicleMode {
+  pub trait Mode {
       fn enter(&mut self) -> Result<()>;
       fn exit(&mut self) -> Result<()>;
       fn update(&mut self, dt: f32) -> Result<()>;

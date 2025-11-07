@@ -10,11 +10,11 @@
 - Prerequisite Requirements:
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
   - [FR-993xy-rc-channels-processing](FR-993xy-rc-channels-processing.md)
-  - [FR-q2sjt-vehicle-mode-framework](FR-q2sjt-vehicle-mode-framework.md)
+  - [FR-q2sjt-control-mode-framework](FR-q2sjt-control-mode-framework.md)
   - [FR-uo1p5-actuator-abstraction](FR-uo1p5-actuator-abstraction.md)
 
 - Dependent Requirements:
-  - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md)
+  - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
   - [NFR-jng15-actuator-failsafe](NFR-jng15-actuator-failsafe.md)
   - [NFR-kqvyf-manual-control-latency](NFR-kqvyf-manual-control-latency.md)
 
@@ -78,7 +78,7 @@ pub struct ManualMode {
     actuators: &Actuators,
 }
 
-impl VehicleMode for ManualMode {
+impl Mode for ManualMode {
     fn enter(&mut self) -> Result<(), &'static str> {
         // No initialization needed for Manual mode
         Ok(())

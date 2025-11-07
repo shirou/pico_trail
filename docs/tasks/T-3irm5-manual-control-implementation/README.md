@@ -10,7 +10,7 @@
 - Related Analyses:
   - [AN-yqeju-manual-control-implementation](../../analysis/AN-yqeju-manual-control-implementation.md)
 - Related Requirements:
-  - [FR-q2sjt-vehicle-mode-framework](../../requirements/FR-q2sjt-vehicle-mode-framework.md)
+  - [FR-q2sjt-control-mode-framework](../../requirements/FR-q2sjt-control-mode-framework.md)
   - [FR-uo1p5-actuator-abstraction](../../requirements/FR-uo1p5-actuator-abstraction.md)
   - [FR-993xy-rc-channels-processing](../../requirements/FR-993xy-rc-channels-processing.md)
   - [FR-uk0us-manual-mode](../../requirements/FR-uk0us-manual-mode.md)
@@ -18,7 +18,7 @@
   - [NFR-jng15-actuator-failsafe](../../requirements/NFR-jng15-actuator-failsafe.md)
   - [NFR-kqvyf-manual-control-latency](../../requirements/NFR-kqvyf-manual-control-latency.md)
 - Related ADRs:
-  - [ADR-w9zpl-vehicle-mode-architecture](../../adr/ADR-w9zpl-vehicle-mode-architecture.md)
+  - [ADR-w9zpl-control-mode-architecture](../../adr/ADR-w9zpl-control-mode-architecture.md)
   - [ADR-b8snw-actuator-abstraction-rover](../../adr/ADR-b8snw-actuator-abstraction-rover.md)
   - [ADR-ea7fw-rc-input-processing](../../adr/ADR-ea7fw-rc-input-processing.md)
 - Associated Design Document:
@@ -28,12 +28,12 @@
 
 ## Summary
 
-Implement manual control capability for rover vehicles, including RC input processing from MAVLink RC_CHANNELS messages, trait-based vehicle mode framework, actuator abstraction with safety enforcement, and Manual mode implementation enabling operator control via Mission Planner joystick.
+Implement manual control capability for rover vehicles, including RC input processing from MAVLink RC_CHANNELS messages, trait-based control mode framework, actuator abstraction with safety enforcement, and Manual mode implementation enabling operator control via Mission Planner joystick.
 
 ## Scope
 
 - In scope:
-  - Vehicle mode trait and framework (`VehicleMode` trait, `ModeManager`)
+  - Control mode trait and framework (`VehicleMode` trait, `ModeManager`)
   - RC input processing from MAVLink RC_CHANNELS messages
   - RC channel normalization (0-65535 → -1.0 to +1.0)
   - RC timeout detection and failsafe (1 second timeout)
@@ -50,7 +50,7 @@ Implement manual control capability for rover vehicles, including RC input proce
   - Safety: Actuators neutral on RC timeout
 - Out of scope:
   - Physical RC receiver support (SBUS/PPM) - MAVLink RC only
-  - Other vehicle modes (Hold, Auto, RTL, Guided) - deferred to future tasks
+  - Other control modes (Hold, Auto, RTL, Guided) - deferred to future tasks
   - RC input filtering/smoothing - simple pass-through initially
   - Advanced actuator features (rate limiting, deadband) - deferred
   - Differential steering or skid-steer mixing - Ackermann only

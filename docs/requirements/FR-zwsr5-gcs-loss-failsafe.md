@@ -9,7 +9,7 @@
 
 - Prerequisite Requirements:
   - [FR-gpzpz-mavlink-protocol](FR-gpzpz-mavlink-protocol.md)
-  - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md)
+  - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
 
 - Dependent Requirements:
   - [FR-0wy2c-failsafe-action-priority](FR-0wy2c-failsafe-action-priority.md)

@@ -1,4 +1,4 @@
-# FR-2e00g Vehicle Mode Execution Framework
+# FR-2e00g Control Mode Execution Framework
 
 ## Metadata
 
@@ -8,7 +8,7 @@
 ## Links
 
 - Prerequisite Requirements:
-  - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md)
+  - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
 
 - Dependent Requirements:
   - [NFR-zlvpr-vehicle-layer-memory-overhead](NFR-zlvpr-vehicle-layer-memory-overhead.md)

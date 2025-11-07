@@ -8,7 +8,7 @@
 ## Links
 
 - Prerequisite Requirements:
-  - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md)
+  - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
   - [FR-uo1p5-actuator-abstraction](FR-uo1p5-actuator-abstraction.md)
 
 - Dependent Requirements:

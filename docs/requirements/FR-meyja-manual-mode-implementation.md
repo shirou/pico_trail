@@ -9,7 +9,7 @@
 
 - Prerequisite Requirements:
   - [FR-uo1p5-actuator-abstraction](FR-uo1p5-actuator-abstraction.md)
-  - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md)
+  - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
   - [FR-993xy-rc-channels-processing](FR-993xy-rc-channels-processing.md)
 
 - Dependent Requirements:

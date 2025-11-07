@@ -79,7 +79,7 @@ pub struct DisarmAttemptLog {
     /// Outcome (success or failure)
     pub outcome: DisarmOutcome,
 
-    /// Current vehicle mode at time of attempt
+    /// Current control mode at time of attempt
     pub mode: VehicleMode,
 
     /// Throttle level (0-100 percent)

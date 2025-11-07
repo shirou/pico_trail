@@ -81,7 +81,7 @@ class AP_Motors {
 
 ```
 ┌─────────────────────────────────────────────┐
-│         Vehicle Modes                       │
+│         Control Modes                       │
 │  (Manual, Auto, RTL)                        │
 │  Commands: set_steering(f32), set_throttle(f32) │
 └───────────────┬─────────────────────────────┘

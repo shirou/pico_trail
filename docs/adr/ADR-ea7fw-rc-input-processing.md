@@ -35,7 +35,7 @@ We need an RC input processing system that:
 - **Update Rate**: RC_CHANNELS sent at 5-10 Hz from Mission Planner
 - **Timeout**: Detect RC loss within 1 second (standard failsafe threshold)
 - **Memory**: RC state < 200 bytes RAM
-- **Thread Safety**: Concurrent access (MAVLink handler writes, vehicle mode reads)
+- **Thread Safety**: Concurrent access (MAVLink handler writes, control mode reads)
 
 ### Prior Art
 

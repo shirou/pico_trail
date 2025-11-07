@@ -12,7 +12,7 @@
 
 ## Overview
 
-Implement manual control capability for rover vehicles by creating complete vehicle control infrastructure: RC input processing from MAVLink RC_CHANNELS messages, trait-based vehicle mode framework with lifecycle management, actuator abstraction with safety enforcement, and Manual mode implementation. This enables operator control via Mission Planner joystick and provides foundation for all future autonomous modes.
+Implement manual control capability for rover vehicles by creating complete vehicle control infrastructure: RC input processing from MAVLink RC_CHANNELS messages, trait-based control mode framework with lifecycle management, actuator abstraction with safety enforcement, and Manual mode implementation. This enables operator control via Mission Planner joystick and provides foundation for all future autonomous modes.
 
 ## Success Metrics
 
@@ -29,7 +29,7 @@ Implement manual control capability for rover vehicles by creating complete vehi
 - Goal: Production-grade manual control with multi-layer safety enforcement
 - Non-Goals:
   - Physical RC receiver support (SBUS/PPM) - MAVLink RC only
-  - Other vehicle modes (Hold, Auto, RTL, Guided) - future tasks
+  - Other control modes (Hold, Auto, RTL, Guided) - future tasks
   - RC input filtering/smoothing - simple pass-through initially
   - Advanced actuator features (rate limiting, deadband) - deferred
   - Differential/skid-steer mixing - Ackermann only
@@ -45,7 +45,7 @@ Implement manual control capability for rover vehicles by creating complete vehi
 ## ADR & Legacy Alignment
 
 - [x] Confirm the latest ADRs are referenced:
-  - [ADR-w9zpl-vehicle-mode-architecture](../../adr/ADR-w9zpl-vehicle-mode-architecture.md) - Trait-based mode framework
+  - [ADR-w9zpl-control-mode-architecture](../../adr/ADR-w9zpl-control-mode-architecture.md) - Trait-based mode framework
   - [ADR-b8snw-actuator-abstraction-rover](../../adr/ADR-b8snw-actuator-abstraction-rover.md) - Actuator interface
   - [ADR-ea7fw-rc-input-processing](../../adr/ADR-ea7fw-rc-input-processing.md) - RC_CHANNELS handling
 - [ ] Legacy patterns to address:
@@ -189,8 +189,8 @@ cargo test --lib --quiet actuators
 ### Inputs
 
 - Documentation:
-  - `docs/adr/ADR-w9zpl-vehicle-mode-architecture.md` – Mode framework design
-  - `docs/requirements/FR-q2sjt-vehicle-mode-framework.md` – Framework requirements
+  - `docs/adr/ADR-w9zpl-control-mode-architecture.md` – Mode framework design
+  - `docs/requirements/FR-q2sjt-control-mode-framework.md` – Framework requirements
 - Source Code to Modify:
   - `src/vehicle/mod.rs` – Add mode framework exports
   - `src/core/scheduler/tasks/` – Add vehicle control task
@@ -212,13 +212,13 @@ cargo test --lib --quiet actuators
   - [ ] Add `#[allow(async_fn_in_trait)]` if using async methods
 - [ ] **Implement Mode Manager**
   - [ ] Create `src/vehicle/mode_manager.rs`
-  - [ ] Define `ModeManager` struct (current_mode: Box<dyn VehicleMode>, system_state, last_update_us)
+  - [ ] Define `ModeManager` struct (current_mode: Box<dyn Mode>, system_state, last_update_us)
   - [ ] Implement `ModeManager::new(initial_mode, system_state)`
   - [ ] Implement `ModeManager::execute(current_time_us) -> Result<(), &'static str>`
     - [ ] Calculate delta time (dt = (current_time_us - last_update_us) / 1_000_000.0)
     - [ ] Call `current_mode.update(dt)`
     - [ ] Update `last_update_us`
-  - [ ] Implement `ModeManager::set_mode(new_mode: Box<dyn VehicleMode>) -> Result<(), &'static str>`
+  - [ ] Implement `ModeManager::set_mode(new_mode: Box<dyn Mode>) -> Result<(), &'static str>`
     - [ ] Call `current_mode.exit()` (log warnings, continue if error)
     - [ ] Call `new_mode.enter()` (if error, revert to Manual fallback)
     - [ ] Update `current_mode`

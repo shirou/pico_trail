@@ -12,7 +12,7 @@
 
 ## Overview
 
-This task implements manual control capability for rover vehicles by creating a complete vehicle control infrastructure: RC input processing from MAVLink RC_CHANNELS messages, trait-based vehicle mode framework with lifecycle management, actuator abstraction with safety enforcement, and Manual mode implementation. The system enables operator control via Mission Planner joystick/gamepad over MAVLink, providing the foundation for all future vehicle modes (Auto, RTL, Guided). The expected outcome is production-grade manual control with multi-layer safety enforcement (armed state checking, RC timeout detection) and compatibility with industry-standard ground control stations.
+This task implements manual control capability for rover vehicles by creating a complete vehicle control infrastructure: RC input processing from MAVLink RC_CHANNELS messages, trait-based control mode framework with lifecycle management, actuator abstraction with safety enforcement, and Manual mode implementation. The system enables operator control via Mission Planner joystick/gamepad over MAVLink, providing the foundation for all future control modes (Auto, RTL, Guided). The expected outcome is production-grade manual control with multi-layer safety enforcement (armed state checking, RC timeout detection) and compatibility with industry-standard ground control stations.
 
 ## Success Metrics
 
@@ -25,7 +25,7 @@ This task implements manual control capability for rover vehicles by creating a 
 
 ## Background and Current State
 
-- Context: The autopilot currently lacks vehicle control modes. Manual mode is the foundational capability required before implementing autonomous modes (Auto, RTL). Manual control enables hardware validation, actuator testing, and provides safety override capability for all autonomous operations.
+- Context: The autopilot currently lacks control modes. Manual mode is the foundational capability required before implementing autonomous modes (Auto, RTL). Manual control enables hardware validation, actuator testing, and provides safety override capability for all autonomous operations.
 - Current behavior:
   - Mode definition exists: `FlightMode::Manual` enum in `src/communication/mavlink/state.rs:41`
   - PWM interface: `PwmInterface` trait defined in `src/platform/traits/pwm.rs`
@@ -37,14 +37,14 @@ This task implements manual control capability for rover vehicles by creating a 
   - Cannot manually control vehicle (no RC input processing)
   - Cannot test actuators without writing platform-specific PWM code
   - No safety enforcement for actuator commands (armed state checking)
-  - No infrastructure for adding new vehicle modes
+  - No infrastructure for adding new control modes
 - Constraints:
   - Memory budget: Vehicle layer < 5 KB RAM total (NFR-v6kvd)
   - Real-time: Mode update must complete within 20ms (50 Hz control loop)
   - Safety critical: Actuators must be neutral when disarmed (NFR-jng15)
   - Platform: RP2040/RP2350, no_std embedded environment
 - Related ADRs:
-  - [ADR-w9zpl-vehicle-mode-architecture](../../adr/ADR-w9zpl-vehicle-mode-architecture.md)
+  - [ADR-w9zpl-control-mode-architecture](../../adr/ADR-w9zpl-control-mode-architecture.md)
   - [ADR-b8snw-actuator-abstraction-rover](../../adr/ADR-b8snw-actuator-abstraction-rover.md)
   - [ADR-ea7fw-rc-input-processing](../../adr/ADR-ea7fw-rc-input-processing.md)
 
@@ -93,7 +93,7 @@ This task implements manual control capability for rover vehicles by creating a 
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   Mode Manager                              │
-│  - Owns current mode (Box<dyn VehicleMode>)                 │
+│  - Owns current mode (Box<dyn Mode>)                 │
 │  - Handles mode transitions (exit → validate → enter)       │
 │  - Executes active mode update(dt) at 50 Hz                 │
 └───────────────────────┬─────────────────────────────────────┘
@@ -189,13 +189,13 @@ impl RcInput {
 pub static RC_INPUT: Mutex<CriticalSectionRawMutex, RcInput> = Mutex::new(RcInput::new());
 ```
 
-#### 2. Vehicle Mode Trait (`src/vehicle/mod.rs`)
+#### 2. Control Mode Trait (`src/vehicle/mod.rs`)
 
 ```rust
-/// Vehicle mode trait
+/// Control mode trait
 ///
-/// All vehicle modes (Manual, Hold, Auto, RTL, Guided) implement this trait.
-pub trait VehicleMode {
+/// All control modes (Manual, Hold, Auto, RTL, Guided) implement this trait.
+pub trait Mode {
     /// Initialize mode (called once on mode entry)
     ///
     /// Returns Err if mode cannot be entered (e.g., Auto without GPS).
@@ -221,7 +221,7 @@ pub trait VehicleMode {
 ```rust
 pub struct ModeManager {
     /// Current active mode
-    current_mode: Box<dyn VehicleMode>,
+    current_mode: Box<dyn Mode>,
     /// System state (for mode reporting)
     system_state: &'static mut SystemState,
     /// Last update timestamp
@@ -231,7 +231,7 @@ pub struct ModeManager {
 impl ModeManager {
     /// Create mode manager with initial mode (Manual)
     pub fn new(
-        initial_mode: Box<dyn VehicleMode>,
+        initial_mode: Box<dyn Mode>,
         system_state: &'static mut SystemState,
     ) -> Self;
 
@@ -239,7 +239,7 @@ impl ModeManager {
     pub fn execute(&mut self, current_time_us: u64) -> Result<(), &'static str>;
 
     /// Request mode change (from MAVLink command or internal logic)
-    pub fn set_mode(&mut self, new_mode: Box<dyn VehicleMode>) -> Result<(), &'static str>;
+    pub fn set_mode(&mut self, new_mode: Box<dyn Mode>) -> Result<(), &'static str>;
 
     /// Get current mode name
     pub fn current_mode_name(&self) -> &'static str;
@@ -296,7 +296,7 @@ pub struct ManualMode {
     actuators: &'static mut dyn ActuatorInterface,
 }
 
-impl VehicleMode for ManualMode {
+impl Mode for ManualMode {
     fn enter(&mut self) -> Result<(), &'static str> {
         defmt::info!("Entering Manual mode");
         Ok(())
@@ -389,7 +389,7 @@ pub struct RcInput {
 
 // Mode Manager
 pub struct ModeManager {
-    current_mode: Box<dyn VehicleMode>,
+    current_mode: Box<dyn Mode>,
     system_state: &'static mut SystemState,
     last_update_us: u64,
 }

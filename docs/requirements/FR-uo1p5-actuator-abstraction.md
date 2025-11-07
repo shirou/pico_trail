@@ -12,7 +12,7 @@
 - Dependent Requirements:
   - [FR-cxts2-controlled-emergency-stop](FR-cxts2-controlled-emergency-stop.md)
   - [FR-uo1p5-actuator-abstraction](FR-uo1p5-actuator-abstraction.md)
-  - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md)
+  - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
   - [FR-uk0us-manual-mode](FR-uk0us-manual-mode.md)
   - [FR-meyja-manual-mode-implementation](FR-meyja-manual-mode-implementation.md)
   - [NFR-jng15-actuator-failsafe](NFR-jng15-actuator-failsafe.md)
@@ -29,10 +29,10 @@ The system shall provide an actuator abstraction layer that accepts normalized s
 
 Actuator abstraction decouples vehicle control logic from hardware PWM details, providing:
 
-- **Hardware independence**: Vehicle modes work with normalized values, not PWM specifics
+- **Hardware independence**: Control modes work with normalized values, not PWM specifics
 - **Safety enforcement**: Primary layer for armed state check (defense in depth)
 - **Calibration centralization**: Min/max/trim values managed in one place
-- **Testability**: Vehicle modes can be unit tested without hardware
+- **Testability**: Control modes can be unit tested without hardware
 - **Maintainability**: PWM changes don't affect mode implementations
 
 The actuator layer is the **primary enforcement point** for safety checks, ensuring no motor output when disarmed regardless of mode behavior.

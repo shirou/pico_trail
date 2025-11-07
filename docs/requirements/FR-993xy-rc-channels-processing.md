@@ -22,7 +22,7 @@
 
 ## Requirement Statement
 
-The system shall receive and process RC_CHANNELS messages (MAVLink message ID 65) from ground control stations, extracting and normalizing channel values to provide RC input state for vehicle control modes.
+The system shall receive and process RC_CHANNELS messages (MAVLink message ID 65) from ground control stations, extracting and normalizing channel values to provide RC input state for control modes.
 
 ## Rationale
 
@@ -44,7 +44,7 @@ As an operator using Mission Planner, I want to control the rover with a USB joy
 - [ ] Parse RC_CHANNELS messages (MAVLink message ID 65) from any active transport (UART, UDP)
 - [ ] Extract all 18 channel values (chan1_raw through chan18_raw)
 - [ ] Normalize channel values from raw (0-65535) to standard range (-1.0 to +1.0)
-- [ ] Provide RC input state accessible to vehicle modes
+- [ ] Provide RC input state accessible to control modes
 - [ ] Detect RC timeout if no RC_CHANNELS received for 1 second
 - [ ] Set RC state to "lost" on timeout, triggering fail-safe behavior
 - [ ] Update RC state at received message rate (typically 5-10 Hz)
@@ -156,7 +156,7 @@ Preferred approaches:
 
 - **RC Input Handler**: Create `src/communication/mavlink/handlers/rc_input.rs`
 - **State Storage**: Store RC state in shared structure (e.g., `RcInput` in static or Mutex)
-- **Access Pattern**: Vehicle modes read RC state, MAVLink handler writes RC state
+- **Access Pattern**: Control modes read RC state, MAVLink handler writes RC state
 - **Thread Safety**: Use `embassy_sync::mutex::Mutex` for concurrent access
 - **Timeout Check**: Vehicle control task checks timeout on every iteration
 
@@ -171,7 +171,7 @@ Related code areas:
 
 - `src/communication/mavlink/handlers/` - MAVLink message handlers
 - `src/communication/mavlink/state.rs` - System state (add RC state here)
-- `src/vehicle/` - Vehicle modes (will read RC state)
+- `src/vehicle/` - Control modes (will read RC state)
 
 ## External References
 

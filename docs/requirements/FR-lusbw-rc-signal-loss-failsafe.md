@@ -10,7 +10,7 @@
 - Prerequisite Requirements:
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
   - [FR-knp1u-rc-input-health-monitoring](FR-knp1u-rc-input-health-monitoring.md)
-  - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md)
+  - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
 
 - Dependent Requirements:
   - [FR-0wy2c-failsafe-action-priority](FR-0wy2c-failsafe-action-priority.md)

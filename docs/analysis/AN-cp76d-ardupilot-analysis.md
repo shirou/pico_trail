@@ -170,7 +170,7 @@ N/A - No operational data available yet.
   - Rationale: Critical safety feature
   - Acceptance Criteria: Failsafe triggers within 1 second of signal loss, vehicle executes safe action (Hold or RTL)
 
-- [ ] **FR-DRAFT-8**: System shall support at minimum 5 vehicle modes: Manual, Hold, Auto, RTL, Guided → Will become FR-008
+- [ ] **FR-DRAFT-8**: System shall support at minimum 5 control modes: Manual, Hold, Auto, RTL, Guided → Will become FR-008
   - Rationale: Essential operational modes for rover/boat
   - Acceptance Criteria: Mode transitions complete within 100ms, no mode switching during critical maneuvers
 

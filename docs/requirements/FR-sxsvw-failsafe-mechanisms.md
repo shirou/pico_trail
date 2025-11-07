@@ -11,7 +11,7 @@
   - [AN-5nucb-core-systems](../analysis/AN-5nucb-core-systems.md)
 - Prerequisite Requirements:
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
-  - [FR-sp3at-vehicle-modes](FR-sp3at-vehicle-modes.md)
+  - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
 - Dependent Requirements: N/A
 - Related Tasks: N/A - Tasks will be created after ADRs
 

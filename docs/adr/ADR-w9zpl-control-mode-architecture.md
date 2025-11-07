@@ -1,4 +1,4 @@
-# ADR-w9zpl Vehicle Mode Architecture: Trait-Based Polymorphism with Mode Manager
+# ADR-w9zpl Control Mode Architecture: Trait-Based Polymorphism with Mode Manager
 
 ## Metadata
 
@@ -8,9 +8,9 @@
 ## Links
 
 - Impacted Requirements:
-  - [FR-q2sjt-vehicle-mode-framework](../requirements/FR-q2sjt-vehicle-mode-framework.md)
+  - [FR-q2sjt-control-mode-framework](../requirements/FR-q2sjt-control-mode-framework.md)
   - [FR-uk0us-manual-mode](../requirements/FR-uk0us-manual-mode.md)
-  - [FR-sp3at-vehicle-modes](../requirements/FR-sp3at-vehicle-modes.md)
+  - [FR-sp3at-control-modes](../requirements/FR-sp3at-control-modes.md)
   - [NFR-v6kvd-vehicle-layer-memory](../requirements/NFR-v6kvd-vehicle-layer-memory.md)
 - Supersedes ADRs: N/A
 - Related Tasks:
@@ -18,7 +18,7 @@
 
 ## Context
 
-The autopilot must support multiple vehicle control modes (Manual, Hold, Auto, RTL, Guided) as defined in FR-sp3at. Each mode has distinct behavior:
+The autopilot must support multiple control modes (Manual, Hold, Auto, RTL, Guided) as defined in FR-sp3at. Each mode has distinct behavior:
 
 - **Manual**: Direct pass-through of RC inputs to actuators
 - **Hold**: Maintain current position, stop all movement
@@ -30,7 +30,7 @@ The autopilot must support multiple vehicle control modes (Manual, Hold, Auto, R
 
 We need an architecture that:
 
-- Provides common infrastructure for all vehicle modes
+- Provides common infrastructure for all control modes
 - Handles mode lifecycle (initialization, execution, cleanup)
 - Manages mode transitions with validation
 - Executes active mode at 50 Hz control loop frequency
@@ -80,7 +80,7 @@ public:
 
 ## Decision
 
-**We will implement vehicle modes using Rust trait-based polymorphism with a mode manager that owns the active mode and handles transitions.**
+**We will implement control modes using Rust trait-based polymorphism with a mode manager that owns the active mode and handles transitions.**
 
 ### Architecture
 
@@ -92,7 +92,7 @@ public:
                 │
 ┌───────────────▼─────────────────────────────┐
 │          Mode Manager                       │
-│  - Owns current mode (Box<dyn VehicleMode>) │
+│  - Owns current mode (Box<dyn Mode>)        │
 │  - Handles mode transitions                 │
 │  - Validates pre-conditions                 │
 │  - Executes active mode update()            │
@@ -207,13 +207,13 @@ public:
 
 ## Implementation Notes
 
-### VehicleMode Trait
+### Mode Trait
 
 ```rust
-/// Vehicle mode trait
+/// Control mode trait
 ///
-/// All vehicle modes (Manual, Hold, Auto, RTL, Guided) implement this trait.
-pub trait VehicleMode {
+/// All control modes (Manual, Hold, Auto, RTL, Guided) implement this trait.
+pub trait Mode {
     /// Initialize mode (called once on mode entry)
     ///
     /// Returns Err if mode cannot be entered (e.g., Auto without GPS).
@@ -239,7 +239,7 @@ pub trait VehicleMode {
 ```rust
 pub struct ModeManager {
     /// Current active mode
-    current_mode: Box<dyn VehicleMode>,
+    current_mode: Box<dyn Mode>,
     /// System state (for mode reporting)
     system_state: &'static mut SystemState,
     /// Last update timestamp
@@ -248,7 +248,7 @@ pub struct ModeManager {
 
 impl ModeManager {
     /// Create mode manager with initial mode (Manual)
-    pub fn new(initial_mode: Box<dyn VehicleMode>, system_state: &'static mut SystemState) -> Self {
+    pub fn new(initial_mode: Box<dyn Mode>, system_state: &'static mut SystemState) -> Self {
         Self {
             current_mode: initial_mode,
             system_state,
@@ -272,7 +272,7 @@ impl ModeManager {
     }
 
     /// Request mode change (from MAVLink command or internal logic)
-    pub fn set_mode(&mut self, new_mode: Box<dyn VehicleMode>) -> Result<(), &'static str> {
+    pub fn set_mode(&mut self, new_mode: Box<dyn Mode>) -> Result<(), &'static str> {
         // Exit current mode
         if let Err(e) = self.current_mode.exit() {
             defmt::warn!("Mode exit failed: {}", e);
@@ -321,7 +321,7 @@ pub struct ManualMode {
     actuators: &'static mut Actuators,
 }
 
-impl VehicleMode for ManualMode {
+impl Mode for ManualMode {
     fn enter(&mut self) -> Result<(), &'static str> {
         defmt::info!("Entering Manual mode");
         Ok(())
@@ -367,7 +367,7 @@ impl VehicleMode for ManualMode {
 ```rust
 impl ModeManager {
     /// Validate mode transition before attempting
-    fn validate_transition(&self, target_mode: &dyn VehicleMode) -> Result<(), &'static str> {
+    fn validate_transition(&self, target_mode: &dyn Mode) -> Result<(), &'static str> {
         match target_mode.name() {
             "Manual" => Ok(()), // Always allowed
             "Hold" => Ok(()),   // Always allowed
@@ -432,7 +432,7 @@ fn handle_do_set_mode(
     mode_number: u32,
     mode_manager: &'static mut ModeManager,
 ) -> Result<(), &'static str> {
-    let new_mode: Box<dyn VehicleMode> = match mode_number {
+    let new_mode: Box<dyn Mode> = match mode_number {
         0 => Box::new(ManualMode::new(/* ... */)),
         1 => Box::new(StabilizeMode::new(/* ... */)), // Future
         2 => Box::new(HoldMode::new(/* ... */)),
@@ -454,7 +454,7 @@ fn handle_do_set_mode(
 
 ```
 src/vehicle/
-├── mod.rs              # Vehicle module root, exports VehicleMode trait
+├── mod.rs              # Vehicle module root, exports Mode trait
 ├── mode_manager.rs     # Mode manager implementation
 └── modes/
     ├── mod.rs          # Mode module root
