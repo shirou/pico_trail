@@ -85,7 +85,8 @@ This task implements manual control capability for rover vehicles by creating a 
                         │
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│         Vehicle Control Task (50 Hz Embassy Task)           │
+│         Control Loop Task (50 Hz Embassy Task)              │
+│  (Vehicle-agnostic: Rover, Boat, Copter)                    │
 │  - Check RC timeout (current time - last update > 1s)       │
 │  - Execute mode_manager.execute()                           │
 │  - Calculate delta time (dt)                                │
@@ -354,7 +355,7 @@ impl Mode for ManualMode {
    - Handler updates timestamp for timeout detection
 
 2. **Mode Execution (50 Hz)**:
-   - Vehicle control task wakes up every 20ms (50 Hz)
+   - Control loop task wakes up every 20ms (50 Hz)
    - Task locks RcInput and checks timeout (current_time - last_update > 1s)
    - If timeout: set RcStatus::Lost, zero all channels
    - Task calls mode_manager.execute(current_time_us)

@@ -36,6 +36,9 @@ use super::{
 };
 use crate::platform::traits::flash::FlashInterface;
 
+#[cfg(feature = "pico2_w")]
+use mavlink::Message;
+
 /// MAVLink task configuration
 #[derive(Debug, Clone, Copy)]
 pub struct MavlinkConfig {

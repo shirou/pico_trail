@@ -6,6 +6,7 @@
 //! ## Modules
 //!
 //! - `mode`: Control mode implementations (Manual, Hold, Auto, RTL, Guided)
+//! - `mode_manager`: Mode lifecycle management and transitions
 //!
 //! ## References
 //!
@@ -13,6 +14,8 @@
 //! - FR-sp3at-control-modes: Rover mode requirements
 
 pub mod mode;
+pub mod mode_manager;
 
-// Re-export Mode trait for convenience
+// Re-export commonly used types
 pub use mode::Mode;
+pub use mode_manager::ModeManager;

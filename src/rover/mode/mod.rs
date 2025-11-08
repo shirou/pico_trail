@@ -18,6 +18,11 @@
 //! - FR-sp3at-control-modes: Mode requirements
 //! - ArduPilot Rover modes: https://ardupilot.org/rover/docs/rover-control-modes.html
 
+pub mod manual;
+
+// Re-export mode implementations
+pub use manual::ManualMode;
+
 /// Control mode trait
 ///
 /// All control modes (Manual, Hold, Auto, RTL, Guided) implement this trait.

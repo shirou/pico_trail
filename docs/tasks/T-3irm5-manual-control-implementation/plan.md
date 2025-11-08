@@ -94,49 +94,49 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask. If an
 
 ### Tasks
 
-- [ ] **Create vehicle module structure**
-  - [ ] Create `src/rover/mod.rs` with module documentation
-  - [ ] Add `pub mod vehicle;` to `src/lib.rs`
-  - [ ] Export public types: `RcInput`, `ActuatorInterface`, `Actuators`
-- [ ] **Implement RC input state**
-  - [ ] Create `src/libraries/rc_channel/mod.rs`
-  - [ ] Define `RcInput` struct (channels\[18], channel_count, last_update_us, status)
-  - [ ] Define `RcStatus` enum (Active, Lost, NeverConnected)
-  - [ ] Implement `RcInput::new()` constructor
-  - [ ] Implement `RcInput::normalize_channel(raw: u16) -> f32` (0-65535 → -1.0 to +1.0)
-  - [ ] Implement `RcInput::update_from_mavlink(msg, current_time_us)`
-  - [ ] Implement `RcInput::get_channel(channel: usize) -> f32` (1-indexed)
-  - [ ] Implement `RcInput::check_timeout(current_time_us)` (1 second threshold)
-  - [ ] Implement `RcInput::is_active()` and `RcInput::is_lost()`
-  - [ ] Create global `RC_INPUT: Mutex<RcInput>` static
-  - [ ] Add unit tests for normalization (boundary values: 0, 32768, 65535)
-  - [ ] Add unit tests for timeout detection (active → lost after 1s)
-- [ ] **Create RC_CHANNELS MAVLink handler**
-  - [ ] Create `src/communication/mavlink/handlers/rc_input.rs`
-  - [ ] Implement `handle_rc_channels(msg: &RC_CHANNELS_DATA)` async function
-  - [ ] Lock `RC_INPUT` mutex and call `update_from_mavlink()`
-  - [ ] Log RC channel values at trace level (channel 1, channel 3, count)
-  - [ ] Register handler in MAVLink router (update `handlers/mod.rs`)
-  - [ ] Add integration to MAVLink task message dispatch
-- [ ] **Implement actuator abstraction**
-  - [ ] Create `src/libraries/srv_channel/mod.rs`
-  - [ ] Define `ActuatorInterface` trait (set_steering, set_throttle, get_steering, get_throttle)
-  - [ ] Define `ActuatorConfig` struct (steering_min/neutral/max, throttle_min/neutral/max)
-  - [ ] Implement `ActuatorConfig::default()` (1000/1500/2000 for all)
-  - [ ] Define `Actuators` struct (steering_pwm, throttle_pwm, system_state, config, current values)
-  - [ ] Implement `Actuators::new(steering_pwm, throttle_pwm, system_state, config)`
-  - [ ] Implement `ActuatorInterface::set_steering(normalized: f32)`
-    - [ ] Check `system_state.is_armed()`, override to 0.0 if disarmed
-    - [ ] Clamp normalized to \[-1.0, +1.0]
-    - [ ] Convert normalized → PWM pulse width (1000-2000 μs)
-    - [ ] Convert pulse width → duty cycle (5-10% for 50 Hz PWM)
-    - [ ] Call `steering_pwm.set_duty_cycle(duty)`
-    - [ ] Store `current_steering` for telemetry
-  - [ ] Implement `ActuatorInterface::set_throttle(normalized: f32)` (same logic as steering)
-  - [ ] Implement `normalized_to_pulse(normalized, min, neutral, max) -> u16` helper
-  - [ ] Implement `pulse_to_duty_cycle(pulse_us: u16) -> f32` helper (50 Hz = 20ms period)
-  - [ ] Add unit tests for PWM conversion (1000 μs = 5%, 1500 μs = 7.5%, 2000 μs = 10%)
-  - [ ] Add unit tests for armed state enforcement (disarmed → neutral outputs)
+- [x] **Create vehicle module structure**
+  - [x] Create `src/rover/mod.rs` with module documentation
+  - [x] Add `pub mod vehicle;` to `src/lib.rs`
+  - [x] Export public types: `RcInput`, `ActuatorInterface`, `Actuators`
+- [x] **Implement RC input state**
+  - [x] Create `src/libraries/rc_channel/mod.rs`
+  - [x] Define `RcInput` struct (channels\[18], channel_count, last_update_us, status)
+  - [x] Define `RcStatus` enum (Active, Lost, NeverConnected)
+  - [x] Implement `RcInput::new()` constructor
+  - [x] Implement `RcInput::normalize_channel(raw: u16) -> f32` (0-65535 → -1.0 to +1.0)
+  - [x] Implement `RcInput::update_from_mavlink(msg, current_time_us)`
+  - [x] Implement `RcInput::get_channel(channel: usize) -> f32` (1-indexed)
+  - [x] Implement `RcInput::check_timeout(current_time_us)` (1 second threshold)
+  - [x] Implement `RcInput::is_active()` and `RcInput::is_lost()`
+  - [x] Create global `RC_INPUT: Mutex<RcInput>` static
+  - [x] Add unit tests for normalization (boundary values: 0, 32768, 65535)
+  - [x] Add unit tests for timeout detection (active → lost after 1s)
+- [x] **Create RC_CHANNELS MAVLink handler**
+  - [x] Create `src/communication/mavlink/handlers/rc_input.rs`
+  - [x] Implement `handle_rc_channels(msg: &RC_CHANNELS_DATA)` async function
+  - [x] Lock `RC_INPUT` mutex and call `update_from_mavlink()`
+  - [x] Log RC channel values at trace level (channel 1, channel 3, count)
+  - [x] Register handler in MAVLink router (update `handlers/mod.rs`)
+  - [x] Add integration to MAVLink task message dispatch
+- [x] **Implement actuator abstraction**
+  - [x] Create `src/libraries/srv_channel/mod.rs`
+  - [x] Define `ActuatorInterface` trait (set_steering, set_throttle, get_steering, get_throttle)
+  - [x] Define `ActuatorConfig` struct (steering_min/neutral/max, throttle_min/neutral/max)
+  - [x] Implement `ActuatorConfig::default()` (1000/1500/2000 for all)
+  - [x] Define `Actuators` struct (steering_pwm, throttle_pwm, system_state, config, current values)
+  - [x] Implement `Actuators::new(steering_pwm, throttle_pwm, system_state, config)`
+  - [x] Implement `ActuatorInterface::set_steering(normalized: f32)`
+    - [x] Check `system_state.is_armed()`, override to 0.0 if disarmed
+    - [x] Clamp normalized to \[-1.0, +1.0]
+    - [x] Convert normalized → PWM pulse width (1000-2000 μs)
+    - [x] Convert pulse width → duty cycle (5-10% for 50 Hz PWM)
+    - [x] Call `steering_pwm.set_duty_cycle(duty)`
+    - [x] Store `current_steering` for telemetry
+  - [x] Implement `ActuatorInterface::set_throttle(normalized: f32)` (same logic as steering)
+  - [x] Implement `normalized_to_pulse(normalized, min, neutral, max) -> u16` helper
+  - [x] Implement `pulse_to_duty_cycle(pulse_us: u16) -> f32` helper (50 Hz = 20ms period)
+  - [x] Add unit tests for PWM conversion (1000 μs = 5%, 1500 μs = 7.5%, 2000 μs = 10%)
+  - [x] Add unit tests for armed state enforcement (disarmed → neutral outputs)
 
 ### Deliverables
 
@@ -201,50 +201,50 @@ cargo test --lib --quiet actuators
 
 ### Tasks
 
-- [ ] **Define VehicleMode trait**
-  - [ ] Create `src/rover/mode/mod.rs`
-  - [ ] Define `VehicleMode` trait with methods:
-    - [ ] `fn enter(&mut self) -> Result<(), &'static str>` - Initialize mode
-    - [ ] `fn update(&mut self, dt: f32) -> Result<(), &'static str>` - Execute mode (50 Hz)
-    - [ ] `fn exit(&mut self) -> Result<(), &'static str>` - Cleanup mode
-    - [ ] `fn name(&self) -> &'static str` - Get mode name
-  - [ ] Add comprehensive trait documentation with examples
-  - [ ] Add `#[allow(async_fn_in_trait)]` if using async methods
-- [ ] **Implement Mode Manager**
-  - [ ] Create `src/rover/mode_manager.rs`
-  - [ ] Define `ModeManager` struct (current_mode: Box<dyn Mode>, system_state, last_update_us)
-  - [ ] Implement `ModeManager::new(initial_mode, system_state)`
-  - [ ] Implement `ModeManager::execute(current_time_us) -> Result<(), &'static str>`
-    - [ ] Calculate delta time (dt = (current_time_us - last_update_us) / 1_000_000.0)
-    - [ ] Call `current_mode.update(dt)`
-    - [ ] Update `last_update_us`
-  - [ ] Implement `ModeManager::set_mode(new_mode: Box<dyn Mode>) -> Result<(), &'static str>`
-    - [ ] Call `current_mode.exit()` (log warnings, continue if error)
-    - [ ] Call `new_mode.enter()` (if error, revert to Manual fallback)
-    - [ ] Update `current_mode`
-    - [ ] Update `system_state.mode`
-    - [ ] Log mode change (defmt::info)
-  - [ ] Implement `ModeManager::current_mode_name() -> &'static str`
-  - [ ] Add unit tests for mode transitions (mock modes)
-  - [ ] Add unit tests for mode entry failure (verify Manual fallback)
-- [ ] **Create Vehicle Control Task**
-  - [ ] Create `src/core/scheduler/tasks/vehicle.rs`
-  - [ ] Define `vehicle_control_task(mode_manager: &'static mut ModeManager)` Embassy task
-  - [ ] Create 50 Hz ticker (`Ticker::every(Duration::from_millis(20))`)
-  - [ ] In loop:
-    - [ ] Get current timestamp (`embassy_time::Instant::now().as_micros()`)
-    - [ ] Lock `RC_INPUT` and call `check_timeout(current_time_us)`
-    - [ ] Call `mode_manager.execute(current_time_us)`
-    - [ ] Log errors if mode execution fails (defmt::error)
-    - [ ] Wait for next tick (`ticker.next().await`)
-  - [ ] Add task to scheduler initialization (update `src/core/scheduler/mod.rs`)
-  - [ ] Export task from `tasks/mod.rs`
+- [x] **Define VehicleMode trait**
+  - [x] Create `src/rover/mode/mod.rs`
+  - [x] Define `VehicleMode` trait with methods:
+    - [x] `fn enter(&mut self) -> Result<(), &'static str>` - Initialize mode
+    - [x] `fn update(&mut self, dt: f32) -> Result<(), &'static str>` - Execute mode (50 Hz)
+    - [x] `fn exit(&mut self) -> Result<(), &'static str>` - Cleanup mode
+    - [x] `fn name(&self) -> &'static str` - Get mode name
+  - [x] Add comprehensive trait documentation with examples
+  - [x] Add `#[allow(async_fn_in_trait)]` if using async methods
+- [x] **Implement Mode Manager**
+  - [x] Create `src/rover/mode_manager.rs`
+  - [x] Define `ModeManager` struct (current_mode: Box<dyn Mode>, system_state, last_update_us)
+  - [x] Implement `ModeManager::new(initial_mode, system_state)`
+  - [x] Implement `ModeManager::execute(current_time_us) -> Result<(), &'static str>`
+    - [x] Calculate delta time (dt = (current_time_us - last_update_us) / 1_000_000.0)
+    - [x] Call `current_mode.update(dt)`
+    - [x] Update `last_update_us`
+  - [x] Implement `ModeManager::set_mode(new_mode: Box<dyn Mode>) -> Result<(), &'static str>`
+    - [x] Call `current_mode.exit()` (log warnings, continue if error)
+    - [x] Call `new_mode.enter()` (if error, revert to Manual fallback)
+    - [x] Update `current_mode`
+    - [x] Update `system_state.mode`
+    - [x] Log mode change (defmt::info)
+  - [x] Implement `ModeManager::current_mode_name() -> &'static str`
+  - [x] Add unit tests for mode transitions (mock modes)
+  - [x] Add unit tests for mode entry failure (verify Manual fallback)
+- [x] **Create Control Loop Task**
+  - [x] Create `src/core/scheduler/tasks/control.rs` (vehicle-agnostic: Rover/Boat/Copter)
+  - [x] Define `control_loop_task(mode_manager: ModeManager)` Embassy task
+  - [x] Create 50 Hz ticker (`Ticker::every(Duration::from_millis(20))`)
+  - [x] In loop:
+    - [x] Get current timestamp (`embassy_time::Instant::now().as_micros()`)
+    - [x] Lock `RC_INPUT` and call `check_timeout(current_time_us)`
+    - [x] Call `mode_manager.execute(current_time_us)`
+    - [x] Log errors if mode execution fails (defmt::error)
+    - [x] Wait for next tick (`ticker.next().await`)
+  - [x] Add task to scheduler initialization (update `src/core/scheduler/mod.rs`)
+  - [x] Export task from `tasks/mod.rs`
 
 ### Deliverables
 
 - `src/rover/mode/mod.rs` - VehicleMode trait definition
 - `src/rover/mode_manager.rs` - Mode manager implementation
-- `src/core/scheduler/tasks/vehicle.rs` - Vehicle control task (50 Hz)
+- `src/core/scheduler/tasks/control.rs` - Control loop task (50 Hz, vehicle-agnostic)
 - Unit tests for mode manager (transitions, delta time calculation)
 
 ### Verification
@@ -266,7 +266,7 @@ cargo test --lib --quiet mode_manager
 - VehicleMode trait compiles and is well-documented
 - Mode manager handles transitions correctly (exit → enter)
 - Mode manager handles entry failure (reverts to Manual fallback)
-- Vehicle control task executes at 50 Hz (verify with logs)
+- Control loop task executes at 50 Hz (verify with logs)
 - Delta time calculation accurate (20ms ± 1ms)
 - RC timeout checked every control loop iteration
 - All unit tests pass
@@ -275,6 +275,8 @@ cargo test --lib --quiet mode_manager
 
 - If trait object overhead is significant: Profile and consider enum-based state machine
 - If 50 Hz execution timing is unstable: Investigate scheduler priority or Embassy Ticker behavior
+
+**Note**: The control loop task (`control.rs`) is vehicle-agnostic and will be reused for Boat and Copter implementations.
 
 ---
 

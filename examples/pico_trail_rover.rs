@@ -49,6 +49,18 @@ use embassy_rp as hal;
 use embassy_time::{Duration, Timer};
 use {defmt_rtt as _, panic_probe as _};
 
+// Global allocator for Box/Vec support (required for mode manager)
+#[cfg(feature = "pico2_w")]
+use embedded_alloc::LlffHeap as Heap;
+
+#[cfg(feature = "pico2_w")]
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
+
+// Heap size: 16 KB (sufficient for mode manager and small allocations)
+#[cfg(feature = "pico2_w")]
+const HEAP_SIZE: usize = 16 * 1024;
+
 #[cfg(feature = "pico2_w")]
 use pico_trail::{
     communication::mavlink::{
@@ -67,6 +79,18 @@ use pico_trail::{
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
+    // Initialize heap for allocations (Box, Vec, etc.)
+    #[cfg(feature = "pico2_w")]
+    {
+        static mut HEAP_MEM: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
+        unsafe {
+            HEAP.init(
+                core::ptr::addr_of_mut!(HEAP_MEM) as *mut u8 as usize,
+                HEAP_SIZE,
+            )
+        }
+    }
+
     info!("pico_trail Rover");
     info!("================");
     info!("");
@@ -173,11 +197,6 @@ async fn main(spawner: Spawner) {
         loop {
             Timer::after(Duration::from_secs(60)).await;
         }
-    }
-
-    // Main loop
-    loop {
-        Timer::after(Duration::from_secs(60)).await;
     }
 }
 

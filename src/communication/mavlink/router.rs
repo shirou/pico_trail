@@ -290,6 +290,13 @@ impl<F: FlashInterface> MavlinkRouter<F> {
                 Ok(())
             }
 
+            // RC input (Manual Control)
+            #[cfg(feature = "pico2_w")]
+            MavMessage::RC_CHANNELS(data) => {
+                self.handle_rc_channels(data, timestamp_us);
+                Ok(())
+            }
+
             // All other messages
             _ => {
                 self.stats.unhandled_messages += 1;
@@ -411,6 +418,42 @@ impl<F: FlashInterface> MavlinkRouter<F> {
     /// Handle MISSION_ACK message
     fn handle_mission_ack(&mut self, data: &mavlink::common::MISSION_ACK_DATA) {
         self.mission_handler.handle_ack(data);
+    }
+
+    /// Handle RC_CHANNELS message
+    ///
+    /// Updates RC input state with channel values from GCS.
+    #[cfg(feature = "pico2_w")]
+    fn handle_rc_channels(&mut self, data: &mavlink::common::RC_CHANNELS_DATA, timestamp_us: u64) {
+        // Extract channel values from RC_CHANNELS message
+        let raw_channels = [
+            data.chan1_raw,
+            data.chan2_raw,
+            data.chan3_raw,
+            data.chan4_raw,
+            data.chan5_raw,
+            data.chan6_raw,
+            data.chan7_raw,
+            data.chan8_raw,
+            data.chan9_raw,
+            data.chan10_raw,
+            data.chan11_raw,
+            data.chan12_raw,
+            data.chan13_raw,
+            data.chan14_raw,
+            data.chan15_raw,
+            data.chan16_raw,
+            data.chan17_raw,
+            data.chan18_raw,
+        ];
+
+        // Call RC input handler (async, will be executed in current context)
+        // Note: This is a synchronous wrapper around the async handler
+        embassy_futures::block_on(super::handlers::rc_input::handle_rc_channels(
+            &raw_channels,
+            data.chancount,
+            timestamp_us,
+        ));
     }
 }
 

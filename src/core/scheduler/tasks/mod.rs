@@ -1,15 +1,20 @@
-//! Example tasks demonstrating Embassy task usage with scheduler
+//! Task implementations for scheduler
 //!
-//! This module contains sample tasks that demonstrate how to use the
-//! scheduler infrastructure with Embassy async tasks. Each task shows
-//! the pattern of:
-//! 1. Registering task metadata
-//! 2. Using Ticker for periodic execution
-//! 3. Measuring execution time
-//! 4. Updating statistics
+//! This module contains Embassy async tasks for various subsystems:
+//! - Example tasks demonstrating scheduler usage
+//! - Control loop task (50 Hz mode execution, vehicle-agnostic)
 //!
-//! These tasks are examples and placeholders. Real implementations will
-//! interact with actual hardware peripherals.
+//! Each task follows the pattern of:
+//! 1. Using Ticker for periodic execution
+//! 2. Measuring execution time
+//! 3. Logging errors and status updates
 
 #[cfg(feature = "pico2_w")]
 pub mod examples;
+
+#[cfg(feature = "pico2_w")]
+pub mod control;
+
+// Re-export control loop task for convenience
+#[cfg(feature = "pico2_w")]
+pub use control::control_loop_task;

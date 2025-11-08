@@ -18,6 +18,11 @@ categories = ["embedded", "no-std"]
 # path = "src/bin/platform_test.rs"
 # test = false
 
+# Examples require pico2_w feature for embedded targets
+[[example]]
+name = "pico_trail_rover"
+required-features = ["pico2_w"]
+
 [lib]
 # harness = false is only needed for no_std embedded targets
 # For host tests, we need the default test harness
@@ -60,6 +65,9 @@ static_cell = { version = "2.1", optional = true }
 
 # heapless for no_std collections (required for parameter storage)
 heapless = "0.8"
+
+# Heap allocator for no_std (required for Box in mode manager)
+embedded-alloc = { version = "0.6", optional = true }
 
 # Synchronization primitives
 # Implementation provided by cortex-m's critical-section-single-core feature
@@ -125,7 +133,7 @@ pico2_w = [
     "embedded-hal", "embedded-hal-1", "nb", "fugit",
     "embassy-executor", "embassy-time", "embassy-rp", "embassy-usb",
     "embassy-sync", "embassy-futures", "embassy-net",
-    "cyw43", "cyw43-pio", "static_cell",
+    "cyw43", "cyw43-pio", "static_cell", "embedded-alloc",
     "embassy-rp/rp235xa", "embassy-rp/critical-section-impl", "embassy-rp/binary-info"
 ]
 mock = []
