@@ -52,7 +52,8 @@
       "mcp__serena__write_memory",
       "Bash(tree:*)",
       "mcp__serena__read_memory",
-      "mcp__serena__think_about_whether_you_are_done"
+      "mcp__serena__think_about_whether_you_are_done",
+      "WebFetch(domain:docs.freenove.com)"
     ],
     "deny": [],
     "ask": []
