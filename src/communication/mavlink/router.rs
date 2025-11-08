@@ -22,7 +22,9 @@
 //! - Tracks last received heartbeat timestamp
 //! - Provides connection status queries
 
-use super::handlers::{CommandHandler, MissionHandler, ParamHandler, TelemetryStreamer};
+use super::handlers::{
+    CommandHandler, MissionHandler, ParamHandler, RcInputHandler, TelemetryStreamer,
+};
 use super::state::SystemState;
 use crate::platform::traits::flash::FlashInterface;
 use mavlink::common::MavMessage;
@@ -94,6 +96,8 @@ pub struct MavlinkRouter<F: FlashInterface> {
     command_handler: CommandHandler,
     /// Mission handler
     mission_handler: MissionHandler,
+    /// RC input handler
+    rc_input_handler: RcInputHandler,
     /// Pending outgoing messages (responses to commands, one-time messages)
     pending_messages: heapless::Vec<MavMessage, 8>,
     /// Flash interface marker (not used directly, but needed for generic type)
@@ -118,6 +122,7 @@ impl<F: FlashInterface> MavlinkRouter<F> {
             telemetry: TelemetryStreamer::new(system_id, component_id),
             command_handler: CommandHandler::new(system_state),
             mission_handler: MissionHandler::new(system_id, component_id),
+            rc_input_handler: RcInputHandler::new(),
             pending_messages: heapless::Vec::new(),
             _flash: core::marker::PhantomData,
         }
@@ -291,7 +296,6 @@ impl<F: FlashInterface> MavlinkRouter<F> {
             }
 
             // RC input (Manual Control)
-            #[cfg(feature = "pico2_w")]
             MavMessage::RC_CHANNELS(data) => {
                 self.handle_rc_channels(data, timestamp_us);
                 Ok(())
@@ -423,37 +427,10 @@ impl<F: FlashInterface> MavlinkRouter<F> {
     /// Handle RC_CHANNELS message
     ///
     /// Updates RC input state with channel values from GCS.
-    #[cfg(feature = "pico2_w")]
     fn handle_rc_channels(&mut self, data: &mavlink::common::RC_CHANNELS_DATA, timestamp_us: u64) {
-        // Extract channel values from RC_CHANNELS message
-        let raw_channels = [
-            data.chan1_raw,
-            data.chan2_raw,
-            data.chan3_raw,
-            data.chan4_raw,
-            data.chan5_raw,
-            data.chan6_raw,
-            data.chan7_raw,
-            data.chan8_raw,
-            data.chan9_raw,
-            data.chan10_raw,
-            data.chan11_raw,
-            data.chan12_raw,
-            data.chan13_raw,
-            data.chan14_raw,
-            data.chan15_raw,
-            data.chan16_raw,
-            data.chan17_raw,
-            data.chan18_raw,
-        ];
-
         // Call RC input handler (async, will be executed in current context)
         // Note: This is a synchronous wrapper around the async handler
-        embassy_futures::block_on(super::handlers::rc_input::handle_rc_channels(
-            &raw_channels,
-            data.chancount,
-            timestamp_us,
-        ));
+        embassy_futures::block_on(self.rc_input_handler.handle_rc_channels(data, timestamp_us));
     }
 }
 

@@ -109,6 +109,28 @@ All documentation output in this project must be written in English, including:
   - Compile to no-op in other contexts
 - This abstraction centralizes conditional compilation and keeps logging code clean and portable
 
+### MAVLink Protocol Handling
+
+- **All MAVLink message handling MUST be implemented in `src/communication/mavlink/`**
+- **Never process MAVLink messages directly in examples or application code**
+- Follow the established handler pattern:
+  - Create or extend handlers in `src/communication/mavlink/handlers/`
+  - Register handlers with `MessageDispatcher` in `src/communication/mavlink/dispatcher.rs`
+  - Use `dispatcher.process_rc_input()` for async RC messages (RC_CHANNELS, RC_CHANNELS_OVERRIDE)
+  - Use `dispatcher.dispatch()` for synchronous messages that produce responses
+- **Examples should only:**
+  - Initialize handlers and dispatcher
+  - Call dispatcher methods to process messages
+  - Send responses returned by the dispatcher
+  - NOT extract message data or implement protocol logic
+- This centralization ensures:
+  - Protocol logic is reusable across all examples and applications
+  - Testing is easier with handlers in one location
+  - Changes to MAVLink handling don't require updating multiple files
+  - Examples remain simple and focused on demonstrating usage
+- **Example anti-pattern**: Extracting channel data from RC_CHANNELS in the example file
+- **Correct pattern**: Call `dispatcher.process_rc_input(&msg, timestamp)` and let the handler extract data
+
 ## Traceable Development Lifecycle (TDL)
 
 _Structured phases, linked artifacts, verifiable outcomes_

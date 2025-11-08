@@ -7,6 +7,7 @@
 //! - MAVLink communication via UDP network transport
 //! - WiFi configuration via parameter storage
 //! - Command handling (ARM/DISARM, mode changes)
+//! - Manual control with RC input processing (RC_CHANNELS)
 //! - Telemetry streaming
 //! - Mission handling
 //!
@@ -36,14 +37,15 @@
 //!
 //! 1. Configure WiFi via UART connection (QGroundControl Parameters tab)
 //! 2. Reboot device - should connect to WiFi automatically
-//! 3. Open QGroundControl UDP connection (port 14550)
+//! 3. Open QGroundControl/Mission Planner UDP connection (port 14550)
 //! 4. Verify heartbeat and telemetry appear
 //! 5. Test ARM/DISARM commands
+//! 6. Test manual control (configure joystick, arm vehicle, move joystick)
+//! 7. Test RC timeout (stop sending RC_CHANNELS → verify fail-safe after 1s)
 
 #![no_std]
 #![no_main]
 
-use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp as hal;
 use embassy_time::{Duration, Timer};
@@ -67,7 +69,7 @@ use pico_trail::{
         dispatcher::MessageDispatcher,
         handlers::{
             command::CommandHandler, mission::MissionHandler, param::ParamHandler,
-            telemetry::TelemetryStreamer,
+            rc_input::RcInputHandler, telemetry::TelemetryStreamer,
         },
         parser::MavlinkParser,
         transport::udp::UdpTransport,
@@ -91,9 +93,9 @@ async fn main(spawner: Spawner) {
         }
     }
 
-    info!("pico_trail Rover");
-    info!("================");
-    info!("");
+    pico_trail::log_info!("pico_trail Rover");
+    pico_trail::log_info!("================");
+    pico_trail::log_info!("");
 
     // Initialize Flash for parameter storage
     let mut flash = Rp2350Flash::new();
@@ -110,16 +112,16 @@ async fn main(spawner: Spawner) {
         let wifi_params = WifiParams::from_store(param_handler.store());
 
         if wifi_params.is_configured() {
-            info!("WiFi configured - initializing network...");
+            pico_trail::log_info!("WiFi configured - initializing network...");
 
             let config = WifiConfig::from_params(&wifi_params);
-            info!("  SSID: {}", config.ssid.as_str());
-            info!("  DHCP: {}", config.use_dhcp);
+            pico_trail::log_info!("  SSID: {}", config.ssid.as_str());
+            pico_trail::log_info!("  DHCP: {}", config.use_dhcp);
 
             // Initialize WiFi (consumes p)
             match pico_trail::platform::rp2350::network::initialize_wifi(spawner, config, p).await {
                 Ok((stack, _control)) => {
-                    info!("WiFi connected");
+                    pico_trail::log_info!("WiFi connected");
 
                     // Wait for network to be ready
                     Timer::after(Duration::from_secs(2)).await;
@@ -141,13 +143,13 @@ async fn main(spawner: Spawner) {
                         unsafe { &mut *core::ptr::addr_of_mut!(TX_BUFFER) },
                     );
 
-                    info!("UDP transport initialized on port 14550");
+                    pico_trail::log_info!("UDP transport initialized on port 14550");
 
                     // Create transport router with UDP only
                     let mut router = TransportRouter::new();
                     router.set_udp_transport(udp_transport);
 
-                    info!("Transport router initialized with UDP");
+                    pico_trail::log_info!("Transport router initialized with UDP");
 
                     // Initialize handlers
                     // Load system state with ARMING_CHECK parameter from parameter store
@@ -158,6 +160,7 @@ async fn main(spawner: Spawner) {
                     let command_handler = CommandHandler::new(state);
                     let telemetry_streamer = TelemetryStreamer::new(1, 1);
                     let mission_handler = MissionHandler::new(1, 1);
+                    let rc_input_handler = RcInputHandler::new();
 
                     // Create message dispatcher
                     let dispatcher = MessageDispatcher::new(
@@ -165,26 +168,27 @@ async fn main(spawner: Spawner) {
                         command_handler,
                         telemetry_streamer,
                         mission_handler,
+                        rc_input_handler,
                     );
 
-                    info!("Message dispatcher initialized");
+                    pico_trail::log_info!("Message dispatcher initialized");
 
                     // Spawn MAVLink task
                     spawner.spawn(rover_mavlink_task(router, dispatcher).unwrap());
                 }
                 Err(e) => {
-                    warn!("WiFi initialization failed: {:?}", e);
-                    warn!("Cannot continue without WiFi");
+                    pico_trail::log_warn!("WiFi initialization failed: {:?}", e);
+                    pico_trail::log_warn!("Cannot continue without WiFi");
                     loop {
                         Timer::after(Duration::from_secs(60)).await;
                     }
                 }
             }
         } else {
-            info!("WiFi not configured");
-            info!("Configure WiFi via MAVLink parameters and reboot:");
-            info!("  NET_SSID - WiFi network name");
-            info!("  NET_PASS - WiFi password");
+            pico_trail::log_info!("WiFi not configured");
+            pico_trail::log_info!("Configure WiFi via MAVLink parameters and reboot:");
+            pico_trail::log_info!("  NET_SSID - WiFi network name");
+            pico_trail::log_info!("  NET_PASS - WiFi password");
             loop {
                 Timer::after(Duration::from_secs(60)).await;
             }
@@ -193,7 +197,7 @@ async fn main(spawner: Spawner) {
 
     #[cfg(not(feature = "pico2_w"))]
     {
-        error!("This example requires pico2_w feature");
+        pico_trail::log_error!("This example requires pico2_w feature");
         loop {
             Timer::after(Duration::from_secs(60)).await;
         }
@@ -247,7 +251,7 @@ async fn rover_mavlink_task(
     use embassy_time::Instant;
     use mavlink::Message;
 
-    info!("Rover MAVLink task started");
+    pico_trail::log_info!("Rover MAVLink task started");
 
     let mut parser = MavlinkParser::new();
     let mut sequence: u8 = 0;
@@ -264,7 +268,7 @@ async fn rover_mavlink_task(
         // Handle received messages
         match read_result {
             embassy_futures::select::Either::Second(Ok((n, _transport_id))) => {
-                defmt::trace!("RX {} bytes", n);
+                pico_trail::log_debug!("RX {} bytes", n);
 
                 // Create reader for parsing - may contain multiple messages
                 let mut reader = ByteReader::new(&buf[..n]);
@@ -273,26 +277,24 @@ async fn rover_mavlink_task(
                 loop {
                     match parser.read_message(&mut reader).await {
                         Ok((header, msg)) => {
-                            defmt::debug!(
-                                "RX MAVLink message: sys={}, comp={}, msgid={}",
+                            pico_trail::log_debug!(
+                                "RX MAVLink message: sys={}, comp={}, seq={}, msgid={}",
                                 header.system_id,
                                 header.component_id,
+                                header.sequence,
                                 msg.message_id()
                             );
 
                             let timestamp_us = Instant::now().as_micros();
 
+                            // Process RC input messages (async, updates global state)
+                            dispatcher.process_rc_input(&msg, timestamp_us).await;
+
                             // Dispatch message to appropriate handler
                             let responses = dispatcher.dispatch(&header, &msg, timestamp_us);
-                            defmt::info!("Dispatch returned {} responses", responses.len());
 
                             // Send all response messages
                             for response_msg in responses {
-                                defmt::info!(
-                                    "Sending response: msgid={}",
-                                    response_msg.message_id()
-                                );
-
                                 let response_header = mavlink::MavHeader {
                                     system_id: 1,
                                     component_id: 1,
@@ -311,7 +313,7 @@ async fn rover_mavlink_task(
                                 {
                                     let len = 280 - msg_cursor.len();
                                     if router.send_bytes(&msg_buf[..len]).await.is_ok() {
-                                        defmt::trace!("TX {} bytes", len);
+                                        pico_trail::log_trace!("TX {} bytes", len);
                                         sequence = sequence.wrapping_add(1);
                                     }
                                 }
@@ -327,14 +329,14 @@ async fn rover_mavlink_task(
                         }
                         Err(e) => {
                             // End of buffer or parse error
-                            defmt::trace!("MAVLink parse finished/error: {:?}", e);
+                            pico_trail::log_trace!("MAVLink parse finished/error: {:?}", e);
                             break;
                         }
                     }
                 }
             }
             embassy_futures::select::Either::Second(Err(e)) => {
-                defmt::warn!("Receive error: {:?}", e);
+                pico_trail::log_warn!("Receive error: {:?}", e);
             }
             embassy_futures::select::Either::First(_) => {
                 // Timeout - no message received
@@ -360,7 +362,7 @@ async fn rover_mavlink_task(
             if mavlink::write_v2_msg(&mut cursor, header, &telem_msg).is_ok() {
                 let len = 280 - cursor.len();
                 if router.send_bytes(&msg_buf[..len]).await.is_ok() {
-                    defmt::trace!("TX telemetry ({} bytes to all transports)", len);
+                    pico_trail::log_trace!("TX telemetry ({} bytes to all transports)", len);
                     sequence = sequence.wrapping_add(1);
                 }
             }

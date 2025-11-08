@@ -104,6 +104,64 @@ impl RcInput {
         centered as f32 / 32768.0
     }
 
+    /// Normalize PWM channel (1000-2000 → -1.0 to +1.0)
+    ///
+    /// # MAVLink RC_CHANNELS_OVERRIDE specification
+    ///
+    /// - 1000 = minimum (-1.0)
+    /// - 1500 = center (0.0)
+    /// - 2000 = maximum (+1.0)
+    /// - 65535 = ignore/no change
+    ///
+    /// # Arguments
+    ///
+    /// * `raw` - Raw PWM value (1000-2000, or 65535 for ignore)
+    ///
+    /// # Returns
+    ///
+    /// Normalized value (-1.0 to +1.0), or 0.0 if ignored
+    pub fn normalize_pwm_channel(raw: u16) -> f32 {
+        // 65535 means "ignore this channel"
+        if raw == 65535 {
+            return 0.0;
+        }
+
+        // Clamp to valid PWM range
+        let clamped = raw.clamp(1000, 2000);
+
+        // Convert 1000-2000 to -1.0 to +1.0
+        // Formula: (raw - 1500) / 500.0
+        let centered = clamped as i32 - 1500;
+        centered as f32 / 500.0
+    }
+
+    /// Update from MAVLink RC_CHANNELS_OVERRIDE message (PWM format)
+    ///
+    /// # Arguments
+    ///
+    /// * `raw_channels` - Raw PWM channel values (1000-2000, or 65535 to ignore)
+    /// * `channel_count` - Number of active channels
+    /// * `current_time_us` - Current timestamp in microseconds
+    pub fn update_from_pwm(
+        &mut self,
+        raw_channels: &[u16],
+        channel_count: u8,
+        current_time_us: u64,
+    ) {
+        // Normalize PWM channels
+        let count = core::cmp::min(raw_channels.len(), 18);
+        for (i, &raw_value) in raw_channels.iter().enumerate().take(count) {
+            // Only update if not 65535 (ignore value)
+            if raw_value != 65535 {
+                self.channels[i] = Self::normalize_pwm_channel(raw_value);
+            }
+        }
+
+        self.channel_count = channel_count;
+        self.last_update_us = current_time_us;
+        self.status = RcStatus::Active;
+    }
+
     /// Get channel value (1-indexed, like MAVLink)
     ///
     /// # Arguments

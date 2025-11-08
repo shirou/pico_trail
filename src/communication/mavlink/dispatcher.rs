@@ -20,7 +20,7 @@
 //! - **Response collection**: Handlers return heapless::Vec of responses
 
 use super::{
-    handlers::{CommandHandler, MissionHandler, ParamHandler, TelemetryStreamer},
+    handlers::{CommandHandler, MissionHandler, ParamHandler, RcInputHandler, TelemetryStreamer},
     state::SystemState,
 };
 use heapless::Vec;
@@ -42,6 +42,8 @@ pub struct MessageDispatcher {
     telemetry_streamer: TelemetryStreamer,
     /// Mission protocol handler
     mission_handler: MissionHandler,
+    /// RC input handler
+    rc_input_handler: RcInputHandler,
 }
 
 impl MessageDispatcher {
@@ -53,17 +55,20 @@ impl MessageDispatcher {
     /// * `command_handler` - Handler for command protocol
     /// * `telemetry_streamer` - Handler for telemetry streaming
     /// * `mission_handler` - Handler for mission protocol
+    /// * `rc_input_handler` - Handler for RC input messages
     pub fn new(
         param_handler: ParamHandler,
         command_handler: CommandHandler,
         telemetry_streamer: TelemetryStreamer,
         mission_handler: MissionHandler,
+        rc_input_handler: RcInputHandler,
     ) -> Self {
         Self {
             param_handler,
             command_handler,
             telemetry_streamer,
             mission_handler,
+            rc_input_handler,
         }
     }
 
@@ -119,7 +124,6 @@ impl MessageDispatcher {
                 let _ = responses.push(COMMAND_ACK(ack));
                 // Add any additional messages (HEARTBEAT, STATUSTEXT, etc.)
                 for msg in additional_messages {
-                    crate::log_info!("Sending additional message after command");
                     let _ = responses.push(msg);
                 }
                 responses
@@ -284,6 +288,49 @@ impl MessageDispatcher {
     pub fn mission_handler_mut(&mut self) -> &mut MissionHandler {
         &mut self.mission_handler
     }
+
+    /// Get reference to RC input handler
+    pub fn rc_input_handler(&self) -> &RcInputHandler {
+        &self.rc_input_handler
+    }
+
+    /// Get mutable reference to RC input handler
+    pub fn rc_input_handler_mut(&mut self) -> &mut RcInputHandler {
+        &mut self.rc_input_handler
+    }
+
+    /// Process RC input messages (async)
+    ///
+    /// RC messages update global state and don't produce response messages.
+    /// This method should be called for RC_CHANNELS and RC_CHANNELS_OVERRIDE
+    /// messages before calling dispatch().
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - Parsed MAVLink message (RC_CHANNELS or RC_CHANNELS_OVERRIDE)
+    /// * `timestamp_us` - Current timestamp in microseconds
+    ///
+    /// # Returns
+    ///
+    /// `true` if the message was handled, `false` if not an RC message
+    pub async fn process_rc_input(&mut self, message: &MavMessage, timestamp_us: u64) -> bool {
+        use mavlink::common::MavMessage::*;
+
+        match message {
+            RC_CHANNELS(rc_data) => {
+                self.rc_input_handler
+                    .handle_rc_channels(rc_data, timestamp_us)
+                    .await;
+                true
+            }
+            RC_CHANNELS_OVERRIDE(rc_override) => {
+                self.rc_input_handler
+                    .handle_rc_channels_override(rc_override, timestamp_us)
+                    .await
+            }
+            _ => false,
+        }
+    }
 }
 
 #[cfg(all(test, feature = "pico2_w"))]
@@ -299,12 +346,14 @@ mod tests {
         let command_handler = CommandHandler::new(state);
         let telemetry_streamer = TelemetryStreamer::new(1, 1);
         let mission_handler = MissionHandler::new(1, 1);
+        let rc_input_handler = RcInputHandler::new();
 
         let _dispatcher = MessageDispatcher::new(
             param_handler,
             command_handler,
             telemetry_streamer,
             mission_handler,
+            rc_input_handler,
         );
     }
 
@@ -316,12 +365,14 @@ mod tests {
         let command_handler = CommandHandler::new(state);
         let telemetry_streamer = TelemetryStreamer::new(1, 1);
         let mission_handler = MissionHandler::new(1, 1);
+        let rc_input_handler = RcInputHandler::new();
 
         let mut dispatcher = MessageDispatcher::new(
             param_handler,
             command_handler,
             telemetry_streamer,
             mission_handler,
+            rc_input_handler,
         );
 
         let header = mavlink::MavHeader {
@@ -349,12 +400,14 @@ mod tests {
         let command_handler = CommandHandler::new(state);
         let telemetry_streamer = TelemetryStreamer::new(1, 1);
         let mission_handler = MissionHandler::new(1, 1);
+        let rc_input_handler = RcInputHandler::new();
 
         let mut dispatcher = MessageDispatcher::new(
             param_handler,
             command_handler,
             telemetry_streamer,
             mission_handler,
+            rc_input_handler,
         );
 
         let header = mavlink::MavHeader {
@@ -392,12 +445,14 @@ mod tests {
         let command_handler = CommandHandler::new(state.clone());
         let telemetry_streamer = TelemetryStreamer::new(1, 1);
         let mission_handler = MissionHandler::new(1, 1);
+        let rc_input_handler = RcInputHandler::new();
 
         let mut dispatcher = MessageDispatcher::new(
             param_handler,
             command_handler,
             telemetry_streamer,
             mission_handler,
+            rc_input_handler,
         );
 
         // First call should produce HEARTBEAT

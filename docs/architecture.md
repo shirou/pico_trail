@@ -126,17 +126,24 @@ src/
 │       │   └── mission.rs  # Mission upload/download
 │       └── telemetry.rs # Telemetry streaming
 │
-├── vehicle/            # Level 4: Vehicle logic
-│   ├── mod.rs
-│   ├── modes/          # Flight modes
-│   │   ├── manual.rs   # Manual control
-│   │   ├── hold.rs     # Position hold
-│   │   ├── auto.rs     # Autonomous mission
-│   │   ├── rtl.rs      # Return to launch
-│   │   └── guided.rs   # GCS-guided control
-│   ├── rover.rs        # Rover-specific logic
-│   ├── boat.rs         # Boat-specific logic
-│   └── common.rs       # Shared vehicle logic
+├── libraries/          # Level 4: Common vehicle libraries
+│   ├── rc_channel/     # RC input processing (vehicle-agnostic)
+│   │   └── mod.rs      # RcInput, RC_INPUT global, normalization
+│   └── srv_channel/    # Servo/actuator output (vehicle-agnostic)
+│       └── mod.rs      # ActuatorInterface, Actuators, calibration
+│
+├── rover/              # Level 5: Rover vehicle implementation
+│   ├── mod.rs          # Module root
+│   ├── mode/           # Control mode implementations
+│   │   ├── mod.rs      # Mode trait definition
+│   │   └── manual.rs   # Manual mode (RC pass-through)
+│   └── mode_manager.rs # Mode lifecycle management
+│
+├── boat/               # Level 5: Boat vehicle implementation (future)
+│   └── mod.rs
+│
+├── copter/             # Level 5: Copter vehicle implementation (future)
+│   └── mod.rs
 │
 ├── core/              # Cross-cutting concerns
 │   ├── scheduler.rs   # Task scheduler
@@ -554,6 +561,181 @@ Configurable telemetry rates (default 10Hz):
 - **L1 Controller**: Legacy path following algorithm (fallback/alternative)
   - Converts origin/destination to lateral acceleration
   - Still useful for simple point-to-point navigation
+
+## Vehicle Layer
+
+The vehicle layer implements vehicle-specific control logic following ArduPilot's architecture with common libraries and vehicle-specific implementations. This layer provides the foundation for manual and autonomous control modes.
+
+### Module Structure
+
+```
+src/
+├── libraries/              # Common libraries (vehicle-agnostic)
+│   ├── rc_channel/        # RC input processing
+│   │   └── mod.rs         # RcInput, RC_INPUT global, normalization
+│   └── srv_channel/       # Servo/actuator output
+│       └── mod.rs         # ActuatorInterface, Actuators, calibration
+│
+├── rover/                  # Rover vehicle implementation
+│   ├── mod.rs             # Module root
+│   ├── mode/              # Control mode implementations
+│   │   ├── mod.rs         # Mode trait definition
+│   │   └── manual.rs      # Manual mode (RC pass-through)
+│   └── mode_manager.rs    # Mode lifecycle management
+│
+└── core/scheduler/tasks/
+    └── control.rs         # Control loop task (50 Hz, vehicle-agnostic)
+```
+
+**Design Rationale**:
+
+- `libraries/`: Vehicle-agnostic functionality shared across Rover, Boat, Copter (analogous to ArduPilot's libraries/)
+- `rover/`: Rover-specific control logic and modes (analogous to ArduPilot's Rover/)
+- Enables future vehicle types (Boat, Copter) to reuse RC/servo libraries
+
+### RC Input Processing
+
+**Source**: `src/libraries/rc_channel/mod.rs`
+
+RC input is processed from MAVLink RC_CHANNELS messages sent by ground control stations (Mission Planner, QGroundControl).
+
+**Components**:
+
+- `RcInput`: Stores 18 normalized channels (-1.0 to +1.0), timestamp, status
+- `RC_INPUT`: Global static Mutex-protected shared state
+- `RcStatus`: Enum (Active, Lost, NeverConnected)
+
+**Processing Flow**:
+
+1. MAVLink RC_CHANNELS handler receives message (5-10 Hz)
+2. Channels normalized: 0-65535 → -1.0 to +1.0 (center: 32768 → 0.0)
+3. RcInput updated with normalized values and timestamp
+4. Control loop task checks timeout every 50 Hz (1 second threshold)
+5. On timeout: RcStatus::Lost, all channels zeroed
+
+**Channel Mapping** (MAVLink/ArduPilot convention):
+
+- Channel 1: Steering (Roll)
+- Channel 2: (Pitch, unused for rovers)
+- Channel 3: Throttle
+- Channel 4: Yaw (unused for Ackermann steering)
+
+### Actuator Abstraction
+
+**Source**: `src/libraries/srv_channel/mod.rs`
+
+Actuator abstraction provides normalized commands (-1.0 to +1.0) with automatic PWM conversion and safety enforcement.
+
+**Components**:
+
+- `ActuatorInterface`: Trait for steering/throttle commands
+- `Actuators`: Implements ActuatorInterface with PWM backend
+- `ActuatorConfig`: Calibration parameters (min/neutral/max pulse width)
+
+**Safety Features**:
+
+- **Armed State Enforcement**: All actuator commands check `system_state.is_armed()`
+- **Automatic Override**: Disarmed state forces neutral outputs (0.0) regardless of command
+- **PWM Conversion**: Normalized value → pulse width (1000-2000 μs) → duty cycle (5-10%)
+
+**Conversion Flow**:
+
+```
+Command: set_throttle(0.5)
+  ↓
+Armed Check: if disarmed → override to 0.0
+  ↓
+Normalize Clamp: [-1.0, +1.0]
+  ↓
+Pulse Width: 0.5 → 1750 μs (linear interpolation)
+  ↓
+Duty Cycle: 1750 μs / 20000 μs = 8.75% (50 Hz PWM)
+  ↓
+Platform PWM: pwm.set_duty_cycle(0.0875)
+```
+
+### Control Mode Framework
+
+**Source**: `src/rover/mode/mod.rs`, `src/rover/mode_manager.rs`
+
+The control mode framework uses trait-based polymorphism for extensible mode implementations.
+
+**Mode Trait**:
+
+```rust
+pub trait Mode {
+    fn enter(&mut self) -> Result<(), &'static str>;
+    fn update(&mut self, dt: f32) -> Result<(), &'static str>;
+    fn exit(&mut self) -> Result<(), &'static str>;
+    fn name(&self) -> &'static str;
+}
+```
+
+**Mode Manager**:
+
+- Owns current mode: `Box<dyn Mode>`
+- Handles transitions: exit → validate → enter
+- Executes active mode at 50 Hz
+- Reverts to Manual fallback on mode entry failure
+
+**Control Loop Task** (`src/core/scheduler/tasks/control.rs`):
+
+- Vehicle-agnostic Embassy task (reusable for Boat, Copter)
+- Runs at 50 Hz (20ms period)
+- Checks RC timeout every iteration
+- Calls `mode_manager.execute(current_time_us)`
+- Calculates delta time for physics-based updates
+
+### Manual Mode
+
+**Source**: `src/rover/mode/manual.rs`
+
+Manual mode provides direct RC pass-through control with no stabilization.
+
+**Implementation**:
+
+1. Lock RC input (brief lock, <100 μs)
+2. Check RC timeout: if lost → unlock, neutral outputs, return
+3. Read channel 1 (steering), channel 3 (throttle)
+4. Unlock RC input
+5. Command actuators: `set_steering()`, `set_throttle()`
+
+**Safety Layers**:
+
+- **Mode Layer**: RC timeout → neutral outputs
+- **Actuator Layer**: Disarmed → neutral outputs
+- **Platform Layer**: Hardware failsafe (servo/ESC neutral on signal loss)
+
+### MAVLink Integration
+
+**Mode Switching**:
+
+- `MAV_CMD_DO_SET_MODE`: Switch between Manual, Hold, Auto, RTL, Guided
+- Mode validation: Reject invalid modes (e.g., Auto without GPS)
+- Response: `COMMAND_ACK` with `MAV_RESULT_ACCEPTED` or `MAV_RESULT_FAILED`
+
+**RC Input**:
+
+- `RC_CHANNELS`: 18-channel RC input from ground control station
+- Update rate: 5-10 Hz (configurable in Mission Planner/QGC)
+- Handler: `src/communication/mavlink/handlers/rc_input.rs`
+
+### Performance Characteristics
+
+- **RC Input Latency**: < 100ms (RC_CHANNELS reception → actuator response)
+- **Mode Update Latency**: < 1ms average, < 5ms max
+- **Control Loop Frequency**: 50 Hz (20ms period)
+- **Memory Usage**: \~4 KB RAM (vehicle layer total)
+
+### Future Enhancements
+
+Planned additions (deferred from current implementation):
+
+- **Additional Modes**: Hold, Auto, RTL, Guided
+- **Physical RC Receiver**: SBUS/PPM input support
+- **RC Input Filtering**: Low-pass filter for noisy inputs
+- **Actuator Features**: Rate limiting, deadband, expo curves
+- **Differential Steering**: Skid-steer and differential drive support
 
 ## Development Workflow
 

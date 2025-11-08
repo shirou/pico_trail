@@ -50,7 +50,9 @@
       "Bash(done)",
       "Bash(for:*)",
       "mcp__serena__write_memory",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "mcp__serena__read_memory",
+      "mcp__serena__think_about_whether_you_are_done"
     ],
     "deny": [],
     "ask": []

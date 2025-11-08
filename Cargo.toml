@@ -52,7 +52,7 @@ embassy-time = { git = "https://github.com/embassy-rs/embassy", features = ["tic
 embassy-rp = { git = "https://github.com/embassy-rs/embassy", features = ["time-driver"], optional = true }
 embassy-usb = { git = "https://github.com/embassy-rs/embassy", optional = true }
 embassy-sync = { git = "https://github.com/embassy-rs/embassy", optional = true }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", optional = true }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy" }
 embassy-net = { git = "https://github.com/embassy-rs/embassy", features = ["tcp", "udp", "dhcpv4", "dns"], optional = true }
 
 # WiFi driver for Pico W/2W (CYW43439)
@@ -132,7 +132,7 @@ pico2_w = [
     "panic-probe", "rp235x-hal",
     "embedded-hal", "embedded-hal-1", "nb", "fugit",
     "embassy-executor", "embassy-time", "embassy-rp", "embassy-usb",
-    "embassy-sync", "embassy-futures", "embassy-net",
+    "embassy-sync", "embassy-net",
     "cyw43", "cyw43-pio", "static_cell", "embedded-alloc",
     "embassy-rp/rp235xa", "embassy-rp/critical-section-impl", "embassy-rp/binary-info"
 ]
