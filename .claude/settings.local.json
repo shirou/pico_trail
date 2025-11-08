@@ -3,6 +3,8 @@
     "allow": [
       "WebFetch(domain:github.com)",
       "WebFetch(domain:ardupilot.org)",
+      "WebFetch(domain:docs.freenove.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
       "WebSearch",
       "Bash(./scripts/tdl-new-id.ts)",
       "Bash(bun format:*)",
@@ -38,6 +40,10 @@
       "mcp__serena__list_memories",
       "mcp__serena__replace_symbol_body",
       "mcp__serena__insert_after_symbol",
+      "mcp__serena__write_memory",
+      "mcp__serena__read_memory",
+      "mcp__serena__think_about_whether_you_are_done",
+      "mcp__serena__find_file",
       "Bash(cat:*)",
       "Bash(cargo tree:*)",
       "Bash(cargo search:*)",
@@ -49,11 +55,7 @@
       "Bash(do node scripts/tdl-new-id.ts)",
       "Bash(done)",
       "Bash(for:*)",
-      "mcp__serena__write_memory",
-      "Bash(tree:*)",
-      "mcp__serena__read_memory",
-      "mcp__serena__think_about_whether_you_are_done",
-      "WebFetch(domain:docs.freenove.com)"
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,0 +1,36 @@
+# Freenove 4WD Car Standard Wheel Configuration
+# Board: Freenove 4WD Car Kit (Standard Wheel version)
+# Platform: Raspberry Pi Pico 2 W (RP2350)
+# See: https://github.com/Freenove/Freenove_4WD_Car_Kit
+
+# Include common RP2350 platform settings
+include common/rp2350.hwdef
+
+# Override motor count for 4WD configuration
+MOTOR_COUNT 4
+
+# Motor pin assignments
+# H-bridge motor driver connections for differential drive
+
+# Left side motors
+M1_IN1 18 OUTPUT    # Left front motor IN1 (direction control)
+M1_IN2 19 OUTPUT    # Left front motor IN2 (direction control)
+M2_IN1 20 OUTPUT    # Left rear motor IN1 (direction control)
+M2_IN2 21 OUTPUT    # Left rear motor IN2 (direction control)
+
+# Right side motors
+M3_IN1 6 OUTPUT     # Right front motor IN1 (direction control)
+M3_IN2 7 OUTPUT     # Right front motor IN2 (direction control)
+M4_IN1 8 OUTPUT     # Right rear motor IN1 (direction control)
+M4_IN2 9 OUTPUT     # Right rear motor IN2 (direction control)
+
+# Optional peripheral devices
+BUZZER 2 OUTPUT PULLDOWN        # Piezo buzzer (active low with pull-down)
+LED_WS2812 16 OUTPUT            # WS2812 RGB LED data line
+BATTERY_ADC 26 ADC              # Battery voltage monitoring (ADC0)
+
+# Pin usage notes:
+# - All motor pins use OUTPUT mode with default push-pull configuration
+# - Buzzer uses pull-down resistor for clean inactive state
+# - Battery ADC uses GPIO26 (ADC0), measures voltage via divider circuit
+# - WS2812 LED requires precise timing, uses PIO on RP2350

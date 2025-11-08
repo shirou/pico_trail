@@ -86,6 +86,9 @@ impl ParamHandler {
         // Register fence parameters with defaults
         let _ = crate::parameters::FenceParams::register_defaults(&mut store);
 
+        // Register board pin parameters with hwdef defaults
+        let _ = crate::parameters::BoardParams::register_defaults(&mut store);
+
         // Register default MAVLink stream rate parameters
         // SR_* parameters control telemetry stream rates (Hz)
         let _ = store.register(
@@ -263,12 +266,33 @@ impl ParamHandler {
             .trim_end_matches('\0');
 
         // Convert MAVLink value to ParamValue based on type
+        // NOTE: For integer types, we use to_bits() to extract the bit pattern,
+        // not value conversion. MAVLink PARAM_VALUE uses f32 for all types, but integer
+        // values are transmitted as bit patterns.
         let value = match data.param_type {
             MavParamType::MAV_PARAM_TYPE_REAL32 => ParamValue::Float(data.param_value),
-            MavParamType::MAV_PARAM_TYPE_UINT32 | MavParamType::MAV_PARAM_TYPE_INT32 => {
-                ParamValue::Int(data.param_value as i32)
+            MavParamType::MAV_PARAM_TYPE_INT32 => {
+                // Extract i32 from f32 bit pattern (NOT value conversion)
+                ParamValue::Int(data.param_value.to_bits() as i32)
             }
-            MavParamType::MAV_PARAM_TYPE_UINT8 => ParamValue::Int(data.param_value as i32),
+            MavParamType::MAV_PARAM_TYPE_UINT32 => {
+                // Extract u32 from f32 bit pattern
+                let value_u32 = data.param_value.to_bits();
+
+                // Check if this is an IPv4 parameter by name
+                // IPv4 parameters: NET_IP, NET_NETMASK, NET_GATEWAY
+                if param_id == "NET_IP" || param_id == "NET_NETMASK" || param_id == "NET_GATEWAY" {
+                    // Convert u32 to IPv4 bytes (big-endian)
+                    ParamValue::Ipv4(value_u32.to_be_bytes())
+                } else {
+                    // Regular integer parameter
+                    ParamValue::Int(value_u32 as i32)
+                }
+            }
+            MavParamType::MAV_PARAM_TYPE_UINT8 => {
+                // Extract u8 from f32 bit pattern, then convert to i32
+                ParamValue::Int((data.param_value.to_bits() & 0xFF) as i32)
+            }
             _ => return Err(ParamHandlerError::InvalidValue),
         };
 
@@ -323,17 +347,30 @@ impl ParamHandler {
         param_id[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
 
         // Convert value to f32 and type for MAVLink
+        // NOTE: For integer types, we use f32::from_bits() to reinterpret the bit pattern,
+        // not value conversion. MAVLink PARAM_VALUE uses f32 for all types, but integer
+        // values are transmitted as bit patterns, not as float values.
         let (param_value, param_type) = match value {
             ParamValue::Float(f) => (*f, MavParamType::MAV_PARAM_TYPE_REAL32),
-            ParamValue::Int(i) => (*i as f32, MavParamType::MAV_PARAM_TYPE_INT32),
-            ParamValue::Bool(b) => (
-                if *b { 1.0 } else { 0.0 },
-                MavParamType::MAV_PARAM_TYPE_UINT8,
-            ),
+            ParamValue::Int(i) => {
+                // Reinterpret i32 bit pattern as f32 (NOT value conversion)
+                (
+                    f32::from_bits(*i as u32),
+                    MavParamType::MAV_PARAM_TYPE_INT32,
+                )
+            }
+            ParamValue::Bool(b) => {
+                // Bool as UINT8: 0 or 1, reinterpreted as f32 bit pattern
+                let value_u8 = if *b { 1u32 } else { 0u32 };
+                (f32::from_bits(value_u8), MavParamType::MAV_PARAM_TYPE_UINT8)
+            }
             ParamValue::Ipv4(ip) => {
-                // Encode IPv4 as uint32 (big-endian)
+                // Encode IPv4 as uint32 (big-endian), reinterpreted as f32 bit pattern
                 let value_u32 = u32::from_be_bytes(*ip);
-                (value_u32 as f32, MavParamType::MAV_PARAM_TYPE_UINT32)
+                (
+                    f32::from_bits(value_u32),
+                    MavParamType::MAV_PARAM_TYPE_UINT32,
+                )
             }
             ParamValue::String(_) => {
                 // MAVLink doesn't support string parameters directly
@@ -403,10 +440,27 @@ mod tests {
         // - Battery: 3 (BATT_ARM_VOLT, BATT_CRT_VOLT, BATT_FS_CRT_ACT)
         // - Failsafe: 3 (FS_ACTION, FS_TIMEOUT, FS_GCS_ENABLE)
         // - Fence: 2 (FENCE_AUTOENABLE, FENCE_ACTION)
-        // Total: 6 + 4 + 1 + 5 + 3 + 3 + 2 = 24 parameters
-        // String type parameters (NET_SSID, NET_PASS) excluded from MAVLink = 23 sendable
-        // Hidden parameter (NET_PASS) further excluded from count() = 23 visible
-        assert_eq!(handler.count(), 23);
+        // - Board: 11 (PIN_M1_IN1, PIN_M1_IN2, PIN_M2_IN1, PIN_M2_IN2, PIN_M3_IN1, PIN_M3_IN2,
+        //             PIN_M4_IN1, PIN_M4_IN2, PIN_BUZZER, PIN_LED, PIN_BATTERY_ADC)
+        //   Note: Board pins only registered when pico2_w feature enabled
+        // String type parameters (NET_SSID, NET_PASS) excluded from MAVLink
+        // Hidden parameter (NET_PASS) further excluded from count()
+
+        #[cfg(feature = "pico2_w")]
+        {
+            // With pico2_w: 6 + 4 + 1 + 5 + 3 + 3 + 2 + 11 = 35 total
+            // Minus 2 String types = 34 sendable
+            // Minus 1 hidden = 34 visible (NET_PASS is both String and hidden)
+            assert_eq!(handler.count(), 34);
+        }
+
+        #[cfg(not(feature = "pico2_w"))]
+        {
+            // Without pico2_w: 6 + 4 + 1 + 5 + 3 + 3 + 2 = 24 total
+            // Minus 2 String types = 23 sendable
+            // Minus 1 hidden = 23 visible (NET_PASS is both String and hidden)
+            assert_eq!(handler.count(), 23);
+        }
     }
 
     #[test]
@@ -424,9 +478,14 @@ mod tests {
         // Should return all non-String parameters except NET_PASS (hidden)
         // NET_SSID (String) and NET_PASS (String, hidden) cannot be sent via MAVLink
         // Count: 4 WiFi (DHCP, IP, NETMASK, GATEWAY) + 4 SR + 1 SYSID
-        //        + 5 Arming + 3 Battery + 3 Failsafe + 2 Fence = 22
+        //        + 5 Arming + 3 Battery + 3 Failsafe + 2 Fence + 11 Board (if pico2_w)
         // Note: NET_PASS is hidden, so even if it weren't String, it wouldn't appear
-        assert_eq!(messages.len(), 22);
+
+        #[cfg(feature = "pico2_w")]
+        assert_eq!(messages.len(), 33); // With board pins
+
+        #[cfg(not(feature = "pico2_w"))]
+        assert_eq!(messages.len(), 22); // Without board pins
 
         // Verify NET_PASS is not in the list
         for msg in &messages {
@@ -487,11 +546,12 @@ mod tests {
         let mut param_id = [0u8; 16];
         param_id[..9].copy_from_slice(b"SR_EXTRA1");
 
+        // For INT32 type, encode the integer value as f32 bit pattern
         let set_msg = PARAM_SET_DATA {
             target_system: 1,
             target_component: 1,
             param_id: param_id.into(),
-            param_value: 20.0,
+            param_value: f32::from_bits(20u32), // Encode 20 as bit pattern
             param_type: MavParamType::MAV_PARAM_TYPE_INT32,
         };
 
@@ -540,11 +600,12 @@ mod tests {
         let mut param_id = [0u8; 16];
         param_id[..9].copy_from_slice(b"SR_EXTRA1");
 
+        // For INT32 type, encode the integer value as f32 bit pattern
         let set_msg = PARAM_SET_DATA {
             target_system: 1,
             target_component: 1,
             param_id: param_id.into(),
-            param_value: 25.0,
+            param_value: f32::from_bits(25u32), // Encode 25 as bit pattern
             param_type: MavParamType::MAV_PARAM_TYPE_INT32,
         };
 
@@ -554,5 +615,37 @@ mod tests {
         // Save to Flash
         handler.save_to_flash(&mut flash).unwrap();
         assert!(!handler.is_dirty());
+    }
+
+    #[test]
+    fn test_param_set_ipv4() {
+        let mut flash = MockFlash::new();
+        let mut handler = ParamHandler::new(&mut flash);
+
+        let mut param_id = [0u8; 16];
+        param_id[..11].copy_from_slice(b"NET_NETMASK");
+
+        // Set NET_NETMASK to 255.255.255.0
+        // IPv4 [255, 255, 255, 0] as u32 big-endian = 0xFFFFFF00
+        let ipv4_value = u32::from_be_bytes([255, 255, 255, 0]);
+        let set_msg = PARAM_SET_DATA {
+            target_system: 1,
+            target_component: 1,
+            param_id: param_id.into(),
+            param_value: f32::from_bits(ipv4_value), // Encode as bit pattern
+            param_type: MavParamType::MAV_PARAM_TYPE_UINT32,
+        };
+
+        let result = handler.handle_set(&set_msg);
+        assert!(result.is_ok());
+
+        // Verify value stored as Ipv4, not Int
+        assert_eq!(
+            handler.store().get("NET_NETMASK"),
+            Some(&ParamValue::Ipv4([255, 255, 255, 0]))
+        );
+
+        // Verify store is dirty
+        assert!(handler.is_dirty());
     }
 }

@@ -36,11 +36,16 @@ The system shall validate GPIO pin configurations at build time to ensure that i
 
 - [ ] Duplicate pin assignments in hwdef cause build errors with clear conflict report (e.g., "GPIO 18 assigned to both M1_IN1 and M2_IN1")
 - [ ] GPIO numbers outside platform valid range rejected at build time (e.g., RP2350: GPIO 30+ invalid)
-- [ ] Reserved platform pins (UART, QSPI) flagged as warnings if assigned to motors
+- [ ] Reserved platform pins (UART0: GPIO 0-1, QSPI: GPIO 47-53) flagged as warnings if assigned to actuators
+- [ ] Reserved pin warnings do not fail the build (warnings only, compilation succeeds)
 - [ ] Build errors include file name, line number, and specific validation failure message
+- [ ] Build warnings include helpful suggestions (e.g., "Consider using GPIO 2-29 for motor control")
 - [ ] Successful build guarantees no pin conflicts in generated default configuration
 - [ ] Invalid hwdef syntax (missing pin number, invalid format) causes build error with helpful message
 - [ ] Platform-specific constraints validated (e.g., RP2350 PWM slice limitations documented)
+- [ ] Include directive recursion detected and rejected with clear error message
+- [ ] Invalid pin modifiers generate build warnings (not errors) if not supported on platform
+- [ ] Undef of non-existent pins generates warning (not error)
 
 ## Technical Details
 
@@ -63,23 +68,57 @@ The system shall validate GPIO pin configurations at build time to ensure that i
 - Clear error messages:
 
 ```
-error: Pin conflict detected in boards/freenove_standard.hwdef
+error: GPIO 18 used multiple times
   --> boards/freenove_standard.hwdef:8:8
    |
  8 | M2_IN1 18
    |        ^^ GPIO 18 already assigned to M1_IN1 (line 6)
    |
    = help: Each GPIO pin can only be assigned to one function
+
+error: Include recursion detected
+  --> boards/circular.hwdef:3:1
+   |
+ 3 | include boards/base.hwdef
+   |         ^^^^^^^^^^^^^^^^^^^ Include chain: circular.hwdef -> base.hwdef -> circular.hwdef
+   |
+   = help: Remove circular include references
+
+error: Include file not found
+  --> boards/custom.hwdef:2:9
+   |
+ 2 | include boards/missing.hwdef
+   |         ^^^^^^^^^^^^^^^^^^^^^ File does not exist
+   |
+   = help: Check the file path relative to project root
 ```
 
 - Warnings for potentially problematic configurations:
 
 ```
-warning: GPIO 0 is typically reserved for UART0_TX on RP2350
+warning: GPIO 0 is reserved for UART0_TX on RP2350
   --> boards/custom_rover.hwdef:10:8
    |
 10 | M1_IN1 0
-   |        ^ Consider using a different GPIO for motor control
+   |        ^ Consider using GPIO 2-29 for motor control
+   |
+   = note: This may conflict with console output or debugging
+
+warning: Pin modifier SPEED_VERY_HIGH not supported on RP2350
+  --> boards/custom.hwdef:15:20
+   |
+15 | SERVO1_PWM 10 OUTPUT SPEED_VERY_HIGH
+   |                      ^^^^^^^^^^^^^^^ Using default speed instead
+   |
+   = note: RP2350 supports SPEED_LOW, SPEED_MEDIUM, SPEED_HIGH
+
+warning: Undef of non-existent pin M5_IN1
+  --> boards/override.hwdef:8:7
+   |
+ 8 | undef M5_IN1
+   |       ^^^^^^ Pin was not previously defined
+   |
+   = note: This undef has no effect
 ```
 
 **Compatibility:**
@@ -95,14 +134,29 @@ warning: GPIO 0 is typically reserved for UART0_TX on RP2350
 **Valid GPIO Range:**
 
 - GPIO 0-29: User-accessible pins (30 total)
-- GPIO 30-46: Internal/special functions
-- GPIO 47-53: QSPI flash (reserved)
+- GPIO 30-46: Internal/special functions (not user-accessible)
+- GPIO 47-53: QSPI flash (reserved, internal)
 
-**Reserved/Common Pins:**
+**Reserved Pins (generate warnings):**
 
-- GPIO 0-1: UART0 (TX/RX) - warn if assigned to motors
-- GPIO 2-3: I2C0 (SDA/SCL) - warn if conflicts enabled
-- GPIO 16-19: SPI0 - warn if conflicts enabled
+- GPIO 0-1: UART0 (TX/RX) - Warn if assigned to actuators (console/debug interface)
+- GPIO 47-53: QSPI flash - Error if assigned (internal, not user-accessible)
+
+**Optional Peripheral Conflicts (no warnings by default):**
+
+- GPIO 2-3: I2C0 (SDA/SCL) - Users may intentionally reassign
+- GPIO 16-19: SPI0 - Users may intentionally reassign
+
+**Supported Pin Modifiers:**
+
+- Pin types: INPUT, OUTPUT, ADC
+- Pull modes: PULLUP, PULLDOWN, NOPULL
+- Output modes: PUSHPULL, OPENDRAIN
+- Speeds: SPEED_LOW, SPEED_MEDIUM, SPEED_HIGH
+
+**Unsupported Modifiers (generate warnings):**
+
+- SPEED_VERY_HIGH (not available on RP2350)
 
 **PWM Constraints:**
 
@@ -117,12 +171,14 @@ warning: GPIO 0 is typically reserved for UART0_TX on RP2350
 
 ## Risks & Mitigation
 
-| Risk                                        | Impact | Likelihood | Mitigation                                                       | Validation                               |
-| ------------------------------------------- | ------ | ---------- | ---------------------------------------------------------------- | ---------------------------------------- |
-| False positives (valid configs rejected)    | Medium | Low        | Conservative validation, allow warnings for suspicious-but-valid | Manual testing with edge cases           |
-| Incomplete validation (errors slip through) | High   | Medium     | Comprehensive test suite with invalid hwdef files                | Integration tests with known-bad configs |
-| Poor error messages (users confused)        | Medium | Medium     | Test error messages with users, iterate on clarity               | User testing with intentional mistakes   |
-| Platform constraints missed (new platform)  | Medium | Low        | Document validation extension process                            | Code review checklist for new platforms  |
+| Risk                                           | Impact | Likelihood | Mitigation                                                         | Validation                               |
+| ---------------------------------------------- | ------ | ---------- | ------------------------------------------------------------------ | ---------------------------------------- |
+| False positives (valid configs rejected)       | Medium | Low        | Use warnings for ambiguous cases, errors only for definite invalid | Manual testing with edge cases           |
+| Incomplete validation (errors slip through)    | High   | Medium     | Comprehensive test suite with invalid hwdef files                  | Integration tests with known-bad configs |
+| Poor error messages (users confused)           | Medium | Medium     | Test error messages with users, iterate on clarity                 | User testing with intentional mistakes   |
+| Platform constraints missed (new platform)     | Medium | Low        | Document validation extension process                              | Code review checklist for new platforms  |
+| Include recursion causes infinite loop         | High   | Low        | Track include chain and detect cycles                              | Unit test with circular includes         |
+| Reserved pin warnings too noisy (user fatigue) | Low    | Medium     | Limit warnings to critical reserved pins only (UART0, QSPI)        | User feedback on warning frequency       |
 
 ## Implementation Notes
 
@@ -181,6 +237,18 @@ BOARD=freenove_standard cargo build
 # Test with invalid hwdef (should fail with clear error)
 BOARD=test_duplicate_pins cargo build
 
+# Test with reserved pins (should succeed with warnings)
+BOARD=test_reserved_uart cargo build 2>&1 | grep "warning:"
+
+# Test with circular includes (should fail)
+BOARD=test_circular_include cargo build 2>&1 | grep "Include recursion"
+
+# Test with missing include file (should fail)
+BOARD=test_missing_include cargo build 2>&1 | grep "Include file not found"
+
+# Test with unsupported modifiers (should succeed with warnings)
+BOARD=test_unsupported_modifier cargo build 2>&1 | grep "warning:"
+
 # Check error message clarity
 BOARD=test_invalid_gpio cargo build 2>&1 | grep "error:"
 ```
@@ -190,7 +258,10 @@ BOARD=test_invalid_gpio cargo build 2>&1 | grep "error:"
 - Validation must occur before code generation (fail fast)
 - Error messages must include hwdef file path and line numbers
 - Reserved pin warnings should not fail build (warn only)
+- Include recursion must be detected before attempting to parse (prevent stack overflow)
 - Validation should be fast (< 100ms) to avoid slowing builds
+- Warning messages should be actionable (suggest alternatives)
+- Unsupported modifiers should fall back to safe defaults (documented in warning)
 
 **Related Code Areas:**
 

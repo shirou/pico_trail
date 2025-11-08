@@ -54,9 +54,10 @@ The Freenove 4WD Car requires specific GPIO pin assignments for motor control (8
 ## Success Metrics
 
 - **Default Usability**: Freenove platform works out-of-box with zero configuration changes
-- **Flexibility**: Custom pin assignments possible via parameter store without recompiling
-- **Conflict Detection**: Pin conflicts detected and reported at initialization (before motor movement)
+- **Flexibility**: Custom pin assignments possible via parameter store without recompiling, include/undef directives enable board variants
+- **Conflict Detection**: Pin conflicts detected at build time (duplicate pins), reserved pins generate warnings
 - **Type Safety**: Invalid GPIO pin numbers rejected at compile time (for static configs) or initialization (for parameter-based configs)
+- **Reusability**: Common platform settings shared via include directive, reducing duplication across board definitions
 
 ## Decision
 
@@ -113,19 +114,23 @@ Option D provides the best alignment with ArduPilot architecture and embedded sy
 
 3. **Build-time Code Generation**: `build.rs` parses hwdef.dat and generates type-safe Rust code:
    - Zero runtime overhead (all parsing happens at build time)
-   - Compile-time type safety (generated const definitions)
+   - Compile-time type safety (generated const definitions with pin modifiers)
    - Pin conflict detection during build (not at runtime)
+   - Reserved pin warnings (UART0, QSPI) prevent accidental conflicts
+   - Include directive recursion detection prevents infinite loops
 
-4. **Multi-Board Support**: Easy to add new boards by creating new hwdef files:
+4. **Multi-Board Support**: Easy to add new boards by creating new hwdef files with shared configurations:
 
    ```
    boards/
-   ├── freenove_standard.hwdef
-   ├── freenove_mecanum.hwdef
-   └── custom_rover.hwdef
+   ├── common/
+   │   └── rp2350.hwdef         # Shared platform settings
+   ├── freenove_standard.hwdef  # includes common/rp2350.hwdef
+   ├── freenove_mecanum.hwdef   # includes common/rp2350.hwdef
+   └── custom_rover.hwdef       # includes freenove_standard.hwdef + overrides
    ```
 
-   Select board at build time via feature flag or environment variable:
+   Select board at build time via environment variable:
 
    ```bash
    BOARD=freenove_standard cargo build --release
@@ -144,24 +149,32 @@ Option A was rejected because pin definitions in Rust are less readable than dec
 - Freenove platform works out-of-box with zero configuration
 - Declarative hwdef.dat format easier to read and maintain than Rust code
 - Build-time code generation provides zero runtime overhead
-- Type-safe generated code prevents invalid configurations
+- Type-safe generated code with pin modifiers prevents invalid configurations
 - Pin conflicts detected at build time (compile errors)
+- Reserved pin warnings prevent accidental conflicts with UART/SPI/QSPI
+- Include directive reduces duplication across board variants
+- Undef directive allows fine-grained overrides of included configurations
+- Pin modifiers (PULLUP, OUTPUT, SPEED_HIGH, etc.) enable hardware-specific tuning
 - Easy to add new boards (create new hwdef file, no Rust code needed)
 - Diff-friendly text format for version control
 - Exact alignment with ArduPilot's proven architecture
 
 ### Negative
 
-- Requires build.rs implementation for hwdef parser (initial development cost)
-- Slightly more complex build process (parse → generate → compile)
-- Developers must understand hwdef.dat format (though simpler than Rust)
+- Requires build.rs implementation for hwdef parser with include/undef support (initial development cost)
+- Slightly more complex build process (parse → resolve includes → generate → compile)
+- Developers must understand hwdef.dat format and include/undef semantics (though simpler than Rust)
 - Build-time selection means one binary per board (unless runtime override via parameters)
+- Include directive adds complexity (recursion detection, file path resolution)
+- Pin modifiers add parser complexity (optional syntax, platform-specific validation)
 
 ### Neutral
 
-- hwdef files live in `boards/` directory at project root
+- hwdef files live in `boards/` directory with `common/` subdirectory for shared configs
 - Parameter store still available for runtime overrides (testing/debugging)
-- Future platforms (ESP32, STM32) follow same hwdef.dat pattern
+- Future platforms (ESP32, STM32) follow same hwdef.dat pattern with platform-specific reserved pins
+- Pin modifiers generate warnings if unsupported on platform (graceful degradation)
+- Reserved pin warnings can be ignored by advanced users (intentional override)
 
 ## Implementation Notes
 
@@ -170,13 +183,16 @@ Option A was rejected because pin definitions in Rust are less readable than dec
 ```
 project_root/
 ├── boards/                     # NEW: Board definition files
+│   ├── common/                 # Shared platform configurations
+│   │   └── rp2350.hwdef
 │   ├── freenove_standard.hwdef
+│   ├── freenove_mecanum.hwdef
 │   └── custom_rover.hwdef
-├── build.rs                    # NEW: hwdef parser and code generator
+├── build.rs                    # NEW: hwdef parser with include/undef support
 └── src/
     ├── platform/
     │   ├── traits/
-    │   │   └── board.rs        # BoardPinConfig trait and types
+    │   │   └── board.rs        # BoardPinConfig trait and types with modifiers
     │   └── rp2350/
     │       └── boards/
     │           └── generated.rs # AUTO-GENERATED from hwdef.dat
@@ -186,18 +202,39 @@ project_root/
 
 ```rust
 // src/platform/traits/board.rs
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PinType { Input, Output, Adc }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PullMode { None, PullUp, PullDown }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputMode { PushPull, OpenDrain }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Speed { Low, Medium, High, VeryHigh }
+
+#[derive(Debug, Clone, Copy)]
+pub struct PinConfig {
+    pub gpio: u8,
+    pub pin_type: PinType,
+    pub pull: PullMode,
+    pub output_mode: OutputMode,
+    pub speed: Speed,
+}
+
 #[derive(Debug, Clone)]
 pub struct MotorPins {
-    pub in1: u8,  // GPIO number for IN1
-    pub in2: u8,  // GPIO number for IN2
+    pub in1: PinConfig,  // Motor IN1 with modifiers
+    pub in2: PinConfig,  // Motor IN2 with modifiers
 }
 
 #[derive(Debug, Clone)]
 pub struct BoardPinConfig {
     pub motors: [MotorPins; 4],        // 4 motors for Freenove
-    pub buzzer: Option<u8>,            // Optional buzzer GPIO
-    pub led: Option<u8>,               // Optional LED GPIO (WS2812)
-    pub battery_adc: Option<u8>,       // Optional battery ADC channel
+    pub buzzer: Option<PinConfig>,     // Optional buzzer with modifiers
+    pub led: Option<PinConfig>,        // Optional LED with modifiers
+    pub battery_adc: Option<PinConfig>,// Optional battery ADC with modifiers
 }
 
 impl BoardPinConfig {
@@ -219,27 +256,36 @@ impl BoardPinConfig {
 # boards/freenove_standard.hwdef
 # Freenove 4WD Car Standard Wheel Configuration
 
-# Platform
+# Include common platform settings
+include boards/common/rp2350.hwdef
+
+# Actuator counts
+MOTOR_COUNT 4
+
+# Motor pins (H-bridge DRV8837) with modifiers
+M1_IN1 18 OUTPUT  # Left front motor IN1
+M1_IN2 19 OUTPUT  # Left front motor IN2
+M2_IN1 20 OUTPUT  # Left rear motor IN1
+M2_IN2 21 OUTPUT  # Left rear motor IN2
+M3_IN1 6 OUTPUT   # Right front motor IN1
+M3_IN2 7 OUTPUT   # Right front motor IN2
+M4_IN1 8 OUTPUT   # Right rear motor IN1
+M4_IN2 9 OUTPUT   # Right rear motor IN2
+
+# Optional peripherals with modifiers
+BUZZER 2 OUTPUT PULLDOWN
+LED_WS2812 16 OUTPUT
+BATTERY_ADC 26 ADC
+
+# Note: Reserved pins (GPIO 0-1 for UART0, GPIO 47-53 for QSPI)
+# will generate warnings if assigned to actuators
+```
+
+**Common platform file** (`boards/common/rp2350.hwdef`):
+
+```
+# Common RP2350 platform settings
 PLATFORM rp2350
-
-# Motor pins (H-bridge DRV8837)
-M1_IN1 18  # Left front motor IN1
-M1_IN2 19  # Left front motor IN2
-M2_IN1 20  # Left rear motor IN1
-M2_IN2 21  # Left rear motor IN2
-M3_IN1 6   # Right front motor IN1
-M3_IN2 7   # Right front motor IN2
-M4_IN1 8   # Right rear motor IN1
-M4_IN2 9   # Right rear motor IN2
-
-# Optional peripherals
-BUZZER 2
-LED_WS2812 16
-BATTERY_ADC 26
-
-# Reserved pins (documentation, validation)
-# UART0_TX 0
-# UART0_RX 1
 ```
 
 ### Build-time Code Generation
@@ -249,19 +295,19 @@ BATTERY_ADC 26
 use std::env;
 use std::fs;
 use std::path::Path;
+use std::collections::HashSet;
 
 fn main() {
     let board = env::var("BOARD").unwrap_or_else(|_| "freenove_standard".to_string());
     let hwdef_path = format!("boards/{}.hwdef", board);
 
-    println!("cargo:rerun-if-changed={}", hwdef_path);
+    // Parse hwdef.dat with include resolution
+    let config = parse_hwdef_with_includes(&hwdef_path, &mut HashSet::new())?;
 
-    // Parse hwdef.dat
-    let hwdef_content = fs::read_to_string(&hwdef_path)
-        .expect("Failed to read hwdef file");
-    let config = parse_hwdef(&hwdef_content);
+    // Validate (duplicates, GPIO ranges, reserved pins)
+    validate_hwdef(&config)?;
 
-    // Generate Rust code
+    // Generate Rust code with pin modifiers
     let generated_code = generate_board_config(&config);
 
     // Write to OUT_DIR
@@ -270,15 +316,56 @@ fn main() {
     fs::write(&dest_path, generated_code).unwrap();
 }
 
-fn parse_hwdef(content: &str) -> HwDefConfig {
-    // Parse hwdef.dat format
-    // Extract pin assignments, validate GPIO numbers
-    // Detect conflicts
+fn parse_hwdef_with_includes(path: &str, include_chain: &mut HashSet<String>) -> Result<HwDefConfig, BuildError> {
+    // Detect include recursion
+    if include_chain.contains(path) {
+        return Err(BuildError::IncludeRecursion(include_chain.clone()));
+    }
+    include_chain.insert(path.to_string());
+
+    // Read and parse file
+    let content = fs::read_to_string(path)?;
+    let mut config = HwDefConfig::new();
+
+    for (line_num, line) in content.lines().enumerate() {
+        if line.trim().starts_with("include ") {
+            let include_path = line.trim_start_matches("include ").trim();
+            let included = parse_hwdef_with_includes(include_path, include_chain)?;
+            config.merge(included);
+        } else if line.trim().starts_with("undef ") {
+            let pin_name = line.trim_start_matches("undef ").trim();
+            config.remove_pin(pin_name);
+        } else {
+            // Parse regular directives (PLATFORM, M1_IN1, etc.)
+            config.parse_line(line, line_num)?;
+        }
+    }
+
+    include_chain.remove(path);
+    Ok(config)
+}
+
+fn validate_hwdef(config: &HwDefConfig) -> Result<(), BuildError> {
+    // Check duplicates, GPIO ranges, reserved pins (warnings)
+    validate_duplicates(config)?;
+    validate_gpio_ranges(config)?;
+    validate_reserved_pins(config)?; // Emits warnings, not errors
+    validate_pin_modifiers(config)?; // Check platform support
+    Ok(())
 }
 
 fn generate_board_config(config: &HwDefConfig) -> String {
-    // Generate const definitions like:
-    // pub const BOARD_CONFIG: BoardPinConfig = BoardPinConfig { ... };
+    // Generate const definitions with pin modifiers:
+    // pub const BOARD_CONFIG: BoardPinConfig = BoardPinConfig {
+    //     motors: [
+    //         MotorPins {
+    //             in1: PinConfig { gpio: 18, pin_type: PinType::Output, ... },
+    //             in2: PinConfig { gpio: 19, pin_type: PinType::Output, ... },
+    //         },
+    //         ...
+    //     ],
+    //     ...
+    // };
 }
 ```
 
@@ -286,18 +373,30 @@ fn generate_board_config(config: &HwDefConfig) -> String {
 
 ```rust
 // target/OUT_DIR/board_config.rs (auto-generated)
-use crate::platform::traits::board::{BoardPinConfig, MotorPins};
+use crate::platform::traits::board::{BoardPinConfig, MotorPins, PinConfig, PinType, PullMode, OutputMode, Speed};
 
 pub const BOARD_CONFIG: BoardPinConfig = BoardPinConfig {
     motors: [
-        MotorPins { in1: 18, in2: 19 }, // M1 (left-front)
-        MotorPins { in1: 20, in2: 21 }, // M2 (left-rear)
-        MotorPins { in1: 6, in2: 7 },   // M3 (right-front)
-        MotorPins { in1: 8, in2: 9 },   // M4 (right-rear)
+        MotorPins {
+            in1: PinConfig { gpio: 18, pin_type: PinType::Output, pull: PullMode::None, output_mode: OutputMode::PushPull, speed: Speed::Medium },
+            in2: PinConfig { gpio: 19, pin_type: PinType::Output, pull: PullMode::None, output_mode: OutputMode::PushPull, speed: Speed::Medium },
+        }, // M1 (left-front)
+        MotorPins {
+            in1: PinConfig { gpio: 20, pin_type: PinType::Output, pull: PullMode::None, output_mode: OutputMode::PushPull, speed: Speed::Medium },
+            in2: PinConfig { gpio: 21, pin_type: PinType::Output, pull: PullMode::None, output_mode: OutputMode::PushPull, speed: Speed::Medium },
+        }, // M2 (left-rear)
+        MotorPins {
+            in1: PinConfig { gpio: 6, pin_type: PinType::Output, pull: PullMode::None, output_mode: OutputMode::PushPull, speed: Speed::Medium },
+            in2: PinConfig { gpio: 7, pin_type: PinType::Output, pull: PullMode::None, output_mode: OutputMode::PushPull, speed: Speed::Medium },
+        }, // M3 (right-front)
+        MotorPins {
+            in1: PinConfig { gpio: 8, pin_type: PinType::Output, pull: PullMode::None, output_mode: OutputMode::PushPull, speed: Speed::Medium },
+            in2: PinConfig { gpio: 9, pin_type: PinType::Output, pull: PullMode::None, output_mode: OutputMode::PushPull, speed: Speed::Medium },
+        }, // M4 (right-rear)
     ],
-    buzzer: Some(2),
-    led: Some(16),
-    battery_adc: Some(26),
+    buzzer: Some(PinConfig { gpio: 2, pin_type: PinType::Output, pull: PullMode::PullDown, output_mode: OutputMode::PushPull, speed: Speed::Medium }),
+    led: Some(PinConfig { gpio: 16, pin_type: PinType::Output, pull: PullMode::None, output_mode: OutputMode::PushPull, speed: Speed::Medium }),
+    battery_adc: Some(PinConfig { gpio: 26, pin_type: PinType::Adc, pull: PullMode::None, output_mode: OutputMode::PushPull, speed: Speed::Low }),
 };
 ```
 
@@ -364,11 +463,14 @@ PIN_M1_IN2 = 19  # Override motor 1 IN2 pin
 
 ## Open Questions
 
-- [ ] Should hwdef parser be implemented in build.rs or as a separate crate? → Next step: Determine during implementation (consider reusability across platforms)
-- [ ] Do we need per-motor enable/disable flags (skip unused motors) in hwdef.dat? → Next step: Defer to motor group abstraction requirements (FR-DRAFT-3)
-- [ ] Should pin validation happen at build time (in build.rs) or at initialization? → Method: Implement basic validation in build.rs (duplicates, invalid GPIO), runtime for parameter overrides
-- [ ] What hwdef.dat syntax should we support (subset of ArduPilot's format or full compatibility)? → Next step: Start with minimal subset (PIN definitions), expand as needed
-- [ ] hwdef.dat specification needs to be documented → Next step: Create formal specification document (docs/hwdef-specification.md) defining syntax, supported directives, validation rules, and examples
+- [x] Should hwdef parser be implemented in build.rs or as a separate crate? → **Decision**: Implement in build.rs for simplicity, extract to crate if reused by other projects
+- [x] Do we need per-motor enable/disable flags (skip unused motors) in hwdef.dat? → **Decision**: Use MOTOR_COUNT directive to specify number of motors
+- [x] Should pin validation happen at build time (in build.rs) or at initialization? → **Decision**: Build-time validation for hwdef (duplicates, invalid GPIO), runtime for parameter overrides
+- [x] What hwdef.dat syntax should we support (subset of ArduPilot's format or full compatibility)? → **Decision**: Subset with key features (include, undef, pin modifiers), excluding MCU-specific settings
+- [x] hwdef.dat specification needs to be documented → **Completed**: `docs/hwdef-specification.md` defines complete syntax and validation rules
+- [x] Should reserved pins fail the build or generate warnings? → **Decision**: Warnings only, allowing advanced users to override if needed
+- [x] How should include recursion be handled? → **Decision**: Track include chain, detect cycles, fail with clear error message
+- [x] What pin modifiers should be supported? → **Decision**: PULLUP, PULLDOWN, INPUT, OUTPUT, ADC, OPENDRAIN, SPEED_LOW/MEDIUM/HIGH (platform-specific)
 
 ## External References
 

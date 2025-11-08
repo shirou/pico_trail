@@ -54,6 +54,7 @@
 
 pub mod arming;
 pub mod battery;
+pub mod board;
 pub mod failsafe;
 pub mod fence;
 pub mod storage;
@@ -61,6 +62,7 @@ pub mod wifi;
 
 pub use arming::ArmingParams;
 pub use battery::BatteryParams;
+pub use board::BoardParams;
 pub use failsafe::FailsafeParams;
 pub use fence::FenceParams;
 pub use storage::{ParamValue, ParameterStore};

@@ -137,3 +137,6 @@ pico2_w = [
     "embassy-rp/rp235xa", "embassy-rp/critical-section-impl", "embassy-rp/binary-info"
 ]
 mock = []
+
+[build-dependencies]
+tempfile = "3.14"

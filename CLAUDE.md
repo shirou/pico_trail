@@ -67,6 +67,20 @@ If ArduPilot does not have a parameter for a specific feature:
 3. **Note the gap** - Document that ArduPilot handles this architecturally, not via parameters
 4. **Example**: Emergency stop is handled via `RCx_OPTION=31` and `stop_vehicle()` function, not via `ESTOP_*` parameters
 
+### Approved Custom Parameters (Exceptions)
+
+**⚠️ These are intentional exceptions to the "no custom parameters" policy:**
+
+#### PIN_* - Board Pin Configuration Parameters
+
+ArduPilot uses `hwdef.dat` files for compile-time pin configuration. This project follows the same pattern with `boards/*.hwdef` files. However, for development and testing flexibility, we provide runtime parameter overrides:
+
+- **Parameters**: `PIN_M1_IN1`, `PIN_M1_IN2`, `PIN_M2_IN1`, `PIN_M2_IN2`, `PIN_M3_IN1`, `PIN_M3_IN2`, `PIN_M4_IN1`, `PIN_M4_IN2`, `PIN_BUZZER`, `PIN_LED`, `PIN_BATTERY_ADC`
+- **Default values**: Loaded from `boards/*.hwdef` at build time
+- **Usage**: Production uses hwdef files, development/testing can override via Mission Planner
+- **Safety**: Pin changes require reboot and validation before hardware use
+- **Documentation**: See `src/parameters/board.rs` for implementation details
+
 ### Verification Commands
 
 ```bash

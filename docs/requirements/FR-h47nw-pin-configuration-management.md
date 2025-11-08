@@ -39,12 +39,17 @@ As a hardware integrator, I want to define GPIO pin assignments in declarative t
 - [ ] System supports hwdef.dat format for board definitions (similar to ArduPilot)
 - [ ] Build script (`build.rs`) parses hwdef files and generates type-safe Rust const definitions
 - [ ] Pin conflict detection occurs at build time (duplicate pin assignments cause compile errors)
+- [ ] Reserved platform pins (UART, SPI, QSPI) generate build warnings when assigned to actuators
 - [ ] Default board configuration (Freenove Standard Wheel) works without user configuration
 - [ ] Generated code provides const `BoardPinConfig` struct with motor pins, buzzer, LED, battery ADC
 - [ ] Invalid GPIO numbers (outside platform valid range) rejected during build
 - [ ] Multiple board definitions supported via build-time selection (`BOARD=freenove_standard cargo build`)
 - [ ] Runtime parameter overrides allowed for development/testing (e.g., `PIN_M1_IN1=18`)
 - [ ] Validation at initialization detects pin conflicts from parameter overrides
+- [ ] Include directive supported for sharing common configurations (`include boards/common/rp2350.hwdef`)
+- [ ] Undef directive supported for overriding included pin definitions
+- [ ] Pin modifiers supported (PULLUP, PULLDOWN, OUTPUT, INPUT, ADC, OPENDRAIN, SPEED_HIGH, etc.)
+- [ ] Pin type specification supported (INPUT, OUTPUT, ADC) for explicit hardware configuration
 
 ## Technical Details
 
@@ -56,23 +61,42 @@ As a hardware integrator, I want to define GPIO pin assignments in declarative t
 # boards/freenove_standard.hwdef
 # Freenove 4WD Car Standard Wheel Configuration
 
-# Platform
-PLATFORM rp2350
+# Include common platform settings
+include boards/common/rp2350.hwdef
+
+# Actuator counts
+MOTOR_COUNT 4
 
 # Motor pins (H-bridge DRV8837)
-M1_IN1 18  # Left front motor IN1
-M1_IN2 19  # Left front motor IN2
-M2_IN1 20  # Left rear motor IN1
-M2_IN2 21  # Left rear motor IN2
-M3_IN1 6   # Right front motor IN1
-M3_IN2 7   # Right front motor IN2
-M4_IN1 8   # Right rear motor IN1
-M4_IN2 9   # Right rear motor IN2
+M1_IN1 18 OUTPUT  # Left front motor IN1
+M1_IN2 19 OUTPUT  # Left front motor IN2
+M2_IN1 20 OUTPUT  # Left rear motor IN1
+M2_IN2 21 OUTPUT  # Left rear motor IN2
+M3_IN1 6 OUTPUT   # Right front motor IN1
+M3_IN2 7 OUTPUT   # Right front motor IN2
+M4_IN1 8 OUTPUT   # Right rear motor IN1
+M4_IN2 9 OUTPUT   # Right rear motor IN2
 
 # Optional peripherals
-BUZZER 2
-LED_WS2812 16
-BATTERY_ADC 26
+BUZZER 2 OUTPUT PULLDOWN
+LED_WS2812 16 OUTPUT
+BATTERY_ADC 26 ADC
+```
+
+**Common platform file** (`boards/common/rp2350.hwdef`):
+
+```
+# Common RP2350 platform settings
+PLATFORM rp2350
+```
+
+**Override example** (using `undef`):
+
+```
+# Custom board based on common config
+include boards/freenove_standard.hwdef
+undef M1_IN1
+M1_IN1 22 OUTPUT  # Override motor 1 IN1 to different GPIO
 ```
 
 **Build-Time Code Generation (build.rs):**
@@ -114,18 +138,55 @@ pub const BOARD_CONFIG: BoardPinConfig = BoardPinConfig {
 **Pin Configuration API:**
 
 ```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PinType {
+    Input,
+    Output,
+    Adc,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PullMode {
+    None,
+    PullUp,
+    PullDown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputMode {
+    PushPull,
+    OpenDrain,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Speed {
+    Low,
+    Medium,
+    High,
+    VeryHigh,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PinConfig {
+    pub gpio: u8,
+    pub pin_type: PinType,
+    pub pull: PullMode,
+    pub output_mode: OutputMode,
+    pub speed: Speed,
+}
+
 #[derive(Debug, Clone)]
 pub struct MotorPins {
-    pub in1: u8,
-    pub in2: u8,
+    pub in1: PinConfig,
+    pub in2: PinConfig,
 }
 
 #[derive(Debug, Clone)]
 pub struct BoardPinConfig {
     pub motors: [MotorPins; 4],
-    pub buzzer: Option<u8>,
-    pub led: Option<u8>,
-    pub battery_adc: Option<u8>,
+    pub buzzer: Option<PinConfig>,
+    pub led: Option<PinConfig>,
+    pub battery_adc: Option<PinConfig>,
 }
 
 impl BoardPinConfig {
@@ -141,8 +202,12 @@ impl BoardPinConfig {
 
 - Duplicate pin assignments in hwdef: Build error with conflict report
 - Invalid GPIO numbers: Build error with valid range message
+- Reserved pins used: Build warning (not error) with suggestion to use different GPIO
 - Duplicate parameter overrides: Runtime validation error at initialization
 - Pin conflicts from parameters: Runtime validation error before hardware use
+- Invalid pin modifiers: Build warning if modifier not supported on platform
+- Include file not found: Build error with file path
+- Undef on non-existent pin: Build warning (non-fatal)
 
 ## Platform Considerations
 
@@ -194,15 +259,21 @@ cat target/OUT_DIR/board_config.rs
 
 - hwdef parser must handle comments (#) and blank lines
 - GPIO number validation must be platform-specific (RP2350: 0-29, ESP32: different ranges)
+- Reserved pin warnings must not fail the build (warnings only)
 - Parameter overrides must not bypass safety validation
 - Build script must detect missing hwdef files with helpful error messages
+- Include directive must prevent infinite recursion (track include chain)
+- Pin modifiers must be optional and have sensible defaults
+- Undef must be idempotent (undefining non-existent pin is non-fatal)
 
 **Related Code Areas:**
 
 - `boards/*.hwdef` - Board definition files (new)
+- `boards/common/*.hwdef` - Common platform definition files (new)
 - `build.rs` - hwdef parser and code generator (new)
 - `src/platform/traits/board.rs` - BoardPinConfig types (new)
 - `src/platform/rp2350/boards/generated.rs` - Generated const (auto-generated)
+- `docs/hwdef-specification.md` - Complete hwdef format specification
 
 **Suggested Libraries:**
 

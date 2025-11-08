@@ -216,8 +216,11 @@ When finishing any Rust coding task, always run the following commands in order 
 1. `cargo fmt` - Auto-format code
 2. `cargo clippy --all-targets -- -D warnings` - Check for linting errors in test code
 3. `cargo test --lib --quiet` - Run unit tests (faster than full test suite)
+4. `./scripts/build-rp2350.sh pico_trail_rover` - Verify embedded build works (RP2350/Pico 2 W)
 
 Address any errors from each command before proceeding to the next. All must pass successfully before considering the work complete.
+
+**Note**: The RP2350 build (step 4) is critical for catching embedded-specific issues (e.g., feature gates, platform-specific imports). Host tests alone are not sufficient.
 
 #### Markdown Documentation
 

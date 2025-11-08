@@ -557,11 +557,12 @@ mod tests {
         let mut param_id = [0u8; 16];
         param_id[..9].copy_from_slice(b"SR_EXTRA1");
 
+        // For UINT32 type, encode the integer value as f32 bit pattern
         let param_set = MavMessage::PARAM_SET(mavlink::common::PARAM_SET_DATA {
             target_system: 1,
             target_component: 1,
             param_id: param_id.into(),
-            param_value: 20.0,
+            param_value: f32::from_bits(20u32), // Encode 20 as bit pattern
             param_type: mavlink::common::MavParamType::MAV_PARAM_TYPE_UINT32,
         });
 

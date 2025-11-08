@@ -1,0 +1,23 @@
+# Common RP2350 Platform Configuration
+# This file contains platform-specific settings for all RP2350-based boards
+# Include this file in board-specific hwdef files
+
+# Platform identifier
+PLATFORM rp2350
+
+# Platform notes:
+# - Valid GPIO range: 0-29 (30 GPIO pins available)
+# - Reserved pins (warnings only):
+#   - GPIO 0-1: UART0 (default serial console for debugging)
+#   - GPIO 47-53: QSPI flash (internal, used by bootloader)
+# - PWM capabilities: 12 PWM slices (24 channels total)
+# - ADC channels: GPIO 26-29 (4 channels available)
+
+# Supported pin modifiers:
+# - Pin types: INPUT, OUTPUT, ADC
+# - Pull modes: PULLUP, PULLDOWN, NOPULL (default)
+# - Output modes: PUSHPULL (default), OPENDRAIN (warning, not supported on RP2350)
+# - Speeds: SPEED_LOW, SPEED_MEDIUM (default), SPEED_HIGH (warnings for speed modifiers)
+
+# Note: Actuator counts (MOTOR_COUNT, SERVO_COUNT, etc.) should be defined
+# in board-specific hwdef files, not in this common platform file
