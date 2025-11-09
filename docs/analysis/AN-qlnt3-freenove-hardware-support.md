@@ -17,6 +17,7 @@
   - [ADR-mcg03-pin-configuration-management](../adr/ADR-mcg03-pin-configuration-management.md)
 - Related Tasks:
   - [T-po5ns-pin-configuration](../tasks/T-po5ns-pin-configuration/README.md)
+  - [T-l7czt-differential-drive-kinematics](../tasks/T-l7czt-differential-drive-kinematics/README.md)
 
 ## Executive Summary
 

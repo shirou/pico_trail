@@ -71,7 +71,7 @@ If ArduPilot does not have a parameter for a specific feature:
 
 **⚠️ These are intentional exceptions to the "no custom parameters" policy:**
 
-#### PIN_* - Board Pin Configuration Parameters
+#### PIN\_\* - Board Pin Configuration Parameters
 
 ArduPilot uses `hwdef.dat` files for compile-time pin configuration. This project follows the same pattern with `boards/*.hwdef` files. However, for development and testing flexibility, we provide runtime parameter overrides:
 

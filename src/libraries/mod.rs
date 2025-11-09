@@ -5,9 +5,11 @@
 //!
 //! ## Libraries
 //!
+//! - `kinematics`: Vehicle kinematics conversions (differential drive, etc.)
 //! - `rc_channel`: RC input processing (RC_Channel equivalent)
 //! - `srv_channel`: Servo/motor output processing (SRV_Channel equivalent)
 
+pub mod kinematics;
 pub mod rc_channel;
 pub mod srv_channel;
 

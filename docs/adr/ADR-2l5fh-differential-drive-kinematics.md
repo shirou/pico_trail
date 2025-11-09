@@ -13,7 +13,8 @@
   - [AN-qlnt3-freenove-hardware-support](../analysis/AN-qlnt3-freenove-hardware-support.md)
 - Related ADRs:
   - [ADR-4hx3d-motor-driver-abstraction](../adr/ADR-4hx3d-motor-driver-abstraction.md)
-- Related Tasks: N/A - Tasks will be created after requirements
+- Related Tasks:
+  - [T-l7czt-differential-drive-kinematics](../tasks/T-l7czt-differential-drive-kinematics/README.md)
 
 ## Context
 

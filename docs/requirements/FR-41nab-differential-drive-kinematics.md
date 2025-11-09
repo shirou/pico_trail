@@ -3,14 +3,15 @@
 ## Metadata
 
 - Type: Functional Requirement
-- Status: Draft
+- Status: Approved
 
 ## Links
 
 - Prerequisite Requirements:
   - [FR-higbc-hbridge-motor-control](../requirements/FR-higbc-hbridge-motor-control.md)
 - Dependent Requirements: N/A - Not yet defined
-- Related Tasks: N/A - Tasks will be created after requirements approval
+- Related Tasks:
+  - [T-l7czt-differential-drive-kinematics](../tasks/T-l7czt-differential-drive-kinematics/README.md)
 
 ## Requirement Statement
 
