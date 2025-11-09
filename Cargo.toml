@@ -41,6 +41,7 @@ cortex-m-rt = { version = "0.7", optional = true }
 defmt = { version = "1.0", optional = true }
 defmt-rtt = { version = "1.0", optional = true }
 panic-probe = { version = "1.0", features = ["print-defmt"], optional = true }
+panic-halt = "1.0"
 
 # Embassy async framework (FR-5inw2: Task Scheduler)
 # Using git version to fix RP2350 MPU stack guard issue
@@ -136,6 +137,7 @@ pico2_w = [
     "cyw43", "cyw43-pio", "static_cell", "embedded-alloc",
     "embassy-rp/rp235xa", "embassy-rp/critical-section-impl", "embassy-rp/binary-info"
 ]
+usb_serial = ["pico2_w"]  # Enable USB Serial logging (requires pico2_w)
 mock = []
 
 [build-dependencies]

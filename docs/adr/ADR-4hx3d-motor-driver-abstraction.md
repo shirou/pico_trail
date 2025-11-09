@@ -11,7 +11,8 @@
   - [FR-higbc-hbridge-motor-control](../requirements/FR-higbc-hbridge-motor-control.md)
 - Related Analyses:
   - [AN-qlnt3-freenove-hardware-support](../analysis/AN-qlnt3-freenove-hardware-support.md)
-- Related Tasks: N/A - Tasks will be created after requirements
+- Related Tasks:
+  - [T-vf57h-hbridge-motor-control](../tasks/T-vf57h-hbridge-motor-control/README.md)
 
 ## Context
 

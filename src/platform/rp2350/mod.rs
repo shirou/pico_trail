@@ -25,6 +25,7 @@
 mod flash;
 mod gpio;
 mod i2c;
+mod motor;
 mod platform;
 mod pwm;
 mod spi;
@@ -42,3 +43,9 @@ pub use pwm::Rp2350Pwm;
 pub use spi::Rp2350Spi;
 pub use timer::Rp2350Timer;
 pub use uart::Rp2350Uart;
+
+#[cfg(feature = "pico2_w")]
+pub use motor::{
+    init_motor, init_motor_embassy, init_motor_pwm_slice, EmbassyPwmPin, Rp2350PwmPin,
+    MOTOR_PWM_FREQ_HZ,
+};

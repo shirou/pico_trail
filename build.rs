@@ -1030,6 +1030,14 @@ fn generate_board_config(config: &HwDefConfig) -> String {
 }
 
 fn main() {
+    // Generate BUILD_ID for debugging (changes on every build)
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let build_id = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    println!("cargo:rustc-env=BUILD_ID={}", build_id);
+
     // Read WiFi configuration from environment variables (optional)
     // These are used as default values when parameter storage is empty
 

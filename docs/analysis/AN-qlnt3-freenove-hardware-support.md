@@ -18,6 +18,7 @@
 - Related Tasks:
   - [T-po5ns-pin-configuration](../tasks/T-po5ns-pin-configuration/README.md)
   - [T-l7czt-differential-drive-kinematics](../tasks/T-l7czt-differential-drive-kinematics/README.md)
+  - [T-vf57h-hbridge-motor-control](../tasks/T-vf57h-hbridge-motor-control/README.md)
 
 ## Executive Summary
 

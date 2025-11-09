@@ -6,10 +6,12 @@
 //! ## Libraries
 //!
 //! - `kinematics`: Vehicle kinematics conversions (differential drive, etc.)
+//! - `motor_driver`: Motor driver abstraction (H-bridge motor control)
 //! - `rc_channel`: RC input processing (RC_Channel equivalent)
 //! - `srv_channel`: Servo/motor output processing (SRV_Channel equivalent)
 
 pub mod kinematics;
+pub mod motor_driver;
 pub mod rc_channel;
 pub mod srv_channel;
 

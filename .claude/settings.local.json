@@ -55,7 +55,8 @@
       "Bash(do node scripts/tdl-new-id.ts)",
       "Bash(done)",
       "Bash(for:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(EXTRA_FEATURES=\"usb_serial\" ./scripts/build-rp2350.sh:*)"
     ],
     "deny": [],
     "ask": []

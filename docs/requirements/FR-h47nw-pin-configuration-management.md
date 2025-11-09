@@ -13,6 +13,7 @@
   - [NFR-444kl-pin-config-build-safety](../requirements/NFR-444kl-pin-config-build-safety.md)
 - Related Tasks:
   - [T-po5ns-pin-configuration](../tasks/T-po5ns-pin-configuration/README.md)
+  - [T-vf57h-hbridge-motor-control](../tasks/T-vf57h-hbridge-motor-control/README.md)
 
 ## Requirement Statement
 

@@ -10,19 +10,20 @@ include common/rp2350.hwdef
 MOTOR_COUNT 4
 
 # Motor pin assignments
-# H-bridge motor driver connections for differential drive
+# H-bridge motor driver: DRV8837 (4 chips, one per motor)
+# Pin assignments from Freenove documentation
 
 # Left side motors
-M1_IN1 18 OUTPUT    # Left front motor IN1 (direction control)
-M1_IN2 19 OUTPUT    # Left front motor IN2 (direction control)
-M2_IN1 20 OUTPUT    # Left rear motor IN1 (direction control)
-M2_IN2 21 OUTPUT    # Left rear motor IN2 (direction control)
+M1_IN1 18 OUTPUT    # M1: Left front motor IN1
+M1_IN2 19 OUTPUT    # M1: Left front motor IN2
+M2_IN1 21 OUTPUT    # M2: Left rear motor IN1
+M2_IN2 20 OUTPUT    # M2: Left rear motor IN2
 
 # Right side motors
-M3_IN1 6 OUTPUT     # Right front motor IN1 (direction control)
-M3_IN2 7 OUTPUT     # Right front motor IN2 (direction control)
-M4_IN1 8 OUTPUT     # Right rear motor IN1 (direction control)
-M4_IN2 9 OUTPUT     # Right rear motor IN2 (direction control)
+M3_IN1 7 OUTPUT     # M3: Right rear motor IN1
+M3_IN2 6 OUTPUT     # M3: Right rear motor IN2
+M4_IN1 9 OUTPUT     # M4: Right front motor IN1
+M4_IN2 8 OUTPUT     # M4: Right front motor IN2
 
 # Optional peripheral devices
 BUZZER 2 OUTPUT PULLDOWN        # Piezo buzzer (active low with pull-down)

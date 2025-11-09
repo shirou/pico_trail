@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Functional Requirement
-- Status: Draft
+- Status: Approved
 
 ## Links
 
@@ -11,7 +11,8 @@
 - Dependent Requirements:
   - [FR-41nab-differential-drive-kinematics](../requirements/FR-41nab-differential-drive-kinematics.md)
   - [FR-h47nw-pin-configuration-management](../requirements/FR-h47nw-pin-configuration-management.md)
-- Related Tasks: N/A - Tasks will be created after requirements approval
+- Related Tasks:
+  - [T-vf57h-hbridge-motor-control](../tasks/T-vf57h-hbridge-motor-control/README.md)
 
 ## Requirement Statement
 

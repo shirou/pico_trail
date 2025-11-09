@@ -62,6 +62,13 @@ fi
 # Build configuration
 TARGET="thumbv8m.main-none-eabihf"
 FEATURES="pico2_w"
+
+# Add extra features from environment variable if set
+if [[ -n "${EXTRA_FEATURES:-}" ]]; then
+  FEATURES="${FEATURES},${EXTRA_FEATURES}"
+  echo "Extra features enabled: ${EXTRA_FEATURES}"
+fi
+
 TARGET_DIR="target/${TARGET}/${BUILD_MODE}/examples"
 OUTPUT_DIR="target"
 
