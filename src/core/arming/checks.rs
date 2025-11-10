@@ -6,25 +6,6 @@
 use super::error::{ArmingError, CheckCategory};
 use crate::communication::mavlink::state::SystemState;
 
-#[cfg(feature = "defmt")]
-use defmt::{debug, info, warn};
-
-// Stub macros when defmt is not available
-#[cfg(not(feature = "defmt"))]
-macro_rules! warn {
-    ($($arg:tt)*) => {{}};
-}
-
-#[cfg(not(feature = "defmt"))]
-macro_rules! info {
-    ($($arg:tt)*) => {{}};
-}
-
-#[cfg(not(feature = "defmt"))]
-macro_rules! debug {
-    ($($arg:tt)*) => {{}};
-}
-
 /// Result of a pre-arm check execution
 pub type CheckResult = Result<(), ArmingError>;
 
@@ -111,34 +92,33 @@ impl ArmingChecker {
     /// Only runs checks whose category is enabled in the bitmask.
     ///
     /// Returns Ok if all enabled checks pass, or Err with the first failure.
-    #[allow(unused_variables)] // executed_count used in defmt macro (may be stubbed out)
     pub fn run_checks(&self, state: &SystemState) -> CheckResult {
         // If ARMING_CHECK is 0, all checks are disabled (bench testing only)
         if self.enabled_categories == 0 {
-            warn!("ARMING_CHECK=0: All pre-arm checks disabled (bench testing only)");
+            crate::log_warn!("ARMING_CHECK=0: All pre-arm checks disabled (bench testing only)");
             return Ok(());
         }
 
-        info!(
+        crate::log_info!(
             "Running pre-arm checks (enabled: 0x{:04X})",
             self.enabled_categories
         );
 
-        let mut executed_count = 0;
+        let mut _executed_count = 0;
         for check in &self.checks {
             // Skip checks that are not enabled
             if !check.category().is_enabled(self.enabled_categories) {
-                debug!("Pre-arm check skipped (disabled): {}", check.name());
+                crate::log_debug!("Pre-arm check skipped (disabled): {}", check.name());
                 continue;
             }
 
             // Execute check
-            info!("Pre-arm check: {}", check.name());
+            crate::log_info!("Pre-arm check: {}", check.name());
             check.check(state)?;
-            executed_count += 1;
+            _executed_count += 1;
         }
 
-        info!("All pre-arm checks passed ({} executed)", executed_count);
+        crate::log_info!("All pre-arm checks passed ({} executed)", _executed_count);
         Ok(())
     }
 

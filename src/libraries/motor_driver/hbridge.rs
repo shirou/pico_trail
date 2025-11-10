@@ -263,9 +263,9 @@ mod tests {
 
         // Test boundary values
         assert!(motor.set_speed(1.0).is_ok());
-        assert_eq!(motor.in1.get_duty(), 1.0);
+        assert_eq!(motor.in1.get_duty(), 1.0); // Forward: IN1=PWM, IN2=LOW
 
         assert!(motor.set_speed(-1.0).is_ok());
-        assert_eq!(motor.in2.get_duty(), 1.0);
+        assert_eq!(motor.in2.get_duty(), 1.0); // Reverse: IN1=LOW, IN2=PWM
     }
 }

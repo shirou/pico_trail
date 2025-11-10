@@ -6,6 +6,7 @@
 //!
 //! - MAVLink communication via UDP network transport
 //! - WiFi configuration via parameter storage
+//! - USB Serial debug output (when built with `usb_serial` feature)
 //! - Command handling (ARM/DISARM, mode changes)
 //! - Manual control with RC input processing (RC_CHANNELS)
 //! - Telemetry streaming
@@ -26,11 +27,19 @@
 //! # Usage
 //!
 //! ```bash
-//! # Build for RP2350
+//! # Build for RP2350 (default: defmt logging via probe-rs)
 //! ./scripts/build-rp2350.sh --release pico_trail_rover
+//!
+//! # Build with USB Serial debug output (no probe-rs needed)
+//! EXTRA_FEATURES="usb_serial" ./scripts/build-rp2350.sh --release pico_trail_rover
 //!
 //! # Flash to Pico 2 W
 //! probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/pico_trail_rover
+//!
+//! # Or copy UF2 file (when using usb_serial feature)
+//! # 1. Hold BOOTSEL while connecting USB
+//! # 2. Copy target/pico_trail_rover.uf2 to mounted drive
+//! # 3. Connect serial terminal: screen /dev/ttyACM0 115200
 //! ```
 //!
 //! # Testing
@@ -49,6 +58,20 @@
 use embassy_executor::Spawner;
 use embassy_rp as hal;
 use embassy_time::{Duration, Timer};
+
+#[cfg(feature = "usb_serial")]
+use embassy_rp::usb::{Driver, InterruptHandler};
+#[cfg(feature = "usb_serial")]
+use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
+#[cfg(feature = "usb_serial")]
+use embassy_usb::{Builder, Config};
+
+// Panic handler for USB serial builds
+#[cfg(feature = "usb_serial")]
+use panic_halt as _;
+
+// Panic handler and defmt-rtt for non-USB builds
+#[cfg(not(feature = "usb_serial"))]
 use {defmt_rtt as _, panic_probe as _};
 
 // Global allocator for Box/Vec support (required for mode manager)
@@ -63,6 +86,11 @@ static HEAP: Heap = Heap::empty();
 #[cfg(feature = "pico2_w")]
 const HEAP_SIZE: usize = 16 * 1024;
 
+#[cfg(feature = "usb_serial")]
+hal::bind_interrupts!(struct Irqs {
+    USBCTRL_IRQ => InterruptHandler<hal::peripherals::USB>;
+});
+
 #[cfg(feature = "pico2_w")]
 use pico_trail::{
     communication::mavlink::{
@@ -75,6 +103,7 @@ use pico_trail::{
         transport::udp::UdpTransport,
         transport_router::TransportRouter,
     },
+    libraries::{kinematics::DifferentialDrive, motor_driver::MotorGroup, RC_INPUT},
     parameters::wifi::WifiParams,
     platform::rp2350::{network::WifiConfig, Rp2350Flash},
 };
@@ -109,6 +138,83 @@ async fn main(spawner: Spawner) {
         // Initialize platform
         let p = hal::init(Default::default());
 
+        // Initialize USB Serial (if feature enabled)
+        #[cfg(feature = "usb_serial")]
+        {
+            pico_trail::log_info!("Initializing USB Serial for debug output...");
+
+            let driver = Driver::new(p.USB, Irqs);
+
+            let mut usb_config = Config::new(0x2e8a, 0x000a);
+            usb_config.manufacturer = Some("Raspberry Pi");
+            usb_config.product = Some("Pico Trail Rover");
+            usb_config.serial_number = Some("12345678");
+            usb_config.max_power = 100;
+            usb_config.max_packet_size_0 = 64;
+
+            static mut CONFIG_DESCRIPTOR: [u8; 256] = [0; 256];
+            static mut BOS_DESCRIPTOR: [u8; 256] = [0; 256];
+            static mut CONTROL_BUF: [u8; 64] = [0; 64];
+            static mut MSOS_DESCRIPTOR: [u8; 256] = [0; 256];
+            static mut STATE: State = State::new();
+
+            let mut builder = Builder::new(
+                driver,
+                usb_config,
+                unsafe { &mut CONFIG_DESCRIPTOR },
+                unsafe { &mut BOS_DESCRIPTOR },
+                unsafe { &mut MSOS_DESCRIPTOR },
+                unsafe { &mut CONTROL_BUF },
+            );
+
+            let cdc_class = CdcAcmClass::new(&mut builder, unsafe { &mut STATE }, 64);
+            let usb = builder.build();
+
+            // Spawn USB logger task
+            spawner.spawn(pico_trail::core::logging::usb_logger_task(cdc_class).unwrap());
+
+            // Spawn USB device task
+            spawner.spawn(usb_task(usb).unwrap());
+
+            pico_trail::log_info!("USB Serial initialized");
+        }
+
+        // Extract motor peripherals first (before WiFi initialization)
+        use hal::pwm::{Config as PwmConfig, Pwm};
+        let mut pwm_config = PwmConfig::default();
+        pwm_config.top = 999; // 500 Hz @ 125 MHz (matches Freenove)
+        pwm_config.divider = 250.into();
+
+        pico_trail::log_info!("Initializing motors...");
+
+        // Motor 1 (GPIO18/19) - Left Front
+        let pwm1 = Pwm::new_output_ab(p.PWM_SLICE1, p.PIN_18, p.PIN_19, pwm_config.clone());
+        let (output_a, output_b) = pwm1.split();
+        let in2 = pico_trail::platform::rp2350::EmbassyPwmPin {
+            output: core::cell::RefCell::new(output_a.expect("PWM channel A")),
+        };
+        let in1 = pico_trail::platform::rp2350::EmbassyPwmPin {
+            output: core::cell::RefCell::new(output_b.expect("PWM channel B")),
+        };
+        let motor1 = pico_trail::libraries::motor_driver::HBridgeMotor::new(in1, in2);
+
+        // Motor 2 (GPIO20/21) - Left Rear
+        let pwm2 = Pwm::new_output_ab(p.PWM_SLICE2, p.PIN_20, p.PIN_21, pwm_config.clone());
+        let motor2 = pico_trail::platform::rp2350::init_motor_embassy(pwm2);
+
+        // Motor 3 (GPIO6/7) - Right Rear
+        let pwm3 = Pwm::new_output_ab(p.PWM_SLICE3, p.PIN_6, p.PIN_7, pwm_config.clone());
+        let motor3 = pico_trail::platform::rp2350::init_motor_embassy(pwm3);
+
+        // Motor 4 (GPIO8/9) - Right Front
+        let pwm4 = Pwm::new_output_ab(p.PWM_SLICE4, p.PIN_8, p.PIN_9, pwm_config);
+        let motor4 = pico_trail::platform::rp2350::init_motor_embassy(pwm4);
+
+        let motors = [motor1, motor2, motor3, motor4];
+        let motor_group = MotorGroup::new(motors);
+
+        pico_trail::log_info!("Motors initialized");
+
         let wifi_params = WifiParams::from_store(param_handler.store());
 
         if wifi_params.is_configured() {
@@ -118,8 +224,12 @@ async fn main(spawner: Spawner) {
             pico_trail::log_info!("  SSID: {}", config.ssid.as_str());
             pico_trail::log_info!("  DHCP: {}", config.use_dhcp);
 
-            // Initialize WiFi (consumes p)
-            match pico_trail::platform::rp2350::network::initialize_wifi(spawner, config, p).await {
+            // Initialize WiFi with individual peripherals
+            match pico_trail::platform::rp2350::network::initialize_wifi(
+                spawner, config, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.PIO0, p.DMA_CH0,
+            )
+            .await
+            {
                 Ok((stack, _control)) => {
                     pico_trail::log_info!("WiFi connected");
 
@@ -157,7 +267,13 @@ async fn main(spawner: Spawner) {
                         pico_trail::communication::mavlink::state::SystemState::from_param_store(
                             param_handler.store(),
                         );
-                    let command_handler = CommandHandler::new(state);
+                    // Initialize global SYSTEM_STATE
+                    critical_section::with(|cs| {
+                        *pico_trail::communication::mavlink::state::SYSTEM_STATE
+                            .borrow_ref_mut(cs) = state;
+                    });
+
+                    let command_handler = CommandHandler::new();
                     let telemetry_streamer = TelemetryStreamer::new(1, 1);
                     let mission_handler = MissionHandler::new(1, 1);
                     let rc_input_handler = RcInputHandler::new();
@@ -175,6 +291,9 @@ async fn main(spawner: Spawner) {
 
                     // Spawn MAVLink task
                     spawner.spawn(rover_mavlink_task(router, dispatcher).unwrap());
+
+                    // Spawn motor control task
+                    spawner.spawn(motor_control_task(motor_group).unwrap());
                 }
                 Err(e) => {
                     pico_trail::log_warn!("WiFi initialization failed: {:?}", e);
@@ -345,7 +464,7 @@ async fn rover_mavlink_task(
 
         // Update telemetry streams (get latest state from command handler)
         let timestamp_us = Instant::now().as_micros();
-        let current_state = dispatcher.command_handler().state().clone();
+        let current_state = dispatcher.command_handler().state();
         let telemetry_messages = dispatcher.update_telemetry(&current_state, timestamp_us);
 
         // Send telemetry messages
@@ -389,4 +508,93 @@ async fn rover_mavlink_task(
 
         Timer::after_millis(1).await;
     }
+}
+
+/// Motor control task
+///
+/// Reads RC input (steering/throttle), applies differential drive kinematics,
+/// and controls the 4-wheel drive motors. Enforces armed state check.
+#[cfg(feature = "pico2_w")]
+#[embassy_executor::task]
+async fn motor_control_task(
+    mut motor_group: MotorGroup<
+        pico_trail::libraries::motor_driver::HBridgeMotor<
+            pico_trail::platform::rp2350::EmbassyPwmPin,
+            pico_trail::platform::rp2350::EmbassyPwmPin,
+        >,
+    >,
+) {
+    use pico_trail::communication::mavlink::state::SYSTEM_STATE;
+
+    pico_trail::log_info!("Motor control task started");
+
+    loop {
+        // Read RC input
+        let rc = RC_INPUT.lock().await;
+
+        // Get steering (channel 1) and throttle (channel 3)
+        // ArduPilot standard: Ch1=Roll/Steering, Ch3=Throttle
+        let steering = rc.channels[0]; // Channel 1 (index 0)
+        let throttle = rc.channels[2]; // Channel 3 (index 2)
+        let rc_status = rc.status;
+
+        drop(rc); // Release mutex
+
+        // Apply differential drive kinematics
+        // steering: -1.0 (left) to +1.0 (right)
+        // throttle: -1.0 (reverse) to +1.0 (forward)
+        let (left_speed, right_speed) = DifferentialDrive::mix(steering, throttle);
+
+        // For 4WD: Left side = M1+M2, Right side = M3+M4
+        let speeds = [
+            left_speed,  // Motor 1 (Left Front)
+            left_speed,  // Motor 2 (Left Rear)
+            right_speed, // Motor 3 (Right Rear)
+            right_speed, // Motor 4 (Right Front)
+        ];
+
+        // Set motor speeds (with armed check inside)
+        let is_armed = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).is_armed());
+
+        // Only log when there's significant input or state change
+        if is_armed && (steering.abs() > 0.05 || throttle.abs() > 0.05) {
+            pico_trail::log_debug!(
+                "RC: steering={}, throttle={}, L={}, R={}, armed={}",
+                steering,
+                throttle,
+                left_speed,
+                right_speed,
+                is_armed
+            );
+        }
+
+        if let Err(e) = motor_group.set_group_speed(&speeds, is_armed) {
+            // NotArmed is expected when system is disarmed - don't log as warning
+            if !matches!(e, pico_trail::libraries::motor_driver::MotorError::NotArmed) {
+                pico_trail::log_warn!("Motor control error: {:?}", e);
+            }
+        }
+
+        // Check RC timeout
+        if rc_status != pico_trail::libraries::RcStatus::Active {
+            // RC lost or never connected - ensure motors stop
+            if motor_group.stop_all().is_err() {
+                pico_trail::log_warn!("Failed to stop motors on RC timeout");
+            }
+        }
+
+        // 10 ms update rate (100 Hz)
+        Timer::after_millis(10).await;
+    }
+}
+
+/// USB device task
+///
+/// Runs the USB device event loop for USB Serial functionality.
+#[cfg(feature = "usb_serial")]
+#[embassy_executor::task]
+async fn usb_task(
+    mut usb: embassy_usb::UsbDevice<'static, Driver<'static, hal::peripherals::USB>>,
+) {
+    usb.run().await;
 }

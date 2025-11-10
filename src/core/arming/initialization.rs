@@ -5,23 +5,6 @@
 use super::error::ArmingError;
 use crate::communication::mavlink::state::SystemState;
 
-#[cfg(feature = "defmt")]
-use defmt::{debug, info, warn};
-
-// Stub macros when defmt is not available
-#[cfg(not(feature = "defmt"))]
-macro_rules! debug {
-    ($($arg:tt)*) => {{}};
-}
-#[cfg(not(feature = "defmt"))]
-macro_rules! info {
-    ($($arg:tt)*) => {{}};
-}
-#[cfg(not(feature = "defmt"))]
-macro_rules! warn {
-    ($($arg:tt)*) => {{}};
-}
-
 /// Method used to arm the vehicle
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -97,39 +80,40 @@ impl PostArmInitializer {
         self.arm_timestamp_ms = Some(state.uptime_us / 1000);
 
         // 2. Log arm event
-        info!("Vehicle armed via {}", method);
+        crate::log_info!("Vehicle armed via {}", method);
 
         // 3. Initialize actuators
         // TODO: When actuator subsystem is implemented, call:
         // context.actuators.enter_armed_state()?;
-        debug!("Actuators initialization (placeholder)");
+        crate::log_debug!("Actuators initialization (placeholder)");
 
         // 4. Notify subsystems
         // TODO: When subsystems are implemented, notify:
         // - monitoring: Start armed state monitoring
         // - failsafe: Enable armed-state failsafes
         // - mode_manager: Update mode restrictions
-        debug!("Subsystem notification (placeholder)");
+        crate::log_debug!("Subsystem notification (placeholder)");
 
         // 5. Enable geofence if configured
         // TODO: When fence subsystem is implemented, check FENCE_AUTOENABLE:
         // if context.params.get("FENCE_AUTOENABLE") == 1 {
         //     context.fence.enable()?;
         // }
-        debug!("Geofence auto-enable (placeholder)");
+        crate::log_debug!("Geofence auto-enable (placeholder)");
 
         // 6. Warn if checks disabled
-        #[allow(clippy::if_same_then_else)] // Blocks may be identical when defmt is disabled
-        if self.enabled_checks == 0 {
-            warn!("ARMED WITH ALL PRE-ARM CHECKS DISABLED (ARMING_CHECK=0) - BENCH TESTING ONLY");
-        } else if self.enabled_checks != 0xFFFF {
-            warn!(
+        match self.enabled_checks {
+            0 => crate::log_warn!(
+                "ARMED WITH ALL PRE-ARM CHECKS DISABLED (ARMING_CHECK=0) - BENCH TESTING ONLY"
+            ),
+            0xFFFF => {}
+            _ => crate::log_warn!(
                 "Armed with some pre-arm checks disabled (ARMING_CHECK=0x{:04X})",
                 self.enabled_checks
-            );
+            ),
         }
 
-        info!("Post-arm initialization complete");
+        crate::log_info!("Post-arm initialization complete");
         Ok(())
     }
 

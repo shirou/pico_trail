@@ -15,19 +15,6 @@
 
 use crate::communication::mavlink::state::SystemState;
 
-#[cfg(feature = "defmt")]
-use defmt::{debug, warn};
-
-// Stub macros when defmt is not available
-#[cfg(not(feature = "defmt"))]
-macro_rules! debug {
-    ($($arg:tt)*) => {{}};
-}
-#[cfg(not(feature = "defmt"))]
-macro_rules! warn {
-    ($($arg:tt)*) => {{}};
-}
-
 /// Sensor health flags for quick status checking
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SensorHealthFlags {
@@ -173,7 +160,7 @@ impl ArmedStateMonitor {
             let rc_age_ms = current_time_ms.saturating_sub(last_rc);
             if rc_age_ms > 1000 {
                 // RC timeout: 1 second
-                warn!("RC signal timeout: {} ms", rc_age_ms);
+                crate::log_warn!("RC signal timeout: {} ms", rc_age_ms);
                 return Some(FailsafeReason::RcLoss);
             }
         }
@@ -191,7 +178,7 @@ impl ArmedStateMonitor {
 
         // Check for sensor failures
         if !self.sensor_health.imu_healthy || !self.sensor_health.gyro_healthy {
-            warn!("Critical sensor failure detected");
+            crate::log_warn!("Critical sensor failure detected");
             return Some(FailsafeReason::SensorFailure);
         }
 
@@ -215,9 +202,10 @@ impl ArmedStateMonitor {
 
         // Check battery critical threshold
         if self.battery_voltage < self.battery_critical_threshold {
-            warn!(
+            crate::log_warn!(
                 "Battery voltage critical: {}V < {}V",
-                self.battery_voltage, self.battery_critical_threshold
+                self.battery_voltage,
+                self.battery_critical_threshold
             );
             return Some(FailsafeReason::BatteryCritical);
         }
@@ -234,7 +222,7 @@ impl ArmedStateMonitor {
 
         // Check EKF health
         if !self.ekf_status.is_healthy() {
-            warn!("EKF health degraded");
+            crate::log_warn!("EKF health degraded");
             // EKF unhealthy is a warning, not an immediate failsafe
             // May trigger failsafe based on vehicle mode requirements
         }
@@ -271,7 +259,7 @@ impl ArmedStateMonitor {
 
         // Check geofence violation
         if self.fence_status.enabled && self.fence_status.violated {
-            warn!("Geofence violation detected");
+            crate::log_warn!("Geofence violation detected");
             return Some(FailsafeReason::FenceViolation);
         }
 
@@ -281,16 +269,17 @@ impl ArmedStateMonitor {
             let heartbeat_age_ms = current_time_ms.saturating_sub(last_heartbeat);
             if heartbeat_age_ms > 5000 {
                 // GCS timeout: 5 seconds
-                warn!("GCS heartbeat timeout: {} ms", heartbeat_age_ms);
+                crate::log_warn!("GCS heartbeat timeout: {} ms", heartbeat_age_ms);
                 return Some(FailsafeReason::GcsLoss);
             }
         }
 
         // Generate SYS_STATUS message for GCS
         // TODO: When MAVLink telemetry is implemented, send SYS_STATUS
-        debug!(
+        crate::log_debug!(
             "SYS_STATUS: bat={}V sensors_ok={}",
-            self.battery_voltage, self.sensor_health.imu_healthy
+            self.battery_voltage,
+            self.sensor_health.imu_healthy
         );
 
         None

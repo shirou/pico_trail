@@ -52,6 +52,52 @@ pub enum LogLevel {
 #[cfg(all(feature = "pico2_w", feature = "usb_serial"))]
 static LOG_CHANNEL: Channel<CriticalSectionRawMutex, LogMessage, LOG_CHANNEL_SIZE> = Channel::new();
 
+// ============================================================================
+// defmt transport implementation for USB Serial
+// ============================================================================
+//
+// When usb_serial feature is enabled, we provide defmt symbols but redirect
+// all logging through our own crate::log_*! macros instead.
+// This allows the linker to succeed while using USB Serial for all logs.
+
+#[cfg(all(feature = "pico2_w", feature = "usb_serial"))]
+use core::sync::atomic::{AtomicBool, Ordering};
+
+#[cfg(all(feature = "pico2_w", feature = "usb_serial"))]
+static DEFMT_LOCKED: AtomicBool = AtomicBool::new(false);
+
+/// defmt acquire - no-op implementation for USB Serial
+///
+/// We don't actually use defmt when usb_serial is enabled,
+/// but we need to provide these symbols for the linker.
+#[cfg(all(feature = "pico2_w", feature = "usb_serial"))]
+#[no_mangle]
+unsafe extern "C" fn _defmt_acquire() {
+    // Simple spinlock
+    while DEFMT_LOCKED
+        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+        .is_err()
+    {
+        core::hint::spin_loop();
+    }
+}
+
+/// defmt release - no-op implementation for USB Serial
+#[cfg(all(feature = "pico2_w", feature = "usb_serial"))]
+#[no_mangle]
+unsafe extern "C" fn _defmt_release() {
+    DEFMT_LOCKED.store(false, Ordering::Release);
+}
+
+/// defmt write - no-op implementation for USB Serial
+///
+/// We ignore defmt's binary data since we use crate::log_*! macros instead.
+#[cfg(all(feature = "pico2_w", feature = "usb_serial"))]
+#[no_mangle]
+unsafe extern "C" fn _defmt_write(_bytes: *const u8, _len: usize) {
+    // No-op: we use crate::log_*! macros for all logging
+}
+
 /// Send log message to channel
 #[cfg(all(feature = "pico2_w", feature = "usb_serial"))]
 pub fn send_log(level: LogLevel, msg: &str) {

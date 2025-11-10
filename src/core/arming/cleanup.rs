@@ -5,23 +5,6 @@
 use super::disarm::{DisarmMethod, DisarmReason};
 use crate::communication::mavlink::state::SystemState;
 
-#[cfg(feature = "defmt")]
-use defmt::{debug, info, warn};
-
-// Stub macros when defmt is not available
-#[cfg(not(feature = "defmt"))]
-macro_rules! debug {
-    ($($arg:tt)*) => {{}};
-}
-#[cfg(not(feature = "defmt"))]
-macro_rules! info {
-    ($($arg:tt)*) => {{}};
-}
-#[cfg(not(feature = "defmt"))]
-macro_rules! warn {
-    ($($arg:tt)*) => {{}};
-}
-
 /// Post-disarm cleanup error
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CleanupError {
@@ -103,32 +86,32 @@ impl PostDisarmCleanup {
     ) -> Result<(), CleanupError> {
         // 1. Verify disarmed state
         if state.is_armed() {
-            warn!("Post-disarm cleanup called while still armed");
+            crate::log_warn!("Post-disarm cleanup called while still armed");
             return Ok(()); // Not an error, just skip cleanup
         }
 
         // 2. Log disarm event
-        info!("Vehicle disarmed via {} ({})", method, reason);
+        crate::log_info!("Vehicle disarmed via {} ({})", method, reason);
 
         // 3. Verify actuators neutral
         // TODO: When actuator system is implemented, verify:
         // if !context.actuators.verify_neutral_state() {
         //     return Err(CleanupError::ActuatorsNotNeutral);
         // }
-        debug!("Actuator neutral verification (placeholder)");
+        crate::log_debug!("Actuator neutral verification (placeholder)");
 
         // 4. Notify subsystems
         // TODO: When subsystems are implemented, notify:
         // - monitoring: Stop armed state monitoring tasks
         // - failsafe: Disable armed-state failsafes
         // - mode_manager: Update mode restrictions
-        debug!("Subsystem notification (placeholder)");
+        crate::log_debug!("Subsystem notification (placeholder)");
 
         // 5. Disable geofence if auto-enabled
         if self.fence_auto_enabled {
             // TODO: When fence system is implemented:
             // context.fence.disable()?;
-            debug!("Geofence auto-disable (placeholder)");
+            crate::log_debug!("Geofence auto-disable (placeholder)");
         }
 
         // 6. Persist configuration changes
@@ -136,13 +119,13 @@ impl PostDisarmCleanup {
         // if context.params.has_unsaved_changes() {
         //     context.params.save()?;
         // }
-        debug!("Configuration persistence (placeholder)");
+        crate::log_debug!("Configuration persistence (placeholder)");
 
         // 7. Clear arm timestamp and monitoring state
         // This is handled by the caller (PostArmInitializer::clear_timestamp())
-        debug!("Arm timestamp cleared");
+        crate::log_debug!("Arm timestamp cleared");
 
-        info!("Post-disarm cleanup complete");
+        crate::log_info!("Post-disarm cleanup complete");
         Ok(())
     }
 }

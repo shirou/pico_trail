@@ -18,16 +18,6 @@
 #[cfg(feature = "embassy-executor")]
 use embassy_time::{Duration, Timer};
 
-#[cfg(feature = "defmt")]
-use defmt::warn;
-
-// Stub macro when defmt is not available
-#[cfg(not(feature = "defmt"))]
-#[allow(unused_macros)]
-macro_rules! warn {
-    ($($arg:tt)*) => {{}};
-}
-
 /// Fast monitoring task (400 Hz / 2.5ms period)
 ///
 /// Monitors:
@@ -83,7 +73,7 @@ where
         let current_time_ms = 0;
 
         if let Some(reason) = check_fn(current_time_ms) {
-            warn!("Fast monitor failsafe: {}", reason);
+            crate::log_warn!("Fast monitor failsafe: {}", reason);
             // TODO: Trigger failsafe action via channel
         }
 
@@ -127,7 +117,7 @@ where
 {
     loop {
         if let Some(reason) = check_fn() {
-            warn!("Medium monitor failsafe: {}", reason);
+            crate::log_warn!("Medium monitor failsafe: {}", reason);
             // TODO: Trigger failsafe action via channel
         }
 
@@ -179,7 +169,7 @@ where
         let current_time_ms = 0;
 
         if let Some(reason) = check_fn(current_time_ms) {
-            warn!("Slow monitor failsafe: {}", reason);
+            crate::log_warn!("Slow monitor failsafe: {}", reason);
             // TODO: Trigger failsafe action via channel
         }
 

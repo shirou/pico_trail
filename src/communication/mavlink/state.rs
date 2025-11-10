@@ -107,7 +107,7 @@ pub struct BatteryState {
 
 impl BatteryState {
     /// Create battery state with placeholder values
-    pub fn placeholder() -> Self {
+    pub const fn placeholder() -> Self {
         Self {
             voltage: 12.0,
             current: 0.0,
@@ -158,6 +158,18 @@ impl Default for SystemState {
 }
 
 impl SystemState {
+    /// Create a new system state with default values (const fn for static initialization)
+    pub const fn init() -> Self {
+        Self {
+            armed: ArmedState::Disarmed,
+            mode: FlightMode::Manual,
+            battery: BatteryState::placeholder(),
+            uptime_us: 0,
+            cpu_load: 0.0,
+            arming_checks: 0xFFFF, // All checks enabled by default
+        }
+    }
+
     /// Create a new system state with default values
     pub fn new() -> Self {
         Self::default()
@@ -388,6 +400,13 @@ impl SystemState {
         self.uptime_us = uptime_us;
     }
 }
+
+/// Global system state (protected by Mutex for multi-task access)
+///
+/// This allows both the command handler and motor control task to share
+/// the same system state, ensuring ARM status changes are visible across tasks.
+pub static SYSTEM_STATE: critical_section::Mutex<core::cell::RefCell<SystemState>> =
+    critical_section::Mutex::new(core::cell::RefCell::new(SystemState::init()));
 
 #[cfg(test)]
 mod tests {

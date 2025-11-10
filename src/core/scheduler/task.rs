@@ -157,6 +157,7 @@ mod tests {
     };
 
     #[test]
+    #[serial_test::serial]
     fn test_execute_with_timing() {
         reset_registry();
         reset_stats();
@@ -186,6 +187,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_execute_with_timing_multiple() {
         reset_registry();
         reset_stats();

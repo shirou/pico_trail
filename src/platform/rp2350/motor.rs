@@ -249,17 +249,8 @@ impl PwmPin for EmbassyPwmPin {
         let max_duty = output.max_duty_cycle();
         let duty_value = (duty * max_duty as f32) as u16;
 
-        crate::log_info!(
-            "PWM set_duty: duty={}, value={}/{}",
-            duty,
-            duty_value,
-            max_duty
-        );
-
         match output.set_duty_cycle(duty_value) {
-            Ok(_) => {
-                crate::log_info!("PWM set_duty SUCCESS");
-            }
+            Ok(_) => {}
             Err(_) => {
                 crate::log_error!("PWM set_duty FAILED");
                 return Err(MotorError::HardwareFault);

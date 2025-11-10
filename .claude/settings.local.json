@@ -56,7 +56,8 @@
       "Bash(done)",
       "Bash(for:*)",
       "Bash(tree:*)",
-      "Bash(EXTRA_FEATURES=\"usb_serial\" ./scripts/build-rp2350.sh:*)"
+      "Bash(EXTRA_FEATURES=\"usb_serial\" ./scripts/build-rp2350.sh:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

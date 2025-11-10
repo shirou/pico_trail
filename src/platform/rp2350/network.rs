@@ -63,8 +63,9 @@ use cyw43_pio::DEFAULT_CLOCK_DIVIDER;
 use embassy_rp::{
     bind_interrupts,
     gpio::{Level, Output},
-    peripherals::{DMA_CH0, PIO0},
+    peripherals::{DMA_CH0, PIN_23, PIN_24, PIN_25, PIN_29, PIO0},
     pio::{InterruptHandler as PioInterruptHandler, Pio},
+    Peri,
 };
 #[cfg(feature = "pico2_w")]
 use static_cell::StaticCell;
@@ -154,7 +155,12 @@ pub enum WifiError {
 ///
 /// * `spawner` - Embassy task spawner
 /// * `config` - WiFi configuration
-/// * `p` - RP2350 peripherals (PIO0, DMA, GPIO pins)
+/// * `pin_23` - GPIO23 for WiFi power (PIN_23)
+/// * `pin_24` - GPIO24 for WiFi DIO (PIN_24)
+/// * `pin_25` - GPIO25 for WiFi CS (PIN_25)
+/// * `pin_29` - GPIO29 for WiFi CLK (PIN_29)
+/// * `pio0` - PIO0 peripheral for WiFi SPI
+/// * `dma_ch0` - DMA channel 0 for WiFi SPI
 ///
 /// # Returns
 ///
@@ -168,17 +174,32 @@ pub enum WifiError {
 /// # Example
 ///
 /// ```no_run
-/// let (stack, control) = initialize_wifi(spawner, wifi_config, p).await?;
+/// let (stack, control) = initialize_wifi(
+///     spawner,
+///     wifi_config,
+///     p.PIN_23,
+///     p.PIN_24,
+///     p.PIN_25,
+///     p.PIN_29,
+///     p.PIO0,
+///     p.DMA_CH0,
+/// ).await?;
 /// ```
 pub async fn initialize_wifi(
     spawner: Spawner,
     config: WifiConfig,
-    p: embassy_rp::Peripherals,
+    pin_23: Peri<'static, PIN_23>,
+    pin_24: Peri<'static, PIN_24>,
+    pin_25: Peri<'static, PIN_25>,
+    pin_29: Peri<'static, PIN_29>,
+    pio0: Peri<'static, PIO0>,
+    dma_ch0: Peri<'static, DMA_CH0>,
 ) -> Result<(&'static Stack<'static>, &'static mut Control<'static>), WifiError> {
     if !config.is_configured() {
         crate::log_info!("WiFi not configured (empty SSID), skipping WiFi initialization");
         return Err(WifiError::NotConfigured);
     }
+
     let mut rng = RoscRng;
 
     crate::log_info!("Initializing WiFi with SSID: {}", config.ssid.as_str());
@@ -188,18 +209,18 @@ pub async fn initialize_wifi(
     let clm = include_bytes!("../../../cyw43-firmware/43439A0_clm.bin");
 
     // 2. Initialize PIO for WiFi SPI communication
-    let pwr = Output::new(p.PIN_23, Level::Low);
-    let cs = Output::new(p.PIN_25, Level::High);
-    let mut pio = Pio::new(p.PIO0, PioIrqs);
+    let pwr = Output::new(pin_23, Level::Low);
+    let cs = Output::new(pin_25, Level::High);
+    let mut pio = Pio::new(pio0, PioIrqs);
     let spi = cyw43_pio::PioSpi::new(
         &mut pio.common,
         pio.sm0,
         DEFAULT_CLOCK_DIVIDER,
         pio.irq0,
         cs,
-        p.PIN_24, // DIO
-        p.PIN_29, // CLK
-        p.DMA_CH0,
+        pin_24, // DIO
+        pin_29, // CLK
+        dma_ch0,
     );
 
     // 4. Initialize CYW43 driver

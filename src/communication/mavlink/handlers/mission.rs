@@ -32,23 +32,6 @@ use mavlink::common::{
     MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA,
 };
 
-#[cfg(feature = "defmt")]
-use defmt::{debug, info, warn};
-
-// Stub macros when defmt is not available
-#[cfg(not(feature = "defmt"))]
-macro_rules! debug {
-    ($($arg:tt)*) => {{}};
-}
-#[cfg(not(feature = "defmt"))]
-macro_rules! info {
-    ($($arg:tt)*) => {{}};
-}
-#[cfg(not(feature = "defmt"))]
-macro_rules! warn {
-    ($($arg:tt)*) => {{}};
-}
-
 /// Mission transfer timeout (5 seconds in microseconds)
 const MISSION_TIMEOUT_US: u64 = 5_000_000;
 
@@ -142,7 +125,7 @@ impl MissionHandler {
             }
             | MissionState::DownloadInProgress { last_activity_us } => {
                 if current_time_us - last_activity_us > MISSION_TIMEOUT_US {
-                    warn!("Mission transfer timeout, aborting");
+                    crate::log_warn!("Mission transfer timeout, aborting");
                     self.abort_transfer();
                     true
                 } else {
@@ -176,7 +159,7 @@ impl MissionHandler {
         _data: &MISSION_REQUEST_LIST_DATA,
         current_time_us: u64,
     ) -> MISSION_COUNT_DATA {
-        info!("Mission download requested");
+        crate::log_info!("Mission download requested");
         self.state = MissionState::DownloadInProgress {
             last_activity_us: current_time_us,
         };
@@ -200,18 +183,18 @@ impl MissionHandler {
         if let MissionState::DownloadInProgress { last_activity_us } = &mut self.state {
             *last_activity_us = current_time_us;
         } else {
-            warn!("Received MISSION_REQUEST_INT while not downloading");
+            crate::log_warn!("Received MISSION_REQUEST_INT while not downloading");
             return Err(MavMissionResult::MAV_MISSION_ERROR);
         }
 
         let seq = data.seq;
         match self.storage.get_waypoint(seq) {
             Some(wp) => {
-                debug!("Sending waypoint {}", seq);
+                crate::log_debug!("Sending waypoint {}", seq);
                 Ok(self.waypoint_to_mission_item(wp, data.target_system, data.target_component))
             }
             None => {
-                warn!("Waypoint {} not found", seq);
+                crate::log_warn!("Waypoint {} not found", seq);
                 Err(MavMissionResult::MAV_MISSION_INVALID_SEQUENCE)
             }
         }
@@ -226,7 +209,7 @@ impl MissionHandler {
         current_time_us: u64,
     ) -> MISSION_REQUEST_INT_DATA {
         let count = data.count;
-        info!("Mission upload started: {} waypoints", count);
+        crate::log_info!("Mission upload started: {} waypoints", count);
 
         // Clear existing mission and prepare for upload
         self.storage.reserve(count);
@@ -261,9 +244,10 @@ impl MissionHandler {
             } => {
                 // Verify sequence number
                 if data.seq != next_seq {
-                    warn!(
+                    crate::log_warn!(
                         "Waypoint sequence mismatch: expected {}, got {}",
-                        next_seq, data.seq
+                        next_seq,
+                        data.seq
                     );
                     self.abort_transfer();
                     return Err(MavMissionResult::MAV_MISSION_INVALID_SEQUENCE);
@@ -272,12 +256,12 @@ impl MissionHandler {
                 // Convert and store waypoint
                 let wp = self.mission_item_to_waypoint(data);
                 if let Err(_e) = self.storage.add_waypoint(wp) {
-                    warn!("Failed to add waypoint");
+                    crate::log_warn!("Failed to add waypoint");
                     self.abort_transfer();
                     return Err(MavMissionResult::MAV_MISSION_ERROR);
                 }
 
-                debug!("Received waypoint {}/{}", next_seq + 1, count);
+                crate::log_debug!("Received waypoint {}/{}", next_seq + 1, count);
 
                 // Update state
                 let new_next_seq = next_seq + 1;
@@ -289,7 +273,7 @@ impl MissionHandler {
 
                 // Check if upload complete
                 if new_next_seq >= count {
-                    info!("Mission upload complete: {} waypoints", count);
+                    crate::log_info!("Mission upload complete: {} waypoints", count);
                     self.state = MissionState::Idle;
                     Ok(None) // No more requests, upload complete
                 } else {
@@ -302,7 +286,7 @@ impl MissionHandler {
                 }
             }
             _ => {
-                warn!("Received MISSION_ITEM_INT while not uploading");
+                crate::log_warn!("Received MISSION_ITEM_INT while not uploading");
                 Err(MavMissionResult::MAV_MISSION_ERROR)
             }
         }
@@ -314,11 +298,11 @@ impl MissionHandler {
     pub fn handle_ack(&mut self, _data: &MISSION_ACK_DATA) {
         match self.state {
             MissionState::DownloadInProgress { .. } => {
-                info!("Mission download acknowledged");
+                crate::log_info!("Mission download acknowledged");
                 self.state = MissionState::Idle;
             }
             _ => {
-                warn!("Received MISSION_ACK while not in download");
+                crate::log_warn!("Received MISSION_ACK while not in download");
             }
         }
     }

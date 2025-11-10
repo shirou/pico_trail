@@ -191,6 +191,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[serial_test::serial]
     fn test_update_and_get_task_stats() {
         reset_stats();
 
@@ -211,6 +212,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_deadline_miss_tracking() {
         reset_stats();
 
@@ -228,6 +230,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_multiple_task_stats() {
         reset_stats();
 
@@ -245,6 +248,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_update_total_deadline_misses() {
         use super::super::registry::register_task;
         use super::super::types::TaskMetadata;
@@ -283,6 +287,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_uptime_update() {
         reset_stats();
 
@@ -320,6 +325,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_invalid_task_id() {
         reset_stats();
 

@@ -114,13 +114,20 @@ impl<F: FlashInterface> MavlinkRouter<F> {
     /// * `component_id` - MAVLink component ID (default: 1)
     pub fn new(flash: &mut F, system_id: u8, component_id: u8) -> Self {
         let system_state = SystemState::new();
+
+        // Initialize global SYSTEM_STATE
+        use crate::communication::mavlink::state::SYSTEM_STATE;
+        critical_section::with(|cs| {
+            *SYSTEM_STATE.borrow_ref_mut(cs) = system_state;
+        });
+
         Self {
             connection: ConnectionState::default(),
             stats: RouterStats::default(),
             system_state,
             param_handler: ParamHandler::new(flash),
             telemetry: TelemetryStreamer::new(system_id, component_id),
-            command_handler: CommandHandler::new(system_state),
+            command_handler: CommandHandler::new(),
             mission_handler: MissionHandler::new(system_id, component_id),
             rc_input_handler: RcInputHandler::new(),
             pending_messages: heapless::Vec::new(),
@@ -342,14 +349,11 @@ impl<F: FlashInterface> MavlinkRouter<F> {
     ///
     /// Returns COMMAND_ACK message to be sent via writer (implementation deferred to task layer)
     fn handle_command_long(&mut self, data: &mavlink::common::COMMAND_LONG_DATA) {
-        // Sync command handler state with router state
-        *self.command_handler.state_mut() = self.system_state;
-
         // Process command
         let (ack, additional_messages) = self.command_handler.handle_command_long(data);
 
         // Sync router state with command handler state (capture arm/mode changes)
-        self.system_state = *self.command_handler.state();
+        self.system_state = self.command_handler.state();
 
         // Queue COMMAND_ACK message
         let ack_msg = MavMessage::COMMAND_ACK(ack);

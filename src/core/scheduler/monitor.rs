@@ -142,6 +142,7 @@ mod tests {
     };
 
     #[test]
+    #[serial_test::serial]
     fn test_collect_and_report_stats() {
         reset_stats();
 
@@ -176,6 +177,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_check_warnings_high_cpu() {
         reset_stats();
 
@@ -199,6 +201,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_report_task_stats_empty() {
         reset_stats();
 

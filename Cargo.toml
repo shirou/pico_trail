@@ -101,6 +101,7 @@ defmt-test = "0.3"
 # Host-only test dependencies (not used for embedded targets)
 [target.'cfg(not(target_arch = "arm"))'.dev-dependencies]
 critical-section = { version = "1.2", features = ["std"] }
+serial_test = "3.2"
 tokio = { version = "1", features = ["rt", "macros"] }
 
 # cargo build/run

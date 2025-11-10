@@ -5,15 +5,6 @@
 use super::error::DisarmError;
 use crate::communication::mavlink::state::SystemState;
 
-#[cfg(feature = "defmt")]
-use defmt::warn;
-
-// Stub macro when defmt is not available
-#[cfg(not(feature = "defmt"))]
-macro_rules! warn {
-    ($($arg:tt)*) => {{}};
-}
-
 /// Method used to disarm the vehicle
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -131,7 +122,7 @@ impl DisarmValidator {
 
         // Forced disarm bypasses all checks
         if forced {
-            warn!("FORCED DISARM: Bypassing all pre-disarm validation");
+            crate::log_warn!("FORCED DISARM: Bypassing all pre-disarm validation");
             return Ok(());
         }
 

@@ -135,6 +135,39 @@ impl RcInput {
         centered as f32 / 500.0
     }
 
+    /// Normalize PWM channel with inverted direction (1000-2000 → +1.0 to -1.0)
+    ///
+    /// Used for throttle channels where joystick up (1000) should be forward (+1.0)
+    ///
+    /// # MAVLink RC_CHANNELS_OVERRIDE specification
+    ///
+    /// - 1000 = maximum (+1.0) - joystick up
+    /// - 1500 = center (0.0)
+    /// - 2000 = minimum (-1.0) - joystick down
+    /// - 65535 = ignore/no change
+    ///
+    /// # Arguments
+    ///
+    /// * `raw` - Raw PWM value (1000-2000, or 65535 for ignore)
+    ///
+    /// # Returns
+    ///
+    /// Normalized value (-1.0 to +1.0), or 0.0 if ignored
+    pub fn normalize_pwm_channel_inverted(raw: u16) -> f32 {
+        // 65535 means "ignore this channel"
+        if raw == 65535 {
+            return 0.0;
+        }
+
+        // Clamp to valid PWM range
+        let clamped = raw.clamp(1000, 2000);
+
+        // Convert 1000-2000 to +1.0 to -1.0 (inverted)
+        // Formula: (1500 - raw) / 500.0
+        let centered = 1500 - clamped as i32;
+        centered as f32 / 500.0
+    }
+
     /// Update from MAVLink RC_CHANNELS_OVERRIDE message (PWM format)
     ///
     /// # Arguments
@@ -153,7 +186,13 @@ impl RcInput {
         for (i, &raw_value) in raw_channels.iter().enumerate().take(count) {
             // Only update if not 65535 (ignore value)
             if raw_value != 65535 {
-                self.channels[i] = Self::normalize_pwm_channel(raw_value);
+                // Channel 3 (index 2) is throttle - use inverted normalization
+                // so joystick up (1000) = forward (+1.0)
+                if i == 2 {
+                    self.channels[i] = Self::normalize_pwm_channel_inverted(raw_value);
+                } else {
+                    self.channels[i] = Self::normalize_pwm_channel(raw_value);
+                }
             }
         }
 
