@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Task
-- Status: Completed
+- Status: Complete
 
 ## Links
 

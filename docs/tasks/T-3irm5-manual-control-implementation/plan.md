@@ -440,13 +440,13 @@ probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/debug/examples/pico_
     - [x] Test verifies RcStatus::Lost
     - [x] Test verifies all channels zeroed
     - [x] ManualMode implementation sets neutral outputs when RC lost (src/rover/mode/manual.rs:120-126)
-- [ ] **Hardware Validation**
-  - [ ] Test with physical servo on steering channel (GPIO 16)
-  - [ ] Test with physical ESC on throttle channel (GPIO 17)
-  - [ ] Verify servo moves proportionally to joystick X-axis
-  - [ ] Verify throttle responds proportionally to joystick Y-axis
-  - [ ] Verify neutral outputs when disarmed (servo centered, motor stopped)
-  - [ ] Verify smooth operation at 50 Hz (no jitter or lag)
+- [x] **Hardware Validation**
+  - [x] Test with physical servo on steering channel (GPIO 16)
+  - [x] Test with physical ESC on throttle channel (GPIO 17)
+  - [x] Verify servo moves proportionally to joystick X-axis
+  - [x] Verify throttle responds proportionally to joystick Y-axis
+  - [x] Verify neutral outputs when disarmed (servo centered, motor stopped)
+  - [x] Verify smooth operation at 50 Hz (no jitter or lag)
 - [ ] **Performance Measurements**
   - [ ] Measure RC input to actuator latency (target < 100ms)
     - [ ] Send RC_CHANNELS via MAVLink
