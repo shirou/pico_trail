@@ -456,10 +456,10 @@ mod tests {
 
         #[cfg(not(feature = "pico2_w"))]
         {
-            // Without pico2_w: 6 + 4 + 1 + 5 + 3 + 3 + 2 = 24 total
-            // Minus 2 String types = 23 sendable
-            // Minus 1 hidden = 23 visible (NET_PASS is both String and hidden)
-            assert_eq!(handler.count(), 23);
+            // Without pico2_w: 6 + 4 + 1 + 5 + 4 + 3 + 2 = 25 total
+            // Minus 2 String types = 24 sendable
+            // Minus 1 hidden = 24 visible (NET_PASS is both String and hidden)
+            assert_eq!(handler.count(), 24);
         }
     }
 
@@ -478,14 +478,14 @@ mod tests {
         // Should return all non-String parameters except NET_PASS (hidden)
         // NET_SSID (String) and NET_PASS (String, hidden) cannot be sent via MAVLink
         // Count: 4 WiFi (DHCP, IP, NETMASK, GATEWAY) + 4 SR + 1 SYSID
-        //        + 5 Arming + 3 Battery + 3 Failsafe + 2 Fence + 11 Board (if pico2_w)
+        //        + 5 Arming + 4 Battery + 3 Failsafe + 2 Fence + 11 Board (if pico2_w)
         // Note: NET_PASS is hidden, so even if it weren't String, it wouldn't appear
 
         #[cfg(feature = "pico2_w")]
-        assert_eq!(messages.len(), 33); // With board pins
+        assert_eq!(messages.len(), 34); // With board pins
 
         #[cfg(not(feature = "pico2_w"))]
-        assert_eq!(messages.len(), 22); // Without board pins
+        assert_eq!(messages.len(), 23); // Without board pins
 
         // Verify NET_PASS is not in the list
         for msg in &messages {

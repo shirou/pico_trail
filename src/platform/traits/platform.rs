@@ -148,4 +148,20 @@ pub trait Platform: Sized {
 
     /// Get mutable timer instance
     fn timer_mut(&mut self) -> &mut Self::Timer;
+
+    /// Read battery voltage from ADC
+    ///
+    /// Returns raw ADC value (0-4095 for 12-bit ADC on RP2350).
+    /// This method reads from the battery voltage sensing pin (typically GPIO 26/ADC0)
+    /// with voltage divider circuit.
+    ///
+    /// # Returns
+    ///
+    /// Raw 12-bit ADC value (0-4095) representing voltage at ADC pin (0-3.3V range)
+    ///
+    /// # Implementation Notes
+    ///
+    /// - RP2350: Reads GPIO 26 (ADC0) via embassy-rp Adc driver with 5-sample averaging
+    /// - MockPlatform: Returns configurable test value
+    fn read_battery_adc(&mut self) -> u16;
 }

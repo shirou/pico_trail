@@ -22,6 +22,29 @@
 #[cfg(feature = "defmt")]
 use defmt::warn;
 
+/// Trait for reading battery ADC values
+///
+/// This trait provides a minimal interface for battery voltage monitoring,
+/// allowing different implementations (hardware ADC, stub, mock) to be used
+/// with SystemState::update_battery().
+pub trait BatteryAdcReader {
+    /// Read raw battery ADC value
+    ///
+    /// # Returns
+    ///
+    /// Raw 12-bit ADC value (0-4095) representing voltage at ADC pin (0-3.3V range)
+    fn read_battery_adc(&mut self) -> u16;
+}
+
+/// Blanket implementation for Platform trait
+///
+/// Any type implementing Platform automatically implements BatteryAdcReader
+impl<P: crate::platform::traits::Platform> BatteryAdcReader for P {
+    fn read_battery_adc(&mut self) -> u16 {
+        crate::platform::traits::Platform::read_battery_adc(self)
+    }
+}
+
 // Stub macro when defmt is not available
 #[cfg(not(feature = "defmt"))]
 macro_rules! warn {
@@ -121,6 +144,112 @@ impl BatteryState {
     pub fn is_critical(&self) -> bool {
         self.voltage < 10.0
     }
+
+    /// Convert ADC value to battery voltage
+    ///
+    /// Converts a raw 12-bit ADC reading to battery voltage using the voltage
+    /// divider multiplier (BATT_VOLT_MULT parameter).
+    ///
+    /// # Formula
+    ///
+    /// ```text
+    /// voltage = (adc / 4095.0 * 3.3) * mult
+    /// ```
+    ///
+    /// Where:
+    /// - `adc`: Raw ADC value (0-4095 for 12-bit ADC)
+    /// - `4095.0`: Maximum ADC count (12-bit)
+    /// - `3.3`: ADC reference voltage (V)
+    /// - `mult`: Voltage divider coefficient (BATT_VOLT_MULT, typically 3.95 for Freenove)
+    ///
+    /// # Arguments
+    ///
+    /// * `adc` - Raw ADC value (0-4095)
+    /// * `mult` - Voltage multiplier from BATT_VOLT_MULT parameter
+    ///
+    /// # Returns
+    ///
+    /// Battery voltage in volts
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use pico_trail::communication::mavlink::state::BatteryState;
+    /// // ADC reading of 3000 with multiplier 3.95
+    /// let voltage = BatteryState::voltage_from_adc(3000, 3.95);
+    /// assert!((voltage - 9.549).abs() < 0.01);
+    /// ```
+    pub fn voltage_from_adc(adc: u16, mult: f32) -> f32 {
+        (adc as f32 / 4095.0 * 3.3) * mult
+    }
+
+    /// Estimate battery remaining percentage from voltage
+    ///
+    /// Estimates remaining battery capacity based on voltage using linear interpolation.
+    /// Automatically detects battery cell count (2S or 3S) from voltage range.
+    ///
+    /// # Supported Battery Types
+    ///
+    /// - **2S LiPo**: 6.0V (empty) to 8.4V (full)
+    ///   - Full charge: 8.4V (4.2V per cell) = 100%
+    ///   - Nominal: 7.4V (3.7V per cell) = ~50%
+    ///   - Empty: 6.0V (3.0V per cell) = 0%
+    ///
+    /// - **3S LiPo**: 9.0V (empty) to 12.6V (full)
+    ///   - Full charge: 12.6V (4.2V per cell) = 100%
+    ///   - Nominal: 11.1V (3.7V per cell) = ~50%
+    ///   - Empty: 9.0V (3.0V per cell) = 0%
+    ///
+    /// # Detection Logic
+    ///
+    /// - Voltage >= 8.7V → 3S battery (9.0V-12.6V range)
+    /// - Voltage < 8.7V → 2S battery (6.0V-8.4V range)
+    ///
+    /// # Arguments
+    ///
+    /// * `voltage` - Battery voltage in volts
+    ///
+    /// # Returns
+    ///
+    /// Estimated remaining capacity as percentage (0-100)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use pico_trail::communication::mavlink::state::BatteryState;
+    /// // 3S LiPo examples
+    /// assert_eq!(BatteryState::estimate_remaining_percent(12.6), 100);
+    /// assert_eq!(BatteryState::estimate_remaining_percent(9.0), 0);
+    /// assert_eq!(BatteryState::estimate_remaining_percent(10.8), 50);
+    ///
+    /// // 2S LiPo examples
+    /// assert_eq!(BatteryState::estimate_remaining_percent(8.4), 100);
+    /// assert_eq!(BatteryState::estimate_remaining_percent(6.0), 0);
+    /// assert_eq!(BatteryState::estimate_remaining_percent(7.2), 50);
+    /// ```
+    pub fn estimate_remaining_percent(voltage: f32) -> u8 {
+        // Detect battery type from voltage range
+        // Threshold at 8.7V (midpoint between 2S max 8.4V and 3S min 9.0V)
+        const DETECTION_THRESHOLD: f32 = 8.7;
+
+        let (voltage_full, voltage_empty) = if voltage >= DETECTION_THRESHOLD {
+            // 3S LiPo battery
+            (12.6, 9.0) // 4.2V × 3 cells, 3.0V × 3 cells
+        } else {
+            // 2S LiPo battery
+            (8.4, 6.0) // 4.2V × 2 cells, 3.0V × 2 cells
+        };
+
+        if voltage >= voltage_full {
+            100
+        } else if voltage <= voltage_empty {
+            0
+        } else {
+            // Linear interpolation: percent = (voltage - empty) / (full - empty) * 100
+            let percent = (voltage - voltage_empty) / (voltage_full - voltage_empty) * 100.0;
+            percent.clamp(0.0, 100.0) as u8
+        }
+    }
 }
 
 /// System state for autopilot
@@ -142,6 +271,9 @@ pub struct SystemState {
     /// Enabled pre-arm check categories bitmask (ARMING_CHECK parameter)
     /// Default: 0xFFFF (all checks enabled)
     pub arming_checks: u16,
+    /// Battery voltage multiplier for ADC conversion (BATT_VOLT_MULT parameter)
+    /// Default: 3.95 (Freenove voltage divider coefficient)
+    pub battery_volt_mult: f32,
 }
 
 impl Default for SystemState {
@@ -153,6 +285,7 @@ impl Default for SystemState {
             uptime_us: 0,
             cpu_load: 0.0,
             arming_checks: 0xFFFF, // All checks enabled by default
+            battery_volt_mult: 3.95,
         }
     }
 }
@@ -167,6 +300,7 @@ impl SystemState {
             uptime_us: 0,
             cpu_load: 0.0,
             arming_checks: 0xFFFF, // All checks enabled by default
+            battery_volt_mult: 3.95,
         }
     }
 
@@ -182,10 +316,11 @@ impl SystemState {
     ///
     /// Currently loaded parameters:
     /// - ARMING_CHECK - Pre-arm check bitmask (stored in arming_checks field)
+    /// - BATT_VOLT_MULT - Battery voltage multiplier (stored in battery_volt_mult field)
     ///
     /// Future parameters (not yet implemented):
     /// - INITIAL_MODE - Initial flight mode
-    /// - BATT_* - Battery configuration
+    /// - Other battery configuration (BATT_CRT_VOLT, BATT_ARM_VOLT)
     /// - Other system configuration parameters
     ///
     /// # Arguments
@@ -197,7 +332,10 @@ impl SystemState {
     /// SystemState with configurable fields loaded from parameter store
     pub fn from_param_store(param_store: &crate::parameters::storage::ParameterStore) -> Self {
         use crate::parameters::arming::ArmingParams;
+        use crate::parameters::battery::BatteryParams;
+
         let arming_params = ArmingParams::from_store(param_store);
+        let battery_params = BatteryParams::from_store(param_store);
 
         Self {
             armed: ArmedState::Disarmed,
@@ -206,6 +344,7 @@ impl SystemState {
             uptime_us: 0,
             cpu_load: 0.0,
             arming_checks: arming_params.check_bitmask as u16,
+            battery_volt_mult: battery_params.volt_mult,
         }
     }
 
@@ -388,11 +527,28 @@ impl SystemState {
         Ok(())
     }
 
-    /// Update battery state
-    pub fn update_battery(&mut self, voltage: f32, current: f32, remaining_percent: u8) {
+    /// Update battery state from ADC reading
+    ///
+    /// Reads raw ADC value from the ADC reader and converts it to battery voltage
+    /// using the BATT_VOLT_MULT parameter stored in battery_volt_mult field.
+    /// Also estimates remaining battery percentage based on voltage.
+    ///
+    /// # Arguments
+    ///
+    /// * `adc_reader` - Any type implementing BatteryAdcReader trait
+    ///
+    /// # Notes
+    ///
+    /// - Reads GPIO 26 (ADC0) via BatteryAdcReader::read_battery_adc()
+    /// - Converts using BatteryState::voltage_from_adc()
+    /// - Estimates remaining percentage using BatteryState::estimate_remaining_percent()
+    /// - Current is not updated (no current sensor available)
+    /// - On ADC read failure (returns 0), voltage is set to 0.0 (caller should handle gracefully)
+    pub fn update_battery<R: BatteryAdcReader>(&mut self, adc_reader: &mut R) {
+        let adc_value = adc_reader.read_battery_adc();
+        let voltage = BatteryState::voltage_from_adc(adc_value, self.battery_volt_mult);
         self.battery.voltage = voltage;
-        self.battery.current = current;
-        self.battery.remaining_percent = remaining_percent;
+        self.battery.remaining_percent = BatteryState::estimate_remaining_percent(voltage);
     }
 
     /// Update system uptime
@@ -437,6 +593,40 @@ mod tests {
 
         battery.voltage = 9.0;
         assert!(battery.is_critical());
+    }
+
+    #[test]
+    fn test_voltage_from_adc_zero() {
+        let voltage = BatteryState::voltage_from_adc(0, 3.95);
+        assert_eq!(voltage, 0.0);
+    }
+
+    #[test]
+    fn test_voltage_from_adc_max() {
+        let voltage = BatteryState::voltage_from_adc(4095, 3.95);
+        // 4095 / 4095.0 * 3.3 * 3.95 = 13.035
+        assert!((voltage - 13.035).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_voltage_from_adc_typical() {
+        // Typical reading: 3000 ADC counts
+        let voltage = BatteryState::voltage_from_adc(3000, 3.95);
+        // 3000 / 4095.0 * 3.3 * 3.95 = 9.549
+        assert!((voltage - 9.549).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_voltage_from_adc_different_multipliers() {
+        let adc = 3000_u16;
+
+        // Test with different multipliers
+        let v1 = BatteryState::voltage_from_adc(adc, 3.5);
+        let v2 = BatteryState::voltage_from_adc(adc, 4.0);
+        let v3 = BatteryState::voltage_from_adc(adc, 4.5);
+
+        assert!(v1 < v2);
+        assert!(v2 < v3);
     }
 
     #[test]
@@ -545,10 +735,123 @@ mod tests {
 
     #[test]
     fn test_battery_update() {
+        use crate::platform::mock::MockPlatform;
+
+        let mut platform = MockPlatform::new();
+        platform.set_battery_adc_value(3000); // Typical ADC reading
+
         let mut state = SystemState::new();
-        state.update_battery(11.5, 2.5, 75);
-        assert_eq!(state.battery.voltage, 11.5);
-        assert_eq!(state.battery.current, 2.5);
-        assert_eq!(state.battery.remaining_percent, 75);
+        state.battery_volt_mult = 3.95;
+
+        state.update_battery(&mut platform);
+
+        // 3000 / 4095.0 * 3.3 * 3.95 = 9.549V
+        assert!((state.battery.voltage - 9.549).abs() < 0.01);
+        // At 9.549V, remaining should be ~15%
+        assert!(state.battery.remaining_percent > 0);
+        assert!(state.battery.remaining_percent < 30);
+    }
+
+    #[test]
+    fn test_estimate_remaining_full() {
+        let remaining = BatteryState::estimate_remaining_percent(12.6);
+        assert_eq!(remaining, 100);
+    }
+
+    #[test]
+    fn test_estimate_remaining_empty() {
+        let remaining = BatteryState::estimate_remaining_percent(9.0);
+        assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn test_estimate_remaining_mid() {
+        // 10.8V should be exactly 50%
+        // (10.8 - 9.0) / (12.6 - 9.0) * 100 = 1.8 / 3.6 * 100 = 50
+        let remaining = BatteryState::estimate_remaining_percent(10.8);
+        assert_eq!(remaining, 50);
+    }
+
+    #[test]
+    fn test_estimate_remaining_nominal() {
+        // 11.1V (3.7V per cell, nominal voltage)
+        let remaining = BatteryState::estimate_remaining_percent(11.1);
+        // (11.1 - 9.0) / 3.6 * 100 = 58.33%
+        assert_eq!(remaining, 58);
+    }
+
+    #[test]
+    fn test_estimate_remaining_low() {
+        // 10.5V (3.5V per cell, low voltage warning)
+        let remaining = BatteryState::estimate_remaining_percent(10.5);
+        // (10.5 - 9.0) / 3.6 * 100 = 41.66%
+        assert_eq!(remaining, 41);
+    }
+
+    #[test]
+    fn test_estimate_remaining_above_full() {
+        // Values above full should clamp to 100
+        let remaining = BatteryState::estimate_remaining_percent(13.0);
+        assert_eq!(remaining, 100);
+    }
+
+    #[test]
+    fn test_estimate_remaining_3s_below_empty() {
+        // 3S battery: Values below 9.0V empty should clamp to 0
+        let remaining = BatteryState::estimate_remaining_percent(8.8);
+        assert_eq!(remaining, 0);
+    }
+
+    // 2S LiPo battery tests
+    #[test]
+    fn test_estimate_remaining_2s_full() {
+        // 2S battery: 8.4V (4.2V per cell) = 100%
+        let remaining = BatteryState::estimate_remaining_percent(8.4);
+        assert_eq!(remaining, 100);
+    }
+
+    #[test]
+    fn test_estimate_remaining_2s_empty() {
+        // 2S battery: 6.0V (3.0V per cell) = 0%
+        let remaining = BatteryState::estimate_remaining_percent(6.0);
+        assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn test_estimate_remaining_2s_mid() {
+        // 2S battery: 7.2V should be exactly 50%
+        // (7.2 - 6.0) / (8.4 - 6.0) * 100 = 1.2 / 2.4 * 100 = 50
+        let remaining = BatteryState::estimate_remaining_percent(7.2);
+        assert_eq!(remaining, 50);
+    }
+
+    #[test]
+    fn test_estimate_remaining_2s_nominal() {
+        // 2S battery: 7.4V (3.7V per cell, nominal voltage)
+        let remaining = BatteryState::estimate_remaining_percent(7.4);
+        // (7.4 - 6.0) / 2.4 * 100 = 58.33%
+        assert_eq!(remaining, 58);
+    }
+
+    #[test]
+    fn test_estimate_remaining_2s_typical() {
+        // 2S battery: 7.827V (typical reading from user's battery)
+        let remaining = BatteryState::estimate_remaining_percent(7.827);
+        // (7.827 - 6.0) / 2.4 * 100 = 76.125%
+        assert_eq!(remaining, 76);
+    }
+
+    #[test]
+    fn test_estimate_remaining_2s_above_full() {
+        // 2S battery: Values above 8.4V full should clamp to 100
+        let remaining = BatteryState::estimate_remaining_percent(8.6);
+        assert_eq!(remaining, 100);
+    }
+
+    #[test]
+    fn test_estimate_remaining_2s_below_empty() {
+        // 2S battery: Values below 6.0V empty should clamp to 0
+        let remaining = BatteryState::estimate_remaining_percent(5.5);
+        assert_eq!(remaining, 0);
     }
 }

@@ -8,17 +8,20 @@
 //! - **ATTITUDE**: Roll, pitch, yaw (10Hz default, configurable via SR_EXTRA1)
 //! - **GPS_RAW_INT**: GPS position (5Hz default, configurable via SR_POSITION)
 //! - **SYS_STATUS**: System health (1Hz, configurable via SR_EXTRA1)
+//! - **BATTERY_STATUS**: Battery voltage and status (2Hz, hardcoded)
 //!
 //! # Stream Rate Control
 //!
 //! Stream rates are controlled by SR_* parameters:
 //! - SR_EXTRA1: ATTITUDE, SYS_STATUS rate (Hz)
 //! - SR_POSITION: GPS_RAW_INT rate (Hz)
+//! - BATTERY_STATUS: Hardcoded at 2Hz (future: configurable via SR0_EXTRA1)
 
 use crate::communication::mavlink::state::SystemState;
 use mavlink::common::{
-    GpsFixType, MavAutopilot, MavMessage, MavModeFlag, MavState, MavSysStatusSensor, MavType,
-    ATTITUDE_DATA, GPS_RAW_INT_DATA, HEARTBEAT_DATA, SYS_STATUS_DATA,
+    GpsFixType, MavAutopilot, MavBatteryFunction, MavBatteryType, MavMessage, MavModeFlag,
+    MavState, MavSysStatusSensor, MavType, ATTITUDE_DATA, BATTERY_STATUS_DATA, GPS_RAW_INT_DATA,
+    HEARTBEAT_DATA, SYS_STATUS_DATA,
 };
 
 /// Stream configuration for a single telemetry message type
@@ -88,6 +91,8 @@ pub struct TelemetryStreamer {
     gps: StreamConfig,
     /// SYS_STATUS stream config (SR_EXTRA1)
     sys_status: StreamConfig,
+    /// BATTERY_STATUS stream config (hardcoded 2Hz)
+    battery_status: StreamConfig,
 }
 
 impl TelemetryStreamer {
@@ -105,14 +110,16 @@ impl TelemetryStreamer {
     /// - ATTITUDE: 10Hz
     /// - GPS: 5Hz
     /// - SYS_STATUS: 1Hz
+    /// - BATTERY_STATUS: 2Hz
     pub fn new(system_id: u8, component_id: u8) -> Self {
         Self {
             system_id,
             component_id,
-            heartbeat: StreamConfig::new(1),  // Always 1Hz
-            attitude: StreamConfig::new(10),  // SR_EXTRA1 default
-            gps: StreamConfig::new(5),        // SR_POSITION default
+            heartbeat: StreamConfig::new(1),      // Always 1Hz
+            attitude: StreamConfig::new(10),      // SR_EXTRA1 default
+            gps: StreamConfig::new(5),            // SR_POSITION default
             sys_status: StreamConfig::new(1), // SR_EXTRA1 default (lower priority than attitude)
+            battery_status: StreamConfig::new(2), // Hardcoded 2Hz
         }
     }
 
@@ -137,12 +144,12 @@ impl TelemetryStreamer {
     ///
     /// # Returns
     ///
-    /// Vector of messages to send (max 4: HEARTBEAT, ATTITUDE, GPS, SYS_STATUS)
+    /// Vector of messages to send (max 5: HEARTBEAT, ATTITUDE, GPS, SYS_STATUS, BATTERY_STATUS)
     pub fn update(
         &mut self,
         state: &SystemState,
         current_time_us: u64,
-    ) -> heapless::Vec<MavMessage, 4> {
+    ) -> heapless::Vec<MavMessage, 5> {
         let mut messages = heapless::Vec::new();
 
         // HEARTBEAT (always at 1Hz)
@@ -174,6 +181,14 @@ impl TelemetryStreamer {
             if let Some(msg) = self.build_sys_status(state) {
                 let _ = messages.push(msg);
                 self.sys_status.mark_sent(current_time_us);
+            }
+        }
+
+        // BATTERY_STATUS (hardcoded 2Hz)
+        if self.battery_status.should_send(current_time_us) {
+            if let Some(msg) = self.build_battery_status(state) {
+                let _ = messages.push(msg);
+                self.battery_status.mark_sent(current_time_us);
             }
         }
 
@@ -245,7 +260,7 @@ impl TelemetryStreamer {
             load: (state.cpu_load * 10.0) as u16, // 0.1% units
             voltage_battery,
             current_battery,
-            battery_remaining: -1, // -1 = unknown
+            battery_remaining: state.battery.remaining_percent as i8, // Estimated from voltage
             drop_rate_comm: 0,
             errors_comm: 0,
             errors_count1: 0,
@@ -255,13 +270,61 @@ impl TelemetryStreamer {
         }))
     }
 
+    /// Build BATTERY_STATUS message
+    ///
+    /// Implements MAVLink BATTERY_STATUS (#147) message for ground control station
+    /// battery monitoring. Provides voltage and estimated remaining percentage with
+    /// placeholder values for unavailable fields (current, temperature, per-cell voltages).
+    ///
+    /// # Message Field Population
+    ///
+    /// - `id`: 0 (first battery)
+    /// - `battery_function`: MAV_BATTERY_FUNCTION_ALL (all uses)
+    /// - `type_`: MAV_BATTERY_TYPE_LIPO (LiPo battery)
+    /// - `temperature`: INT16_MAX (unknown, no temperature sensor)
+    /// - `voltages[0]`: Pack voltage in millivolts
+    /// - `voltages[1..9]`: UINT16_MAX (unknown, no per-cell monitoring)
+    /// - `current_battery`: -1 (unknown, no current sensor)
+    /// - `current_consumed`: -1 (unknown, no current integration)
+    /// - `energy_consumed`: -1 (unknown, no energy integration)
+    /// - `battery_remaining`: Estimated percentage (0-100) based on voltage
+    ///
+    /// # Arguments
+    ///
+    /// * `state` - Current system state containing battery voltage and remaining percentage
+    ///
+    /// # Returns
+    ///
+    /// MAVLink BATTERY_STATUS message
+    fn build_battery_status(&self, state: &SystemState) -> Option<MavMessage> {
+        // Convert voltage to millivolts for MAVLink message
+        let pack_voltage_mv = (state.battery.voltage * 1000.0) as u16;
+
+        // Initialize voltages array with UINT16_MAX (unknown/unavailable)
+        let mut voltages = [u16::MAX; 10];
+        voltages[0] = pack_voltage_mv; // Only pack voltage available
+
+        Some(MavMessage::BATTERY_STATUS(BATTERY_STATUS_DATA {
+            id: 0, // First battery
+            battery_function: MavBatteryFunction::MAV_BATTERY_FUNCTION_ALL,
+            mavtype: MavBatteryType::MAV_BATTERY_TYPE_LIPO,
+            temperature: i16::MAX, // Unknown (no temperature sensor)
+            voltages,
+            current_battery: -1,  // Unknown (no current sensor)
+            current_consumed: -1, // Unknown (no current integration)
+            energy_consumed: -1,  // Unknown (no energy integration)
+            battery_remaining: state.battery.remaining_percent as i8, // Estimated from voltage
+        }))
+    }
+
     /// Get current stream rates for debugging
-    pub fn get_rates(&self) -> (u32, u32, u32, u32) {
+    pub fn get_rates(&self) -> (u32, u32, u32, u32, u32) {
         (
             self.heartbeat.rate_hz,
             self.attitude.rate_hz,
             self.gps.rate_hz,
             self.sys_status.rate_hz,
+            self.battery_status.rate_hz,
         )
     }
 
@@ -318,12 +381,13 @@ mod tests {
     #[test]
     fn test_telemetry_streamer_creation() {
         let streamer = TelemetryStreamer::new(1, 1);
-        let (hb, att, gps, sys) = streamer.get_rates();
+        let (hb, att, gps, sys, bat) = streamer.get_rates();
 
         assert_eq!(hb, 1); // HEARTBEAT always 1Hz
         assert_eq!(att, 10); // ATTITUDE default 10Hz
         assert_eq!(gps, 5); // GPS default 5Hz
         assert_eq!(sys, 1); // SYS_STATUS default 1Hz
+        assert_eq!(bat, 2); // BATTERY_STATUS default 2Hz
     }
 
     #[test]
@@ -331,12 +395,13 @@ mod tests {
         let mut streamer = TelemetryStreamer::new(1, 1);
 
         streamer.update_rates(20, 10);
-        let (hb, att, gps, sys) = streamer.get_rates();
+        let (hb, att, gps, sys, bat) = streamer.get_rates();
 
         assert_eq!(hb, 1); // HEARTBEAT always 1Hz (not changed)
         assert_eq!(att, 20); // ATTITUDE updated to 20Hz
         assert_eq!(gps, 10); // GPS updated to 10Hz
         assert_eq!(sys, 1); // SYS_STATUS clamped to 1Hz max
+        assert_eq!(bat, 2); // BATTERY_STATUS hardcoded 2Hz (not changed)
     }
 
     #[test]
@@ -405,13 +470,37 @@ mod tests {
     }
 
     #[test]
+    fn test_build_battery_status() {
+        let streamer = TelemetryStreamer::new(1, 1);
+        let mut state = SystemState::new();
+        state.battery.voltage = 12.5;
+        state.battery.remaining_percent = 97; // 12.5V is ~97% for 3S LiPo
+
+        let msg = streamer.build_battery_status(&state).unwrap();
+        if let MavMessage::BATTERY_STATUS(data) = msg {
+            assert_eq!(data.id, 0); // First battery
+            assert_eq!(
+                data.battery_function,
+                MavBatteryFunction::MAV_BATTERY_FUNCTION_ALL
+            );
+            assert_eq!(data.mavtype, MavBatteryType::MAV_BATTERY_TYPE_LIPO);
+            assert_eq!(data.voltages[0], 12500); // 12.5V = 12500mV
+            assert_eq!(data.voltages[1], u16::MAX); // Unknown
+            assert_eq!(data.current_battery, -1); // Unknown
+            assert_eq!(data.battery_remaining, 97); // Estimated percentage
+        } else {
+            panic!("Expected BATTERY_STATUS message");
+        }
+    }
+
+    #[test]
     fn test_update_single_message() {
         let mut streamer = TelemetryStreamer::new(1, 1);
         let state = SystemState::new();
 
         // At t=0, all messages should send (first time for all streams)
         let messages = streamer.update(&state, 0);
-        assert_eq!(messages.len(), 4); // HEARTBEAT, ATTITUDE, GPS, SYS_STATUS
+        assert_eq!(messages.len(), 5); // HEARTBEAT, ATTITUDE, GPS, SYS_STATUS, BATTERY_STATUS
         assert!(messages
             .iter()
             .any(|m| matches!(m, MavMessage::HEARTBEAT(_))));

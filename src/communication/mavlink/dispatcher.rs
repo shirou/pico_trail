@@ -215,12 +215,12 @@ impl MessageDispatcher {
     ///
     /// # Returns
     ///
-    /// Vector of telemetry messages to send (max 4: HEARTBEAT, ATTITUDE, GPS, SYS_STATUS)
+    /// Vector of telemetry messages to send (max 5: HEARTBEAT, ATTITUDE, GPS, SYS_STATUS, BATTERY_STATUS)
     pub fn update_telemetry(
         &mut self,
         state: &SystemState,
         timestamp_us: u64,
-    ) -> Vec<MavMessage, 4> {
+    ) -> Vec<MavMessage, 5> {
         self.telemetry_streamer.update(state, timestamp_us)
     }
 

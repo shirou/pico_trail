@@ -7,6 +7,7 @@
 //! - `BATT_ARM_VOLT` - Minimum voltage to arm (V, **visible in GCS**)
 //! - `BATT_CRT_VOLT` - Critical voltage for failsafe (V, **visible in GCS**)
 //! - `BATT_FS_CRT_ACT` - Action when critical threshold reached (**visible in GCS**)
+//! - `BATT_VOLT_MULT` - Voltage multiplier for ADC conversion (default 3.95, **visible in GCS**)
 //!
 //! # ArduPilot Compatibility
 //!
@@ -14,6 +15,7 @@
 //! - https://ardupilot.org/rover/docs/parameters.html#batt-arm-volt
 //! - https://ardupilot.org/rover/docs/parameters.html#batt-crt-volt
 //! - https://ardupilot.org/rover/docs/parameters.html#batt-fs-crt-act
+//! - https://ardupilot.org/rover/docs/parameters.html#batt-volt-mult
 
 use super::storage::{ParamFlags, ParamValue, ParameterStore};
 use crate::platform::Result;
@@ -40,6 +42,8 @@ pub struct BatteryParams {
     pub critical_voltage: f32,
     /// Action when critical threshold reached
     pub critical_action: u8,
+    /// Voltage multiplier for ADC conversion (voltage divider coefficient)
+    pub volt_mult: f32,
 }
 
 impl BatteryParams {
@@ -74,6 +78,13 @@ impl BatteryParams {
             ParamFlags::empty(),
         )?;
 
+        // BATT_VOLT_MULT - Default to 3.95 (Freenove voltage divider coefficient)
+        store.register(
+            "BATT_VOLT_MULT",
+            ParamValue::Float(3.95),
+            ParamFlags::empty(),
+        )?;
+
         Ok(())
     }
 
@@ -105,10 +116,17 @@ impl BatteryParams {
             _ => BatteryFailsafeAction::Land as u8,
         };
 
+        let volt_mult = match store.get("BATT_VOLT_MULT") {
+            Some(ParamValue::Float(v)) => *v,
+            Some(ParamValue::Int(v)) => *v as f32,
+            _ => 3.95,
+        };
+
         Self {
             arm_voltage,
             critical_voltage,
             critical_action,
+            volt_mult,
         }
     }
 
@@ -128,9 +146,11 @@ mod tests {
             arm_voltage: 10.5,
             critical_voltage: 10.0,
             critical_action: BatteryFailsafeAction::Land as u8,
+            volt_mult: 3.95,
         };
 
         assert!(params.is_configured());
         assert!(params.arm_voltage > params.critical_voltage);
+        assert_eq!(params.volt_mult, 3.95);
     }
 }

@@ -60,6 +60,8 @@ use embassy_rp as hal;
 use embassy_time::{Duration, Timer};
 
 #[cfg(feature = "usb_serial")]
+use core::ptr::addr_of_mut;
+#[cfg(feature = "usb_serial")]
 use embassy_rp::usb::{Driver, InterruptHandler};
 #[cfg(feature = "usb_serial")]
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
@@ -86,9 +88,16 @@ static HEAP: Heap = Heap::empty();
 #[cfg(feature = "pico2_w")]
 const HEAP_SIZE: usize = 16 * 1024;
 
+// IRQ bindings: USB + ADC when usb_serial is enabled, ADC only otherwise
 #[cfg(feature = "usb_serial")]
 hal::bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<hal::peripherals::USB>;
+    ADC_IRQ_FIFO => embassy_rp::adc::InterruptHandler;
+});
+
+#[cfg(all(feature = "pico2_w", not(feature = "usb_serial")))]
+hal::bind_interrupts!(struct Irqs {
+    ADC_IRQ_FIFO => embassy_rp::adc::InterruptHandler;
 });
 
 #[cfg(feature = "pico2_w")]
@@ -100,6 +109,7 @@ use pico_trail::{
             rc_input::RcInputHandler, telemetry::TelemetryStreamer,
         },
         parser::MavlinkParser,
+        state::BatteryAdcReader,
         transport::udp::UdpTransport,
         transport_router::TransportRouter,
     },
@@ -161,13 +171,14 @@ async fn main(spawner: Spawner) {
             let mut builder = Builder::new(
                 driver,
                 usb_config,
-                unsafe { &mut CONFIG_DESCRIPTOR },
-                unsafe { &mut BOS_DESCRIPTOR },
-                unsafe { &mut MSOS_DESCRIPTOR },
-                unsafe { &mut CONTROL_BUF },
+                unsafe { &mut *addr_of_mut!(CONFIG_DESCRIPTOR) },
+                unsafe { &mut *addr_of_mut!(BOS_DESCRIPTOR) },
+                unsafe { &mut *addr_of_mut!(MSOS_DESCRIPTOR) },
+                unsafe { &mut *addr_of_mut!(CONTROL_BUF) },
             );
 
-            let cdc_class = CdcAcmClass::new(&mut builder, unsafe { &mut STATE }, 64);
+            let cdc_class =
+                CdcAcmClass::new(&mut builder, unsafe { &mut *addr_of_mut!(STATE) }, 64);
             let usb = builder.build();
 
             // Spawn USB logger task
@@ -289,8 +300,18 @@ async fn main(spawner: Spawner) {
 
                     pico_trail::log_info!("Message dispatcher initialized");
 
+                    // Initialize ADC for battery voltage monitoring (GPIO 26 = ADC0)
+                    let adc =
+                        embassy_rp::adc::Adc::new(p.ADC, Irqs, embassy_rp::adc::Config::default());
+
+                    let adc_channel =
+                        embassy_rp::adc::Channel::new_pin(p.PIN_26, embassy_rp::gpio::Pull::None);
+
+                    let adc_reader = Rp2350AdcReader::from_parts(adc, adc_channel);
+                    pico_trail::log_info!("ADC reader initialized (GPIO 26)");
+
                     // Spawn MAVLink task
-                    spawner.spawn(rover_mavlink_task(router, dispatcher).unwrap());
+                    spawner.spawn(rover_mavlink_task(router, dispatcher, adc_reader).unwrap());
 
                     // Spawn motor control task
                     spawner.spawn(motor_control_task(motor_group).unwrap());
@@ -320,6 +341,104 @@ async fn main(spawner: Spawner) {
         loop {
             Timer::after(Duration::from_secs(60)).await;
         }
+    }
+}
+
+/// RP2350 ADC reader for battery voltage monitoring
+///
+/// Reads battery voltage from GPIO 26 (ADC0 channel) using embassy-rp ADC driver.
+/// Implements 5-sample averaging per Freenove reference design for noise reduction.
+///
+/// # Usage
+///
+/// 1. Create reader with ADC peripheral and PIN_26
+/// 2. Call `update_adc_value()` periodically (async) to read and average samples
+/// 3. Call `read_battery_adc()` (sync) to get the most recent averaged value
+///
+/// # Example
+///
+/// ```rust
+/// let mut adc_reader = Rp2350AdcReader::new(p.ADC, p.PIN_26);
+///
+/// // In async task:
+/// adc_reader.update_adc_value().await;  // Read and average 5 samples
+///
+/// // Later (sync context):
+/// let voltage = adc_reader.read_battery_adc();  // Get cached value
+/// ```
+#[cfg(feature = "pico2_w")]
+struct Rp2350AdcReader<'a> {
+    adc: embassy_rp::adc::Adc<'a, embassy_rp::adc::Async>,
+    channel: embassy_rp::adc::Channel<'a>,
+    last_value: core::cell::Cell<u16>,
+}
+
+#[cfg(feature = "pico2_w")]
+impl<'a> Rp2350AdcReader<'a> {
+    /// Create ADC reader from pre-initialized parts
+    ///
+    /// # Arguments
+    ///
+    /// * `adc` - Pre-initialized ADC peripheral
+    /// * `channel` - Pre-configured ADC channel (GPIO 26)
+    ///
+    /// # Returns
+    ///
+    /// ADC reader ready for battery voltage monitoring
+    pub fn from_parts(
+        adc: embassy_rp::adc::Adc<'a, embassy_rp::adc::Async>,
+        channel: embassy_rp::adc::Channel<'a>,
+    ) -> Self {
+        Self {
+            adc,
+            channel,
+            last_value: core::cell::Cell::new(0),
+        }
+    }
+
+    /// Update ADC value with 5-sample averaging
+    ///
+    /// Reads 5 samples from ADC0 (GPIO 26) and stores the average value.
+    /// This reduces noise and provides more stable voltage readings.
+    ///
+    /// Call this method periodically (10 Hz recommended) from an async task.
+    /// The averaged value is cached and returned by `read_battery_adc()`.
+    ///
+    /// # Timing
+    ///
+    /// Each ADC read takes ~2μs on RP2350.
+    /// 5-sample averaging takes ~10μs total (well within 2ms requirement).
+    pub async fn update_adc_value(&mut self) {
+        // 5-sample averaging per Freenove reference design
+        let mut sum: u32 = 0;
+        for _ in 0..5 {
+            match self.adc.read(&mut self.channel).await {
+                Ok(value) => sum += value as u32,
+                Err(_) => {
+                    // ADC read error - use 0 as fallback
+                    // This prevents telemetry from showing incorrect voltage
+                    self.last_value.set(0);
+                    return;
+                }
+            }
+        }
+        let avg = (sum / 5) as u16;
+        self.last_value.set(avg);
+    }
+}
+
+#[cfg(feature = "pico2_w")]
+impl BatteryAdcReader for Rp2350AdcReader<'_> {
+    /// Read the most recent averaged ADC value (synchronous)
+    ///
+    /// Returns the cached value from the last `update_adc_value()` call.
+    /// This allows synchronous access to ADC data without blocking.
+    ///
+    /// # Returns
+    ///
+    /// Raw 12-bit ADC value (0-4095) representing voltage at ADC pin (0-3.3V range)
+    fn read_battery_adc(&mut self) -> u16 {
+        self.last_value.get()
     }
 }
 
@@ -366,6 +485,7 @@ async fn rover_mavlink_task(
         embassy_rp::uart::BufferedUartTx,
     >,
     mut dispatcher: MessageDispatcher,
+    mut adc_reader: Rp2350AdcReader<'static>,
 ) {
     use embassy_time::Instant;
     use mavlink::Message;
@@ -375,6 +495,10 @@ async fn rover_mavlink_task(
     let mut parser = MavlinkParser::new();
     let mut sequence: u8 = 0;
     let mut buf = [0u8; 512];
+
+    // Battery update timing (10 Hz = 100ms interval)
+    let mut last_battery_update = Instant::now();
+    const BATTERY_UPDATE_INTERVAL: Duration = Duration::from_millis(100);
 
     loop {
         // Non-blocking receive with timeout
@@ -504,6 +628,20 @@ async fn rover_mavlink_task(
                     sequence = sequence.wrapping_add(1);
                 }
             }
+        }
+
+        // Battery update (10 Hz timing check)
+        if last_battery_update.elapsed() >= BATTERY_UPDATE_INTERVAL {
+            // Read ADC value with 5-sample averaging (async)
+            adc_reader.update_adc_value().await;
+
+            // Update battery state in global SYSTEM_STATE with cached ADC value
+            critical_section::with(|cs| {
+                let mut state =
+                    pico_trail::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs);
+                state.update_battery(&mut adc_reader);
+            });
+            last_battery_update = Instant::now();
         }
 
         Timer::after_millis(1).await;

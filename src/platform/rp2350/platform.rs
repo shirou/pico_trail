@@ -180,4 +180,15 @@ impl<D: rp235x_hal::timer::TimerDevice> Platform for Rp2350Platform<D> {
     fn timer_mut(&mut self) -> &mut Self::Timer {
         &mut self.timer
     }
+
+    fn read_battery_adc(&mut self) -> u16 {
+        // Stub implementation - returns 0
+        // Actual ADC reading will be implemented in Phase 2
+        // NOTE: Full implementation requires:
+        // 1. Initialize embassy-rp Adc peripheral
+        // 2. Configure GPIO 26 as ADC0 channel
+        // 3. Perform 5-sample averaging per Freenove reference
+        // 4. Handle ADC read failures gracefully
+        0
+    }
 }

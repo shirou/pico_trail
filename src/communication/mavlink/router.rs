@@ -188,8 +188,8 @@ impl<F: FlashInterface> MavlinkRouter<F> {
     ///
     /// # Returns
     ///
-    /// Vector of telemetry messages to send (HEARTBEAT, ATTITUDE, GPS, SYS_STATUS)
-    pub fn update_telemetry(&mut self, current_time_us: u64) -> heapless::Vec<MavMessage, 4> {
+    /// Vector of telemetry messages to send (HEARTBEAT, ATTITUDE, GPS, SYS_STATUS, BATTERY_STATUS)
+    pub fn update_telemetry(&mut self, current_time_us: u64) -> heapless::Vec<MavMessage, 5> {
         // Update stream rates from parameters
         if let Some(sr_extra1) = self.param_handler.store().get("SR_EXTRA1") {
             if let Some(sr_position) = self.param_handler.store().get("SR_POSITION") {
@@ -477,8 +477,8 @@ mod tests {
         assert!(!router.connection().connected);
         assert_eq!(router.stats().messages_processed, 0);
         // Parameter count: WiFi (4 non-String) + SR (4) + SYSID (1)
-        // + Arming (5) + Battery (3) + Failsafe (3) + Fence (2) = 23
-        assert_eq!(router.param_handler().count(), 23);
+        // + Arming (5) + Battery (4) + Failsafe (3) + Fence (2) = 24
+        assert_eq!(router.param_handler().count(), 24);
     }
 
     #[test]

@@ -30,6 +30,7 @@ pub struct MockPlatform {
     i2c_count: u8,
     spi_count: u8,
     gpio_allocated: Vec<u8>,
+    battery_adc_value: u16,
 }
 
 impl MockPlatform {
@@ -41,7 +42,17 @@ impl MockPlatform {
             i2c_count: 0,
             spi_count: 0,
             gpio_allocated: Vec::new(),
+            battery_adc_value: 0,
         }
+    }
+
+    /// Set the battery ADC value for testing
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - ADC value to return from read_battery_adc() (0-4095 for 12-bit ADC)
+    pub fn set_battery_adc_value(&mut self, value: u16) {
+        self.battery_adc_value = value;
     }
 
     /// Maximum number of UART peripherals
@@ -128,6 +139,10 @@ impl Platform for MockPlatform {
     fn timer_mut(&mut self) -> &mut Self::Timer {
         &mut self.timer
     }
+
+    fn read_battery_adc(&mut self) -> u16 {
+        self.battery_adc_value
+    }
 }
 
 #[cfg(test)]
@@ -175,5 +190,21 @@ mod tests {
         let mut platform = MockPlatform::new();
         platform.timer_mut().delay_us(1000).unwrap();
         assert_eq!(platform.timer().now_us(), 1000);
+    }
+
+    #[test]
+    fn test_mock_platform_battery_adc() {
+        let mut platform = MockPlatform::new();
+
+        // Default value should be 0
+        assert_eq!(platform.read_battery_adc(), 0);
+
+        // Set and read ADC value
+        platform.set_battery_adc_value(3000);
+        assert_eq!(platform.read_battery_adc(), 3000);
+
+        // Test max ADC value
+        platform.set_battery_adc_value(4095);
+        assert_eq!(platform.read_battery_adc(), 4095);
     }
 }

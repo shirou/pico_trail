@@ -57,7 +57,8 @@
       "Bash(for:*)",
       "Bash(tree:*)",
       "Bash(EXTRA_FEATURES=\"usb_serial\" ./scripts/build-rp2350.sh:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "mcp__serena__find_referencing_symbols"
     ],
     "deny": [],
     "ask": []
