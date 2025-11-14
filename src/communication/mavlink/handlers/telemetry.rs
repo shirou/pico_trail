@@ -19,8 +19,9 @@
 
 use crate::communication::mavlink::state::SystemState;
 use mavlink::common::{
-    GpsFixType, MavAutopilot, MavBatteryFunction, MavBatteryType, MavMessage, MavModeFlag,
-    MavState, MavSysStatusSensor, MavType, ATTITUDE_DATA, BATTERY_STATUS_DATA, GPS_RAW_INT_DATA,
+    GpsFixType, MavAutopilot, MavBatteryChargeState, MavBatteryFault, MavBatteryFunction,
+    MavBatteryMode, MavBatteryType, MavMessage, MavModeFlag, MavState, MavSysStatusSensor,
+    MavSysStatusSensorExtended, MavType, ATTITUDE_DATA, BATTERY_STATUS_DATA, GPS_RAW_INT_DATA,
     HEARTBEAT_DATA, SYS_STATUS_DATA,
 };
 
@@ -243,6 +244,12 @@ impl TelemetryStreamer {
             cog: 0,    // Placeholder: course over ground (cdeg)
             fix_type: GpsFixType::GPS_FIX_TYPE_NO_FIX, // Placeholder: no fix
             satellites_visible: 0, // Placeholder: satellites in view
+            alt_ellipsoid: 0, // MAVLink v2 extension: altitude above ellipsoid (mm)
+            h_acc: 0,  // MAVLink v2 extension: horizontal accuracy (mm)
+            v_acc: 0,  // MAVLink v2 extension: vertical accuracy (mm)
+            vel_acc: 0, // MAVLink v2 extension: velocity accuracy (cm/s)
+            hdg_acc: 0, // MAVLink v2 extension: heading accuracy (degE5)
+            yaw: 0,    // MAVLink v2 extension: yaw (cdeg)
         }))
     }
 
@@ -267,6 +274,9 @@ impl TelemetryStreamer {
             errors_count2: 0,
             errors_count3: 0,
             errors_count4: 0,
+            onboard_control_sensors_present_extended: MavSysStatusSensorExtended::empty(), // MAVLink v2 extension
+            onboard_control_sensors_enabled_extended: MavSysStatusSensorExtended::empty(), // MAVLink v2 extension
+            onboard_control_sensors_health_extended: MavSysStatusSensorExtended::empty(), // MAVLink v2 extension
         }))
     }
 
@@ -314,6 +324,11 @@ impl TelemetryStreamer {
             current_consumed: -1, // Unknown (no current integration)
             energy_consumed: -1,  // Unknown (no energy integration)
             battery_remaining: state.battery.remaining_percent as i8, // Estimated from voltage
+            charge_state: MavBatteryChargeState::MAV_BATTERY_CHARGE_STATE_UNDEFINED, // MAVLink v2 extension: unknown
+            voltages_ext: [0; 4], // MAVLink v2 extension: extended cell voltages
+            mode: MavBatteryMode::MAV_BATTERY_MODE_UNKNOWN, // MAVLink v2 extension: unknown
+            fault_bitmask: MavBatteryFault::empty(), // MAVLink v2 extension: no faults
+            time_remaining: 0,    // MAVLink v2 extension: unknown
         }))
     }
 

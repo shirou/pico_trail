@@ -99,7 +99,7 @@ pub struct MavlinkRouter<F: FlashInterface> {
     /// RC input handler
     rc_input_handler: RcInputHandler,
     /// Pending outgoing messages (responses to commands, one-time messages)
-    pending_messages: heapless::Vec<MavMessage, 8>,
+    pending_messages: heapless::Vec<MavMessage, 16>,
     /// Flash interface marker (not used directly, but needed for generic type)
     _flash: core::marker::PhantomData<F>,
 }
@@ -212,7 +212,7 @@ impl<F: FlashInterface> MavlinkRouter<F> {
     ///
     /// Returns and clears the queue of pending messages (COMMAND_ACK, PROTOCOL_VERSION, etc.)
     /// that should be sent to GCS.
-    pub fn take_pending_messages(&mut self) -> heapless::Vec<MavMessage, 8> {
+    pub fn take_pending_messages(&mut self) -> heapless::Vec<MavMessage, 16> {
         core::mem::replace(&mut self.pending_messages, heapless::Vec::new())
     }
 
@@ -468,7 +468,9 @@ impl core::fmt::Display for RouterError {
 mod tests {
     use super::*;
     use crate::platform::mock::MockFlash;
-    use mavlink::common::{MavAutopilot, MavModeFlag, MavState, MavType, HEARTBEAT_DATA};
+    use mavlink::common::{
+        MavAutopilot, MavMissionType, MavModeFlag, MavState, MavType, HEARTBEAT_DATA,
+    };
 
     #[test]
     fn test_router_creation() {
@@ -799,6 +801,8 @@ mod tests {
             target_system: 1,
             target_component: 1,
             count: 2,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
+            opaque_id: 0,
         });
 
         let header = mavlink::MavHeader {
@@ -826,6 +830,7 @@ mod tests {
             x: 370000000,
             y: -1220000000,
             z: 100.0,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         });
 
         let result = router.handle_message(&header, &item1, 0);
@@ -853,6 +858,7 @@ mod tests {
                 x: 370010000,
                 y: -1220010000,
                 z: 120.0,
+                mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
             }
         });
 
@@ -893,6 +899,7 @@ mod tests {
         let request_list = MavMessage::MISSION_REQUEST_LIST(MISSION_REQUEST_LIST_DATA {
             target_system: 1,
             target_component: 1,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         });
 
         let header = mavlink::MavHeader {
@@ -909,6 +916,7 @@ mod tests {
             target_system: 1,
             target_component: 1,
             seq: 0,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         });
 
         let result = router.handle_message(&header, &request0, 0);
@@ -921,6 +929,7 @@ mod tests {
                 target_system: 1,
                 target_component: 1,
                 seq: 1,
+                mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
             }
         });
 

@@ -34,6 +34,7 @@ pub mod handlers; // Message handlers
 pub mod parser; // Message parsing
 pub mod router; // Protocol message routing
 pub mod state; // System state
+pub mod status_notifier; // STATUSTEXT notification system
 pub mod task; // MAVLink task
 pub mod transport; // Transport abstraction layer
 pub mod transport_router; // Multi-transport routing

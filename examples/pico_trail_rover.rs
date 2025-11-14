@@ -556,7 +556,7 @@ async fn rover_mavlink_task(
                                 {
                                     let len = 280 - msg_cursor.len();
                                     if router.send_bytes(&msg_buf[..len]).await.is_ok() {
-                                        pico_trail::log_trace!("TX {} bytes", len);
+                                        //                                        pico_trail::log_trace!("TX {} bytes", len);
                                         sequence = sequence.wrapping_add(1);
                                     }
                                 }
@@ -570,9 +570,9 @@ async fn rover_mavlink_task(
                                 }
                             }
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             // End of buffer or parse error
-                            pico_trail::log_trace!("MAVLink parse finished/error: {:?}", e);
+                            //                            pico_trail::log_trace!("MAVLink parse finished/error: {:?}", e);
                             break;
                         }
                     }
@@ -605,7 +605,7 @@ async fn rover_mavlink_task(
             if mavlink::write_v2_msg(&mut cursor, header, &telem_msg).is_ok() {
                 let len = 280 - cursor.len();
                 if router.send_bytes(&msg_buf[..len]).await.is_ok() {
-                    pico_trail::log_trace!("TX telemetry ({} bytes to all transports)", len);
+                    //                    pico_trail::log_trace!("TX telemetry ({} bytes to all transports)", len);
                     sequence = sequence.wrapping_add(1);
                 }
             }

@@ -28,7 +28,7 @@
 
 use crate::core::mission::{MissionStorage, Waypoint};
 use mavlink::common::{
-    MavCmd, MavFrame, MavMissionResult, MISSION_ACK_DATA, MISSION_COUNT_DATA,
+    MavCmd, MavFrame, MavMissionResult, MavMissionType, MISSION_ACK_DATA, MISSION_COUNT_DATA,
     MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA,
 };
 
@@ -168,6 +168,8 @@ impl MissionHandler {
             target_system: 255, // GCS
             target_component: 0,
             count: self.storage.count(),
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION, // MAVLink v2 extension
+            opaque_id: 0,                                           // MAVLink v2 extension
         }
     }
 
@@ -225,6 +227,7 @@ impl MissionHandler {
             target_system: data.target_system,
             target_component: data.target_component,
             seq: 0,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION, // MAVLink v2 extension
         }
     }
 
@@ -282,6 +285,7 @@ impl MissionHandler {
                         target_system: data.target_system,
                         target_component: data.target_component,
                         seq: new_next_seq,
+                        mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION, // MAVLink v2 extension
                     }))
                 }
             }
@@ -339,6 +343,7 @@ impl MissionHandler {
             x: wp.x,
             y: wp.y,
             z: wp.z,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION, // MAVLink v2 extension
         }
     }
 
@@ -371,6 +376,8 @@ impl MissionHandler {
             target_system,
             target_component,
             mavtype: result,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION, // MAVLink v2 extension
+            opaque_id: 0,                                           // MAVLink v2 extension
         }
     }
 }
@@ -395,6 +402,8 @@ mod tests {
             target_system: 1,
             target_component: 1,
             count: 2,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
+            opaque_id: 0,
         };
         let request = handler.handle_count(&count_msg, 0);
         assert_eq!(request.seq, 0);
@@ -419,6 +428,7 @@ mod tests {
             x: 370000000,
             y: -1220000000,
             z: 100.0,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         };
         let result1 = handler.handle_item_int(&item1, 0);
         assert!(result1.is_ok());
@@ -456,6 +466,7 @@ mod tests {
         let request_list = MISSION_REQUEST_LIST_DATA {
             target_system: 1,
             target_component: 1,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         };
         let count_msg = handler.handle_request_list(&request_list, 0);
         assert_eq!(count_msg.count, 2);
@@ -469,6 +480,7 @@ mod tests {
             target_system: 1,
             target_component: 1,
             seq: 0,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         };
         let result = handler.handle_request_int(&request0, 0);
         assert!(result.is_ok());
@@ -489,6 +501,8 @@ mod tests {
             target_system: 1,
             target_component: 1,
             mavtype: MavMissionResult::MAV_MISSION_ACCEPTED,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION, // MAVLink v2 extension
+            opaque_id: 0,                                           // MAVLink v2 extension
         };
         handler.handle_ack(&ack);
         assert_eq!(handler.state(), MissionState::Idle);
@@ -503,6 +517,8 @@ mod tests {
             target_system: 1,
             target_component: 1,
             count: 2,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
+            opaque_id: 0,
         };
         handler.handle_count(&count_msg, 0);
 
@@ -522,6 +538,7 @@ mod tests {
             x: 0,
             y: 0,
             z: 0.0,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         };
         let result = handler.handle_item_int(&item, 0);
         assert!(result.is_err());
@@ -541,6 +558,8 @@ mod tests {
             target_system: 1,
             target_component: 1,
             count: 2,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
+            opaque_id: 0,
         };
         handler.handle_count(&count_msg, 0);
 
@@ -558,6 +577,7 @@ mod tests {
         let request_list = MISSION_REQUEST_LIST_DATA {
             target_system: 1,
             target_component: 1,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         };
         handler.handle_request_list(&request_list, 0);
 
@@ -566,6 +586,7 @@ mod tests {
             target_system: 1,
             target_component: 1,
             seq: 0,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         };
         let result = handler.handle_request_int(&request, 0);
         assert!(result.is_err());

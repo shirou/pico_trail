@@ -215,13 +215,29 @@ impl MessageDispatcher {
     ///
     /// # Returns
     ///
-    /// Vector of telemetry messages to send (max 5: HEARTBEAT, ATTITUDE, GPS, SYS_STATUS, BATTERY_STATUS)
+    /// Vector of telemetry messages to send (max 16: HEARTBEAT, ATTITUDE, GPS, SYS_STATUS, BATTERY_STATUS, STATUSTEXT)
     pub fn update_telemetry(
         &mut self,
         state: &SystemState,
         timestamp_us: u64,
-    ) -> Vec<MavMessage, 5> {
-        self.telemetry_streamer.update(state, timestamp_us)
+    ) -> Vec<MavMessage, 16> {
+        use crate::communication::mavlink::status_notifier;
+
+        let mut messages = Vec::new();
+
+        // Get telemetry messages (HEARTBEAT, SYS_STATUS, etc.)
+        let telemetry_msgs = self.telemetry_streamer.update(state, timestamp_us);
+        for msg in telemetry_msgs {
+            let _ = messages.push(msg);
+        }
+
+        // Get pending STATUSTEXT messages from status_notifier
+        let statustext_msgs = status_notifier::take_pending_statustext_messages();
+        for statustext in statustext_msgs {
+            let _ = messages.push(MavMessage::STATUSTEXT(statustext));
+        }
+
+        messages
     }
 
     /// Check for mission protocol timeouts

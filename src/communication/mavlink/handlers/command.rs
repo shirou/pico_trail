@@ -24,10 +24,10 @@
 //! - Log all command rejections for debugging
 
 use crate::communication::mavlink::state::{FlightMode, SystemState};
+use crate::communication::mavlink::status_notifier;
 use heapless::Vec;
 use mavlink::common::{
-    MavCmd, MavMessage, MavResult, MavSeverity, COMMAND_ACK_DATA, COMMAND_LONG_DATA,
-    PROTOCOL_VERSION_DATA, STATUSTEXT_DATA,
+    MavCmd, MavMessage, MavResult, COMMAND_ACK_DATA, COMMAND_LONG_DATA, PROTOCOL_VERSION_DATA,
 };
 
 /// MAVLink protocol version (MAVLink 2.0)
@@ -88,6 +88,10 @@ impl CommandHandler {
         let ack = COMMAND_ACK_DATA {
             command: cmd.command,
             result,
+            progress: 0,         // MAVLink v2 extension
+            result_param2: 0,    // MAVLink v2 extension
+            target_system: 0,    // MAVLink v2 extension
+            target_component: 0, // MAVLink v2 extension
         };
 
         let mut messages = extra_messages;
@@ -128,21 +132,25 @@ impl CommandHandler {
 
             match result {
                 Ok(()) => {
-                    let mut messages = Vec::new();
                     if force {
                         crate::log_warn!("Vehicle FORCE ARMED (checks bypassed)");
-                        // Send STATUSTEXT warning to GCS
-                        let _ = messages.push(MavMessage::STATUSTEXT(Self::create_statustext(
-                            MavSeverity::MAV_SEVERITY_WARNING,
-                            "Armed (FORCED)",
-                        )));
+                        status_notifier::send_warning("Armed (FORCED)");
                     } else {
                         crate::log_info!("Vehicle armed");
+                        status_notifier::send_info("Armed");
                     }
-                    (MavResult::MAV_RESULT_ACCEPTED, true, messages)
+                    (MavResult::MAV_RESULT_ACCEPTED, true, Vec::new())
                 }
                 Err(_reason) => {
                     crate::log_warn!("Arm rejected");
+                    status_notifier::send_error("Arm rejected");
+                    // TODO: Investigate duplicate STATUSTEXT messages
+                    // Current observation: ARM/DISARM status messages sometimes appear twice in GCS
+                    // Possible causes:
+                    // - GCS sending duplicate commands (retry mechanism)
+                    // - Message routing issue in dispatcher/router
+                    // - Multiple consumers of status_notifier queue
+                    // Future work: Add message deduplication or investigate root cause
                     (MavResult::MAV_RESULT_DENIED, false, Vec::new())
                 }
             }
@@ -161,21 +169,18 @@ impl CommandHandler {
 
             match result {
                 Ok(()) => {
-                    let mut messages = Vec::new();
                     if force {
                         crate::log_warn!("Vehicle FORCE DISARMED (validation bypassed)");
-                        // Send STATUSTEXT warning to GCS
-                        let _ = messages.push(MavMessage::STATUSTEXT(Self::create_statustext(
-                            MavSeverity::MAV_SEVERITY_WARNING,
-                            "Disarmed (FORCED)",
-                        )));
+                        status_notifier::send_warning("Disarmed (FORCED)");
                     } else {
                         crate::log_info!("Vehicle disarmed");
+                        status_notifier::send_info("Disarmed");
                     }
-                    (MavResult::MAV_RESULT_ACCEPTED, true, messages)
+                    (MavResult::MAV_RESULT_ACCEPTED, true, Vec::new())
                 }
                 Err(_reason) => {
                     crate::log_warn!("Disarm rejected");
+                    status_notifier::send_error("Disarm rejected");
                     (MavResult::MAV_RESULT_DENIED, false, Vec::new())
                 }
             }
@@ -260,27 +265,6 @@ impl CommandHandler {
             max_version: MAVLINK_MAX_VERSION,
             spec_version_hash: [0u8; 8], // TODO: Populate with actual MAVLink XML spec hash
             library_version_hash: [0u8; 8], // TODO: Populate with mavlink-rust version hash
-        }
-    }
-
-    /// Create STATUSTEXT message
-    ///
-    /// Returns a STATUSTEXT message with the given severity and text.
-    /// The text will be truncated to 50 characters if longer.
-    ///
-    /// # Arguments
-    ///
-    /// * `severity` - MAVLink severity level (e.g., MAV_SEVERITY_WARNING)
-    /// * `text` - Status text message (will be truncated to 50 chars)
-    fn create_statustext(severity: MavSeverity, text: &str) -> STATUSTEXT_DATA {
-        let mut text_bytes = [0u8; 50];
-        let bytes = text.as_bytes();
-        let len = bytes.len().min(50);
-        text_bytes[..len].copy_from_slice(&bytes[..len]);
-
-        STATUSTEXT_DATA {
-            severity,
-            text: text_bytes.into(),
         }
     }
 

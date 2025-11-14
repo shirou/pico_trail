@@ -81,7 +81,7 @@ crc = { version = "3.2", default-features = false }
 bitflags = "2.6"
 
 # MAVLink 2.0 protocol (FR-gpzpz: MAVLink Protocol)
-mavlink = { version = "0.16.1", default-features = false, features = ["embedded", "common"] }
+mavlink = { version = "0.16.1", default-features = false, features = ["embedded", "common", "emit-extensions"] }
 embedded-io-async = "0.6"
 
 # AHRS subsystem dependencies (FR-eyuh8: AHRS Attitude Estimation)
