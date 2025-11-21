@@ -99,3 +99,44 @@ pub trait UartInterface {
     /// Returns `PlatformError::Uart` if the flush operation fails.
     fn flush(&mut self) -> Result<()>;
 }
+
+/// Async UART interface trait
+///
+/// Asynchronous version of UartInterface for use with async/await runtimes.
+/// Designed for Embassy-RP and other async embedded frameworks.
+///
+/// # Safety Invariants
+///
+/// - UART peripheral must be initialized before use
+/// - Only one owner per UART peripheral instance
+/// - No concurrent access to the same UART from multiple contexts
+#[allow(async_fn_in_trait)]
+pub trait AsyncUartInterface {
+    /// Write data to UART (async)
+    ///
+    /// Returns the number of bytes written.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PlatformError::Uart` if the write operation fails.
+    async fn write(&mut self, data: &[u8]) -> Result<usize>;
+
+    /// Read data from UART (async)
+    ///
+    /// Reads up to `buffer.len()` bytes into the provided buffer.
+    /// Returns the number of bytes actually read.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PlatformError::Uart` if the read operation fails.
+    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize>;
+
+    /// Flush transmit buffer (async)
+    ///
+    /// Waits until all pending transmit data has been sent.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PlatformError::Uart` if the flush operation fails.
+    async fn flush(&mut self) -> Result<()>;
+}

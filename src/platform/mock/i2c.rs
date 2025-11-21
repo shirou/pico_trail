@@ -65,7 +65,7 @@ impl MockI2c {
 }
 
 impl I2cInterface for MockI2c {
-    fn write(&mut self, addr: u8, data: &[u8]) -> Result<()> {
+    async fn write(&mut self, addr: u8, data: &[u8]) -> Result<()> {
         self.transactions.borrow_mut().push(I2cTransaction::Write {
             addr,
             data: data.to_vec(),
@@ -73,7 +73,7 @@ impl I2cInterface for MockI2c {
         Ok(())
     }
 
-    fn read(&mut self, addr: u8, buffer: &mut [u8]) -> Result<()> {
+    async fn read(&mut self, addr: u8, buffer: &mut [u8]) -> Result<()> {
         self.transactions.borrow_mut().push(I2cTransaction::Read {
             addr,
             len: buffer.len(),
@@ -87,7 +87,12 @@ impl I2cInterface for MockI2c {
         Ok(())
     }
 
-    fn write_read(&mut self, addr: u8, write_data: &[u8], read_buffer: &mut [u8]) -> Result<()> {
+    async fn write_read(
+        &mut self,
+        addr: u8,
+        write_data: &[u8],
+        read_buffer: &mut [u8],
+    ) -> Result<()> {
         self.transactions
             .borrow_mut()
             .push(I2cTransaction::WriteRead {
@@ -114,10 +119,10 @@ impl I2cInterface for MockI2c {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_mock_i2c_write() {
+    #[tokio::test]
+    async fn test_mock_i2c_write() {
         let mut i2c = MockI2c::new(I2cConfig::default());
-        i2c.write(0x50, &[0x01, 0x02, 0x03]).unwrap();
+        i2c.write(0x50, &[0x01, 0x02, 0x03]).await.unwrap();
 
         let transactions = i2c.transactions();
         assert_eq!(transactions.len(), 1);
@@ -130,13 +135,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_mock_i2c_read() {
+    #[tokio::test]
+    async fn test_mock_i2c_read() {
         let mut i2c = MockI2c::new(I2cConfig::default());
         i2c.set_read_data(&[0xAA, 0xBB, 0xCC]);
 
         let mut buffer = [0u8; 3];
-        i2c.read(0x51, &mut buffer).unwrap();
+        i2c.read(0x51, &mut buffer).await.unwrap();
 
         assert_eq!(buffer, [0xAA, 0xBB, 0xCC]);
 
@@ -145,13 +150,13 @@ mod tests {
         assert_eq!(transactions[0], I2cTransaction::Read { addr: 0x51, len: 3 });
     }
 
-    #[test]
-    fn test_mock_i2c_write_read() {
+    #[tokio::test]
+    async fn test_mock_i2c_write_read() {
         let mut i2c = MockI2c::new(I2cConfig::default());
         i2c.set_read_data(&[0x12, 0x34]);
 
         let mut read_buf = [0u8; 2];
-        i2c.write_read(0x52, &[0xA0], &mut read_buf).unwrap();
+        i2c.write_read(0x52, &[0xA0], &mut read_buf).await.unwrap();
 
         assert_eq!(read_buf, [0x12, 0x34]);
 

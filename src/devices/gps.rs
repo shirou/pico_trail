@@ -22,6 +22,18 @@
 
 use crate::platform::{traits::UartInterface, Result};
 
+/// GPS fix type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum GpsFixType {
+    /// No GPS fix
+    NoFix,
+    /// 2D fix (latitude, longitude only)
+    Fix2D,
+    /// 3D fix (latitude, longitude, altitude)
+    Fix3D,
+}
+
 /// GPS position data
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GpsPosition {
@@ -33,6 +45,10 @@ pub struct GpsPosition {
     pub altitude: f32,
     /// Speed in meters per second
     pub speed: f32,
+    /// GPS fix type
+    pub fix_type: GpsFixType,
+    /// Number of satellites used in fix
+    pub satellites: u8,
 }
 
 /// GPS device driver
@@ -57,6 +73,26 @@ impl<U: UartInterface> GpsDriver<U> {
             buffer: [0u8; 256],
             buffer_pos: 0,
         }
+    }
+
+    /// Update GPS state and read position if available
+    ///
+    /// Returns `Some(GpsPosition)` if a valid NMEA sentence was parsed,
+    /// or `None` if no complete sentence is available yet.
+    ///
+    /// This is an alias for `read_position()` for API compatibility.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if UART communication fails.
+    pub fn update(&mut self) -> Result<Option<GpsPosition>> {
+        self.read_position()
+    }
+
+    /// Get mutable reference to UART interface (test helper)
+    #[cfg(test)]
+    pub fn uart_mut(&mut self) -> &mut U {
+        &mut self.uart
     }
 
     /// Read GPS position if available
@@ -156,11 +192,14 @@ impl<U: UartInterface> GpsDriver<U> {
         let speed_knots: f32 = fields[7].parse().ok()?;
         let speed = speed_knots * 0.514444; // Convert knots to m/s
 
+        // GPRMC has valid fix but no altitude, so assume 2D fix
         Some(GpsPosition {
             latitude: lat,
             longitude: lon,
             altitude: 0.0, // Not available in GPRMC
             speed,
+            fix_type: GpsFixType::Fix2D,
+            satellites: 0, // Not available in GPRMC
         })
     }
 
@@ -189,6 +228,9 @@ impl<U: UartInterface> GpsDriver<U> {
             return None; // No fix
         }
 
+        // Parse number of satellites (field 7)
+        let satellites: u8 = fields[7].parse().unwrap_or(0);
+
         // Parse latitude (fields 2, 3)
         let lat = self.parse_coordinate(fields[2], fields[3])?;
 
@@ -198,11 +240,20 @@ impl<U: UartInterface> GpsDriver<U> {
         // Parse altitude (field 9)
         let altitude: f32 = fields[9].parse().ok()?;
 
+        // Determine fix type based on altitude availability
+        let fix_type = if altitude.abs() > 0.01 {
+            GpsFixType::Fix3D
+        } else {
+            GpsFixType::Fix2D
+        };
+
         Some(GpsPosition {
             latitude: lat,
             longitude: lon,
             altitude,
             speed: 0.0, // Not available in GPGGA
+            fix_type,
+            satellites,
         })
     }
 

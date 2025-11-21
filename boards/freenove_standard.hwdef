@@ -30,8 +30,24 @@ BUZZER 2 OUTPUT PULLDOWN        # Piezo buzzer (active low with pull-down)
 LED_WS2812 16 OUTPUT            # WS2812 RGB LED data line
 BATTERY_ADC 26 ADC              # Battery voltage monitoring (ADC0)
 
+# UART configuration
+# UART0: GPIO 0 (TX), GPIO 1 (RX) at 9600 baud
+# Used for NEO-M8N GPS module communication
+# Note: UART pins are configured directly in code via embassy-rp, not via hwdef
+#
+# Pin allocation:
+#   GPIO 0: UART0 TX (transmit to GPS RX)
+#   GPIO 1: UART0 RX (receive from GPS TX)
+#
+# Hardware requirements:
+#   - NEO-M8N GPS module configured for UART mode (default)
+#   - Baud rate: 9600 bps, 8N1 (8 data bits, no parity, 1 stop bit)
+#   - GPS outputs NMEA sentences (GPGGA, GPRMC) at 1Hz default rate
+#
+
 # Pin usage notes:
 # - All motor pins use OUTPUT mode with default push-pull configuration
 # - Buzzer uses pull-down resistor for clean inactive state
 # - Battery ADC uses GPIO26 (ADC0), measures voltage via divider circuit
 # - WS2812 LED requires precise timing, uses PIO on RP2350
+# - GPIO 0, 1 reserved for UART0 GPS communication

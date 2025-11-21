@@ -4,11 +4,14 @@
 
 use crate::platform::{
     error::PlatformError,
-    traits::{I2cConfig, Platform, PwmConfig, SpiConfig, UartConfig},
+    traits::{Platform, PwmConfig, SpiConfig, UartConfig},
     Result,
 };
 
-use super::{Rp2350Gpio, Rp2350I2c, Rp2350Pwm, Rp2350Spi, Rp2350Timer, Rp2350Uart};
+use super::{Rp2350Gpio, Rp2350Pwm, Rp2350Spi, Rp2350Timer, Rp2350Uart};
+// Note: Rp2350I2c uses Embassy async I2C with lifetime parameters,
+// which is incompatible with Platform trait's associated type design.
+// GPS driver will use Rp2350I2c directly without going through Platform trait.
 
 /// RP2350 Platform implementation
 ///
@@ -63,21 +66,8 @@ impl<D: rp235x_hal::timer::TimerDevice> Platform for Rp2350Platform<D> {
         ),
     >;
 
-    type I2c = Rp2350I2c<
-        rp235x_hal::pac::I2C0,
-        (
-            rp235x_hal::gpio::Pin<
-                rp235x_hal::gpio::bank0::Gpio4,
-                rp235x_hal::gpio::FunctionI2c,
-                rp235x_hal::gpio::PullNone,
-            >,
-            rp235x_hal::gpio::Pin<
-                rp235x_hal::gpio::bank0::Gpio5,
-                rp235x_hal::gpio::FunctionI2c,
-                rp235x_hal::gpio::PullNone,
-            >,
-        ),
-    >;
+    // Note: I2C removed from Platform trait due to lifetime requirements
+    // Use Rp2350I2c directly with embassy_rp::i2c::I2c::new_async()
 
     type Spi = Rp2350Spi<
         rp235x_hal::pac::SPI0,
@@ -136,14 +126,8 @@ impl<D: rp235x_hal::timer::TimerDevice> Platform for Rp2350Platform<D> {
         Err(PlatformError::ResourceUnavailable)
     }
 
-    fn create_i2c(&mut self, _i2c_id: u8, _config: I2cConfig) -> Result<Self::I2c> {
-        // NOTE: Placeholder - actual implementation requires:
-        // 1. Check i2c_id validity (RP2350 has I2C0 and I2C1)
-        // 2. Allocate and configure pins for I2C (SDA, SCL)
-        // 3. Initialize I2C peripheral with config
-        // 4. Wrap in Rp2350I2c
-        Err(PlatformError::ResourceUnavailable)
-    }
+    // Note: create_i2c() removed - use Rp2350I2c directly with embassy_rp::i2c::I2c::new_async()
+    // See boards/freenove_standard.hwdef for I2C0 pin assignments (GPIO 0, 1)
 
     fn create_spi(&mut self, _spi_id: u8, _config: SpiConfig) -> Result<Self::Spi> {
         // NOTE: Placeholder - actual implementation requires:

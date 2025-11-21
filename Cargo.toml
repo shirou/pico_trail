@@ -64,6 +64,9 @@ cyw43-pio = { git = "https://github.com/embassy-rs/embassy", optional = true }
 # Static cell for embassy static variables
 static_cell = { version = "2.1", optional = true }
 
+# Embassy embedded HAL utilities (for shared I2C bus, etc.)
+embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", optional = true }
+
 # heapless for no_std collections (required for parameter storage)
 heapless = "0.8"
 
@@ -88,10 +91,14 @@ embedded-io-async = "0.6"
 nalgebra = { version = "0.33", default-features = false, features = ["libm"] }
 micromath = "2.1"
 
+# GPS NMEA parser (FR-qfwhl: GPS I2C Driver)
+nmea0183 = { version = "0.3", default-features = false }
+
 # Platform HALs (optional, enabled via features)
 rp235x-hal = { version = "0.3.0", optional = true }
 embedded-hal = { version = "0.2.7", features = ["unproven"], optional = true }
 embedded-hal-1 = { package = "embedded-hal", version = "1.0", optional = true }
+embedded-hal-async = { version = "1.0", optional = true }
 nb = { version = "1.1.0", optional = true }
 fugit = { version = "0.3.7", optional = true }
 
@@ -132,9 +139,9 @@ default = []
 pico2_w = [
     "cortex-m", "cortex-m-rt", "defmt", "defmt-rtt",
     "panic-probe", "rp235x-hal",
-    "embedded-hal", "embedded-hal-1", "nb", "fugit",
+    "embedded-hal", "embedded-hal-1", "embedded-hal-async", "nb", "fugit",
     "embassy-executor", "embassy-time", "embassy-rp", "embassy-usb",
-    "embassy-sync", "embassy-net",
+    "embassy-sync", "embassy-net", "embassy-embedded-hal",
     "cyw43", "cyw43-pio", "static_cell", "embedded-alloc",
     "embassy-rp/rp235xa", "embassy-rp/critical-section-impl", "embassy-rp/binary-info"
 ]

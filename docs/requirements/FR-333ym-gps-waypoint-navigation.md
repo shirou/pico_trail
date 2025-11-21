@@ -9,12 +9,16 @@
 
 - Related Analyses:
   - [AN-7ix56-navigation-approach](../analysis/AN-7ix56-navigation-approach.md)
+- Related ADRs:
+  - [ADR-00mjv-i2c0-gps-imu-integration](../adr/ADR-00mjv-i2c0-gps-imu-integration.md)
 - Prerequisite Requirements:
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
   - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)
 - Dependent Requirements:
   - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
-- Related Tasks: N/A - Tasks will be created after ADRs
+- Related Tasks:
+  - [T-meox8-i2c0-gps-imu-integration](../tasks/T-meox8-i2c0-gps-imu-integration/README.md) (superseded)
+  - [T-vxtxn-uart0-gps-integration](../tasks/T-vxtxn-uart0-gps-integration/README.md)
 
 ## Requirement Statement
 

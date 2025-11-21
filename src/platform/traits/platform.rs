@@ -3,9 +3,11 @@
 //! This module defines the root Platform trait that aggregates all peripheral interfaces.
 
 use super::{
-    GpioInterface, I2cConfig, I2cInterface, PwmConfig, PwmInterface, SpiConfig, SpiInterface,
-    TimerInterface, UartConfig, UartInterface,
+    GpioInterface, PwmConfig, PwmInterface, SpiConfig, SpiInterface, TimerInterface, UartConfig,
+    UartInterface,
 };
+// Note: I2cInterface removed from Platform trait due to Embassy async lifetime requirements.
+// Use platform-specific I2C implementations directly (e.g., Rp2350I2c with embassy_rp::i2c::I2c).
 use crate::platform::Result;
 
 /// Root platform trait
@@ -45,8 +47,12 @@ pub trait Platform: Sized {
     /// UART peripheral type
     type Uart: UartInterface;
 
-    /// I2C peripheral type
-    type I2c: I2cInterface;
+    // Note: I2C removed from Platform trait
+    // Embassy async I2C requires lifetime parameters, which cannot be expressed
+    // in associated types without Generic Associated Types (GATs).
+    // Use platform-specific I2C implementations directly:
+    // - RP2350: Rp2350I2c<'d, embassy_rp::peripherals::I2C0> with embassy_rp::i2c::I2c::new_async()
+    // - Mock: MockI2c for host tests
 
     /// SPI peripheral type
     type Spi: SpiInterface;
@@ -90,20 +96,9 @@ pub trait Platform: Sized {
     /// or the UART ID is invalid.
     fn create_uart(&mut self, uart_id: u8, config: UartConfig) -> Result<Self::Uart>;
 
-    /// Create an I2C peripheral instance
-    ///
-    /// # Arguments
-    ///
-    /// * `i2c_id` - Platform-specific I2C identifier (e.g., 0 for I2C0, 1 for I2C1)
-    /// * `config` - I2C configuration
-    ///
-    /// # Errors
-    ///
-    /// Returns `PlatformError::ResourceUnavailable` if the I2C bus is already in use
-    /// or the I2C ID is invalid.
-    fn create_i2c(&mut self, i2c_id: u8, config: I2cConfig) -> Result<Self::I2c>;
+    // Note: create_i2c() removed - use platform-specific I2C initialization directly
 
-    /// Create an SPI peripheral instance
+    /// Create a SPI peripheral instance
     ///
     /// # Arguments
     ///

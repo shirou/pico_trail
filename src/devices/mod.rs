@@ -4,3 +4,4 @@
 //! demonstrating how to write hardware-independent drivers.
 
 pub mod gps;
+pub mod gps_operation;

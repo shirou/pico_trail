@@ -24,4 +24,4 @@ pub use platform::Platform;
 pub use pwm::{PwmConfig, PwmInterface};
 pub use spi::{SpiConfig, SpiInterface, SpiMode};
 pub use timer::TimerInterface;
-pub use uart::{UartConfig, UartInterface, UartParity, UartStopBits};
+pub use uart::{AsyncUartInterface, UartConfig, UartInterface, UartParity, UartStopBits};

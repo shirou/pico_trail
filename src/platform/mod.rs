@@ -16,6 +16,6 @@ pub mod mock;
 // Re-export commonly used types
 pub use error::{PlatformError, Result};
 pub use traits::{
-    FlashInterface, GpioInterface, I2cInterface, Platform, PwmInterface, SpiInterface,
-    TimerInterface, UartInterface,
+    AsyncUartInterface, FlashInterface, GpioInterface, I2cInterface, Platform, PwmInterface,
+    SpiInterface, TimerInterface, UartInterface,
 };

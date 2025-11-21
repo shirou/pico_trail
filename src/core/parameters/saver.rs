@@ -126,8 +126,8 @@ impl ParamSaver {
             Ok(_) => {
                 crate::log_info!("Parameters saved successfully");
             }
-            Err(e) => {
-                crate::log_error!("Failed to save parameters: {:?}", e);
+            Err(_e) => {
+                crate::log_error!("Failed to save parameters");
             }
         }
     }

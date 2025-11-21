@@ -58,7 +58,8 @@
       "Bash(tree:*)",
       "Bash(EXTRA_FEATURES=\"usb_serial\" ./scripts/build-rp2350.sh:*)",
       "Bash(git checkout:*)",
-      "mcp__serena__find_referencing_symbols"
+      "mcp__serena__find_referencing_symbols",
+      "WebFetch(domain:mavlink.io)"
     ],
     "deny": [],
     "ask": []

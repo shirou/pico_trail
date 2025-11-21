@@ -32,6 +32,20 @@ impl Default for I2cConfig {
 /// - Only one owner per I2C bus instance
 /// - No concurrent access to the same I2C bus from multiple contexts
 /// - Address must be 7-bit (valid range: 0x00..=0x7F)
+///
+/// # I2C Address Arbitration
+///
+/// When multiple devices share the same I2C bus, ensure each device has a unique 7-bit address.
+/// Common address conflicts:
+/// - NEO-M8N GPS: 0x42 (fixed)
+/// - BNO085 IMU: 0x4A or 0x4B (selectable via SA0 pin)
+///
+/// # Async Operations
+///
+/// All methods are async to support non-blocking I2C transactions. This allows the Embassy
+/// runtime to schedule other tasks while waiting for I2C operations to complete, preventing
+/// control loop starvation.
+#[allow(async_fn_in_trait)]
 pub trait I2cInterface {
     /// Write data to I2C device
     ///
@@ -49,7 +63,7 @@ pub trait I2cInterface {
     /// - Device does not acknowledge (NACK)
     /// - Bus error occurs
     /// - Timeout expires
-    fn write(&mut self, addr: u8, data: &[u8]) -> Result<()>;
+    async fn write(&mut self, addr: u8, data: &[u8]) -> Result<()>;
 
     /// Read data from I2C device
     ///
@@ -67,7 +81,7 @@ pub trait I2cInterface {
     /// - Device does not acknowledge (NACK)
     /// - Bus error occurs
     /// - Timeout expires
-    fn read(&mut self, addr: u8, buffer: &mut [u8]) -> Result<()>;
+    async fn read(&mut self, addr: u8, buffer: &mut [u8]) -> Result<()>;
 
     /// Write then read from I2C device
     ///
@@ -88,7 +102,12 @@ pub trait I2cInterface {
     /// - Device does not acknowledge (NACK)
     /// - Bus error occurs
     /// - Timeout expires
-    fn write_read(&mut self, addr: u8, write_data: &[u8], read_buffer: &mut [u8]) -> Result<()>;
+    async fn write_read(
+        &mut self,
+        addr: u8,
+        write_data: &[u8],
+        read_buffer: &mut [u8],
+    ) -> Result<()>;
 
     /// Set I2C bus frequency
     ///

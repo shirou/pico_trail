@@ -2,11 +2,13 @@
 
 use crate::platform::{
     error::PlatformError,
-    traits::{I2cConfig, Platform, PwmConfig, SpiConfig, UartConfig},
+    traits::{Platform, PwmConfig, SpiConfig, UartConfig},
     Result,
 };
+// Note: I2cConfig removed - use MockI2c directly for testing I2C functionality
 
-use super::{MockGpio, MockI2c, MockPwm, MockSpi, MockTimer, MockUart};
+use super::{MockGpio, MockPwm, MockSpi, MockTimer, MockUart};
+// Note: MockI2c can be imported directly from crate::platform::mock when needed
 use std::vec::Vec;
 
 /// Mock Platform implementation
@@ -27,10 +29,10 @@ use std::vec::Vec;
 pub struct MockPlatform {
     timer: MockTimer,
     uart_count: u8,
-    i2c_count: u8,
     spi_count: u8,
     gpio_allocated: Vec<u8>,
     battery_adc_value: u16,
+    // Note: i2c_count removed since I2C no longer in Platform trait
 }
 
 impl MockPlatform {
@@ -39,7 +41,6 @@ impl MockPlatform {
         Self {
             timer: MockTimer::new(),
             uart_count: 0,
-            i2c_count: 0,
             spi_count: 0,
             gpio_allocated: Vec::new(),
             battery_adc_value: 0,
@@ -76,7 +77,7 @@ impl Default for MockPlatform {
 
 impl Platform for MockPlatform {
     type Uart = MockUart;
-    type I2c = MockI2c;
+    // Note: I2C removed from Platform trait (use MockI2c directly)
     type Spi = MockSpi;
     type Pwm = MockPwm;
     type Gpio = MockGpio;
@@ -98,13 +99,7 @@ impl Platform for MockPlatform {
         Ok(MockUart::new(config))
     }
 
-    fn create_i2c(&mut self, i2c_id: u8, config: I2cConfig) -> Result<Self::I2c> {
-        if i2c_id >= Self::MAX_I2CS {
-            return Err(PlatformError::ResourceUnavailable);
-        }
-        self.i2c_count += 1;
-        Ok(MockI2c::new(config))
-    }
+    // Note: create_i2c() removed - use MockI2c::new() directly for testing
 
     fn create_spi(&mut self, spi_id: u8, config: SpiConfig) -> Result<Self::Spi> {
         if spi_id >= Self::MAX_SPIS {

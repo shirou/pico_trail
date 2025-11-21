@@ -31,6 +31,8 @@ mod pwm;
 mod spi;
 mod timer;
 mod uart;
+// TODO: Fix uart_async for new embassy-rp UART signature (Uart<'d, M> not Uart<'d, T, M>)
+// mod uart_async;
 
 #[cfg(feature = "pico2_w")]
 pub mod network;
@@ -43,6 +45,7 @@ pub use pwm::Rp2350Pwm;
 pub use spi::Rp2350Spi;
 pub use timer::Rp2350Timer;
 pub use uart::Rp2350Uart;
+// pub use uart_async::Rp2350AsyncUart;
 
 #[cfg(feature = "pico2_w")]
 pub use motor::{

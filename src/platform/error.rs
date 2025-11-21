@@ -116,7 +116,6 @@ pub enum TimerError {
 
 /// Flash-specific errors
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum FlashError {
     /// Erase operation failed
     EraseFailed,

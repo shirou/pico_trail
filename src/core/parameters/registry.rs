@@ -119,7 +119,6 @@ impl ParamMetadata {
 
 /// Parameter registry error
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum RegistryError {
     /// Parameter not found
     NotFound,

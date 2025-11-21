@@ -88,16 +88,18 @@ static HEAP: Heap = Heap::empty();
 #[cfg(feature = "pico2_w")]
 const HEAP_SIZE: usize = 16 * 1024;
 
-// IRQ bindings: USB + ADC when usb_serial is enabled, ADC only otherwise
+// IRQ bindings: USB + ADC + UART0 when usb_serial is enabled, ADC + UART0 only otherwise
 #[cfg(feature = "usb_serial")]
 hal::bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<hal::peripherals::USB>;
     ADC_IRQ_FIFO => embassy_rp::adc::InterruptHandler;
+    UART0_IRQ => embassy_rp::uart::BufferedInterruptHandler<hal::peripherals::UART0>;
 });
 
 #[cfg(all(feature = "pico2_w", not(feature = "usb_serial")))]
 hal::bind_interrupts!(struct Irqs {
     ADC_IRQ_FIFO => embassy_rp::adc::InterruptHandler;
+    UART0_IRQ => embassy_rp::uart::BufferedInterruptHandler<hal::peripherals::UART0>;
 });
 
 #[cfg(feature = "pico2_w")]
@@ -226,12 +228,44 @@ async fn main(spawner: Spawner) {
 
         pico_trail::log_info!("Motors initialized");
 
-        let wifi_params = WifiParams::from_store(param_handler.store());
+        // Initialize UART0 for GPS (GPIO 0 TX, GPIO 1 RX) - Debug mode with buffering
+        let mut uart0_config = embassy_rp::uart::Config::default();
+        uart0_config.baudrate = 9600;
 
-        if wifi_params.is_configured() {
-            pico_trail::log_info!("WiFi configured - initializing network...");
+        static mut UART0_RX_BUF: [u8; 256] = [0; 256];
+        static mut UART0_TX_BUF: [u8; 256] = [0; 256];
 
-            let config = WifiConfig::from_params(&wifi_params);
+        let uart0 = embassy_rp::uart::BufferedUart::new(
+            p.UART0,
+            p.PIN_0, // TX (GPIO 0)
+            p.PIN_1, // RX (GPIO 1)
+            Irqs,
+            unsafe { &mut *core::ptr::addr_of_mut!(UART0_TX_BUF) },
+            unsafe { &mut *core::ptr::addr_of_mut!(UART0_RX_BUF) },
+            uart0_config,
+        );
+
+        pico_trail::log_info!("UART0 initialized (GPIO 0/1, 9600 baud)");
+
+        // Spawn GPS NMEA debug task (passthrough to USB serial)
+        #[cfg(feature = "usb_serial")]
+        {
+            let (_tx, rx) = uart0.split();
+            spawner.spawn(uart0_debug_task(rx)).unwrap();
+        }
+
+        // Load WiFi configuration from parameters
+        let wifi_config = WifiParams::from_store(param_handler.store());
+        if wifi_config.is_configured() {
+            let config = WifiConfig {
+                ssid: wifi_config.ssid.clone(),
+                password: wifi_config.password.clone(),
+                use_dhcp: wifi_config.use_dhcp,
+                static_ip: wifi_config.static_ip,
+                netmask: wifi_config.netmask,
+                gateway: wifi_config.gateway,
+            };
+            pico_trail::log_info!("WiFi configuration loaded:");
             pico_trail::log_info!("  SSID: {}", config.ssid.as_str());
             pico_trail::log_info!("  DHCP: {}", config.use_dhcp);
 
@@ -735,4 +769,39 @@ async fn usb_task(
     mut usb: embassy_usb::UsbDevice<'static, Driver<'static, hal::peripherals::USB>>,
 ) {
     usb.run().await;
+}
+
+/// UART0 GPS NMEA Debug Task
+///
+/// Reads raw NMEA data from UART0 and outputs to USB serial (via log)
+#[cfg(feature = "usb_serial")]
+#[embassy_executor::task]
+async fn uart0_debug_task(mut uart0_rx: embassy_rp::uart::BufferedUartRx<'static>) {
+    use embedded_io_async::Read;
+
+    pico_trail::log_info!("UART0 GPS Debug task started - NMEA passthrough to USB");
+
+    let mut buffer = [0u8; 128];
+
+    loop {
+        // Read available data from UART0 (GPS)
+        match uart0_rx.read(&mut buffer).await {
+            Ok(n) if n > 0 => {
+                // Output raw bytes as string (NMEA is ASCII)
+                if let Ok(nmea_str) = core::str::from_utf8(&buffer[..n]) {
+                    pico_trail::log_info!("{}", nmea_str.trim());
+                } else {
+                    pico_trail::log_warn!("GPS: Non-UTF8 data ({} bytes)", n);
+                }
+            }
+            Ok(_) => {
+                // No data available (shouldn't happen with buffered UART)
+                Timer::after_millis(10).await;
+            }
+            Err(e) => {
+                pico_trail::log_error!("GPS UART0 read error: {:?}", e);
+                Timer::after_millis(100).await;
+            }
+        }
+    }
 }
