@@ -23,6 +23,73 @@
 use crate::platform::{traits::UartInterface, Result};
 use nmea0183::{ParseResult, Parser};
 
+/// GPS latitude offset for privacy (from build-time environment variable)
+/// Added to all latitude values to hide actual location in public displays
+const GPS_LAT_OFFSET: f32 = {
+    // build.rs parses the environment variable and outputs the parsed f32 value
+    const S: &str = env!("GPS_LAT_OFFSET");
+    const_parse_f32(S)
+};
+
+/// GPS longitude offset for privacy (from build-time environment variable)
+/// Added to all longitude values to hide actual location in public displays
+const GPS_LON_OFFSET: f32 = {
+    const S: &str = env!("GPS_LON_OFFSET");
+    const_parse_f32(S)
+};
+
+/// Parse f32 from string at compile time
+/// Handles optional sign, integer part, and optional decimal part
+const fn const_parse_f32(s: &str) -> f32 {
+    let bytes = s.as_bytes();
+    if bytes.is_empty() {
+        return 0.0;
+    }
+
+    let mut i = 0;
+    let negative = bytes[0] == b'-';
+    if negative || bytes[0] == b'+' {
+        i += 1;
+    }
+
+    let mut int_part: i64 = 0;
+    while i < bytes.len() && bytes[i] != b'.' {
+        if bytes[i] < b'0' || bytes[i] > b'9' {
+            return 0.0; // Invalid character
+        }
+        int_part = int_part * 10 + (bytes[i] - b'0') as i64;
+        i += 1;
+    }
+
+    let mut frac_part: i64 = 0;
+    let mut frac_digits: u32 = 0;
+    if i < bytes.len() && bytes[i] == b'.' {
+        i += 1;
+        while i < bytes.len() {
+            if bytes[i] < b'0' || bytes[i] > b'9' {
+                return 0.0; // Invalid character
+            }
+            frac_part = frac_part * 10 + (bytes[i] - b'0') as i64;
+            frac_digits += 1;
+            i += 1;
+        }
+    }
+
+    let mut divisor: i64 = 1;
+    let mut d = 0;
+    while d < frac_digits {
+        divisor *= 10;
+        d += 1;
+    }
+
+    let value = int_part as f64 + (frac_part as f64 / divisor as f64);
+    if negative {
+        -(value as f32)
+    } else {
+        value as f32
+    }
+}
+
 /// GPS fix type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -88,9 +155,10 @@ impl GpsInternalState {
         // Pass through COG as-is from RMC sentence
         // Note: COG reliability depends on speed - consumers should check speed
         // before using COG for navigation (typically valid when speed >= 0.5 m/s)
+        // Apply privacy offset to latitude/longitude (configured via GPS_LAT_OFFSET/GPS_LON_OFFSET env vars)
         Some(GpsPosition {
-            latitude: self.latitude.unwrap_or(0.0),
-            longitude: self.longitude.unwrap_or(0.0),
+            latitude: self.latitude.unwrap_or(0.0) + GPS_LAT_OFFSET,
+            longitude: self.longitude.unwrap_or(0.0) + GPS_LON_OFFSET,
             altitude: self.altitude.unwrap_or(0.0),
             speed: self.speed.unwrap_or(0.0),
             course_over_ground: self.course_over_ground,

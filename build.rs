@@ -1103,6 +1103,29 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NET_NETMASK");
     println!("cargo:rerun-if-env-changed=NET_GATEWAY");
 
+    // GPS Privacy Offset (for hiding actual location in public displays)
+    // Values are parsed as f32 and added to GPS coordinates
+    let lat_offset: f32 = env::var("GPS_LAT_OFFSET")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    println!("cargo:rustc-env=GPS_LAT_OFFSET={}", lat_offset);
+    if lat_offset != 0.0 {
+        println!("cargo:warning=Using GPS_LAT_OFFSET: {}", lat_offset);
+    }
+
+    let lon_offset: f32 = env::var("GPS_LON_OFFSET")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    println!("cargo:rustc-env=GPS_LON_OFFSET={}", lon_offset);
+    if lon_offset != 0.0 {
+        println!("cargo:warning=Using GPS_LON_OFFSET: {}", lon_offset);
+    }
+
+    println!("cargo:rerun-if-env-changed=GPS_LAT_OFFSET");
+    println!("cargo:rerun-if-env-changed=GPS_LON_OFFSET");
+
     // Process hwdef files for board pin configuration
     let board_name = env::var("BOARD").unwrap_or_else(|_| "freenove_standard".to_string());
     let hwdef_path = PathBuf::from("boards").join(format!("{}.hwdef", board_name));
