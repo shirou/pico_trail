@@ -13,6 +13,9 @@
   - None (UART infrastructure already exists)
 - Dependent Requirements:
   - [FR-3ik7l-gps-operation-data-management](FR-3ik7l-gps-operation-data-management.md)
+  - [FR-uyie8-gps-mavlink-telemetry](FR-uyie8-gps-mavlink-telemetry.md)
+  - [FR-cs42u-gps-navigation-state-access](FR-cs42u-gps-navigation-state-access.md)
+  - [FR-4z22l-gps-course-over-ground](FR-4z22l-gps-course-over-ground.md)
 - Related Tasks:
   - [T-vxtxn-uart0-gps-integration](../tasks/T-vxtxn-uart0-gps-integration/README.md)
 

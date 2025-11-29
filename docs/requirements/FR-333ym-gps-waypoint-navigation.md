@@ -14,6 +14,7 @@
 - Prerequisite Requirements:
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
   - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)
+  - [FR-cs42u-gps-navigation-state-access](FR-cs42u-gps-navigation-state-access.md)
 - Dependent Requirements:
   - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
 - Related Tasks:

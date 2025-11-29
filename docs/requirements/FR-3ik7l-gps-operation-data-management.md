@@ -15,7 +15,9 @@
 - Prerequisite Requirements:
   - [FR-qfwhl-gps-i2c-driver](FR-qfwhl-gps-i2c-driver.md) (superseded)
   - [FR-93b5v-gps-uart-driver](FR-93b5v-gps-uart-driver.md)
-- Dependent Requirements: N/A – No dependent requirements
+- Dependent Requirements:
+  - [FR-uyie8-gps-mavlink-telemetry](FR-uyie8-gps-mavlink-telemetry.md)
+  - [FR-cs42u-gps-navigation-state-access](FR-cs42u-gps-navigation-state-access.md)
 - Related Tasks:
   - [T-meox8-i2c0-gps-imu-integration](../tasks/T-meox8-i2c0-gps-imu-integration/README.md) (superseded)
   - [T-vxtxn-uart0-gps-integration](../tasks/T-vxtxn-uart0-gps-integration/README.md)
