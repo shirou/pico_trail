@@ -5,8 +5,9 @@
 //! # Supported Messages
 //!
 //! - **HEARTBEAT**: System status (1Hz)
-//! - **ATTITUDE**: Roll, pitch, yaw (10Hz default, configurable via SR_EXTRA1)
-//! - **GPS_RAW_INT**: GPS position (5Hz default, configurable via SR_POSITION)
+//! - **ATTITUDE**: Roll, pitch, yaw (2Hz default, configurable via SR_EXTRA1)
+//! - **GPS_RAW_INT**: GPS position (2Hz default, configurable via SR_POSITION)
+//! - **GLOBAL_POSITION_INT**: Position (2Hz default, configurable via SR_POSITION)
 //! - **SYS_STATUS**: System health (1Hz, configurable via SR_EXTRA1)
 //! - **BATTERY_STATUS**: Battery voltage and status (2Hz, hardcoded)
 //!
@@ -149,9 +150,9 @@ impl TelemetryStreamer {
     ///
     /// Returns a telemetry streamer with default stream rates:
     /// - HEARTBEAT: 1Hz
-    /// - ATTITUDE: 10Hz
-    /// - GPS_RAW_INT: 5Hz
-    /// - GLOBAL_POSITION_INT: 5Hz
+    /// - ATTITUDE: 2Hz
+    /// - GPS_RAW_INT: 2Hz
+    /// - GLOBAL_POSITION_INT: 2Hz
     /// - SYS_STATUS: 1Hz
     /// - BATTERY_STATUS: 2Hz
     pub fn new(system_id: u8, component_id: u8) -> Self {
@@ -159,9 +160,9 @@ impl TelemetryStreamer {
             system_id,
             component_id,
             heartbeat: StreamConfig::new(1),       // Always 1Hz
-            attitude: StreamConfig::new(10),       // SR_EXTRA1 default
-            gps: StreamConfig::new(5),             // SR_POSITION default
-            global_position: StreamConfig::new(5), // SR_POSITION default
+            attitude: StreamConfig::new(2),        // SR_EXTRA1 default
+            gps: StreamConfig::new(2),             // SR_POSITION default
+            global_position: StreamConfig::new(2), // SR_POSITION default
             sys_status: StreamConfig::new(1), // SR_EXTRA1 default (lower priority than attitude)
             battery_status: StreamConfig::new(2), // Hardcoded 2Hz
         }
@@ -515,8 +516,8 @@ mod tests {
         let (hb, att, gps, sys, bat) = streamer.get_rates();
 
         assert_eq!(hb, 1); // HEARTBEAT always 1Hz
-        assert_eq!(att, 10); // ATTITUDE default 10Hz
-        assert_eq!(gps, 5); // GPS default 5Hz
+        assert_eq!(att, 2); // ATTITUDE default 2Hz
+        assert_eq!(gps, 2); // GPS default 2Hz
         assert_eq!(sys, 1); // SYS_STATUS default 1Hz
         assert_eq!(bat, 2); // BATTERY_STATUS default 2Hz
     }
@@ -636,10 +637,12 @@ mod tests {
             .iter()
             .any(|m| matches!(m, MavMessage::HEARTBEAT(_))));
 
-        // At t=100ms, ATTITUDE should send (10Hz = 100ms interval)
-        let messages = streamer.update(&state, 100_000);
-        assert_eq!(messages.len(), 1);
-        assert!(matches!(messages[0], MavMessage::ATTITUDE(_)));
+        // At t=500ms, ATTITUDE/GPS/GLOBAL_POSITION should send (2Hz = 500ms interval)
+        let messages = streamer.update(&state, 500_000);
+        assert_eq!(messages.len(), 4); // ATTITUDE, GPS_RAW_INT, GLOBAL_POSITION_INT, BATTERY_STATUS
+        assert!(messages
+            .iter()
+            .any(|m| matches!(m, MavMessage::ATTITUDE(_))));
     }
 
     #[test]
