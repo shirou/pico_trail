@@ -16,7 +16,7 @@
   - [FR-993xy-rc-channels-processing](FR-993xy-rc-channels-processing.md)
   - [FR-a1cuu-runtime-parameters](FR-a1cuu-runtime-parameters.md)
   - [FR-eutkf-concurrent-transports](FR-eutkf-concurrent-transports.md)
-  - [FR-993xy-rc-channels-processing](FR-993xy-rc-channels-processing.md)
+  - [FR-obwjs-position-target-command-handler](FR-obwjs-position-target-command-handler.md)
   - [FR-ydttj-udp-network-transport](FR-ydttj-udp-network-transport.md)
   - [FR-zwsr5-gcs-loss-failsafe](FR-zwsr5-gcs-loss-failsafe.md)
 

@@ -9,7 +9,8 @@
 
 - Prerequisite Requirements:
   - [FR-higbc-hbridge-motor-control](../requirements/FR-higbc-hbridge-motor-control.md)
-- Dependent Requirements: N/A - Not yet defined
+- Dependent Requirements:
+  - [FR-2vbe8-navigation-controller](../requirements/FR-2vbe8-navigation-controller.md)
 - Related Tasks:
   - [T-l7czt-differential-drive-kinematics](../tasks/T-l7czt-differential-drive-kinematics/README.md)
 

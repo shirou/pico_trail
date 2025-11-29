@@ -10,8 +10,10 @@
 - Prerequisite Requirements:
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
 - Dependent Requirements:
-  - [FR-uk0us-manual-mode](FR-uk0us-manual-mode.md)
+  - [FR-erpze-guided-mode-navigation](FR-erpze-guided-mode-navigation.md)
+  - [FR-jm7mj-auto-mode-mission-execution](FR-jm7mj-auto-mode-mission-execution.md)
   - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
+  - [FR-uk0us-manual-mode](FR-uk0us-manual-mode.md)
 - Related Tasks:
   - [T-3irm5-manual-control-implementation](../tasks/T-3irm5-manual-control-implementation/README.md)
 

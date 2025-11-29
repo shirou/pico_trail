@@ -11,7 +11,12 @@
   - [FR-93b5v-gps-uart-driver](../requirements/FR-93b5v-gps-uart-driver.md)
   - [FR-3ik7l-gps-operation-data-management](../requirements/FR-3ik7l-gps-operation-data-management.md)
 - Dependent Requirements:
+  - [FR-2vbe8-navigation-controller](../requirements/FR-2vbe8-navigation-controller.md)
   - [FR-333ym-gps-waypoint-navigation](../requirements/FR-333ym-gps-waypoint-navigation.md)
+  - [FR-erpze-guided-mode-navigation](../requirements/FR-erpze-guided-mode-navigation.md)
+  - [FR-jm7mj-auto-mode-mission-execution](../requirements/FR-jm7mj-auto-mode-mission-execution.md)
+  - [FR-obwjs-position-target-command-handler](../requirements/FR-obwjs-position-target-command-handler.md)
+  - [FR-tmibt-position-target-state](../requirements/FR-tmibt-position-target-state.md)
   - [NFR-wwke9-gps-state-thread-safety](../requirements/NFR-wwke9-gps-state-thread-safety.md)
 - Related Tasks:
   - [T-gvsxb-gps-state-telemetry](../tasks/T-gvsxb-gps-state-telemetry/README.md)

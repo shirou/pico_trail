@@ -16,6 +16,7 @@
   - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)
   - [FR-cs42u-gps-navigation-state-access](FR-cs42u-gps-navigation-state-access.md)
 - Dependent Requirements:
+  - [FR-jm7mj-auto-mode-mission-execution](FR-jm7mj-auto-mode-mission-execution.md)
   - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
 - Related Tasks:
   - [T-meox8-i2c0-gps-imu-integration](../tasks/T-meox8-i2c0-gps-imu-integration/README.md) (superseded)

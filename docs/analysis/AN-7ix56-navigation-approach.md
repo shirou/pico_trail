@@ -13,7 +13,8 @@
 - Related Requirements:
   - [FR-333ym-gps-waypoint-navigation](../requirements/FR-333ym-gps-waypoint-navigation.md)
 - Related ADRs: N/A - ADRs will be created based on this analysis
-- Related Tasks: N/A - Tasks will be created after requirements and ADRs
+- Related Tasks:
+  - [T-tto4f-navigation-controller](../tasks/T-tto4f-navigation-controller/README.md)
 
 ## Executive Summary
 
