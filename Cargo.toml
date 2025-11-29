@@ -92,6 +92,9 @@ embedded-io-async = "0.6"
 nalgebra = { version = "0.33", default-features = false, features = ["libm"] }
 micromath = "2.1"
 
+# Math functions for no_std (FR-2vbe8: Navigation Controller)
+libm = "0.2"
+
 # GPS NMEA parser (FR-qfwhl: GPS I2C Driver)
 nmea0183 = { version = "0.3", default-features = false }
 

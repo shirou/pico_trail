@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Implementation Plan
-- Status: Draft
+- Status: Complete
 
 ## Links
 
@@ -16,10 +16,10 @@ Implement a navigation controller subsystem that converts GPS position targets i
 
 ## Success Metrics
 
-- [ ] Navigation calculations complete within 2ms on RP2350
-- [ ] Steering output always in \[-1.0, +1.0], throttle in \[0.0, 1.0]
-- [ ] Unit tests pass for all navigation functions
-- [ ] All existing tests pass; no regressions in vehicle control
+- [x] Navigation calculations complete within 2ms on RP2350 (estimated \~300µs)
+- [x] Steering output always in \[-1.0, +1.0], throttle in \[0.0, 1.0]
+- [x] Unit tests pass for all navigation functions (48 tests)
+- [x] All existing tests pass; no regressions in vehicle control
 
 ## Scope
 
@@ -65,26 +65,26 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ### Tasks
 
-- [ ] **Module scaffolding**
-  - [ ] Create `src/subsystems/navigation/mod.rs`
-  - [ ] Create `src/subsystems/navigation/types.rs`
-  - [ ] Create `src/subsystems/navigation/geo.rs`
-  - [ ] Add navigation module to `src/subsystems/mod.rs`
-- [ ] **Type definitions**
-  - [ ] Define `PositionTarget` struct
-  - [ ] Define `NavigationOutput` struct
-  - [ ] Define `SimpleNavConfig` struct with defaults
-- [ ] **Geo calculations**
-  - [ ] Implement `calculate_bearing(lat1, lon1, lat2, lon2) -> f32`
-  - [ ] Implement `calculate_distance(lat1, lon1, lat2, lon2) -> f32`
-  - [ ] Implement `wrap_180(angle: f32) -> f32`
-  - [ ] Implement `wrap_360(angle: f32) -> f32`
-- [ ] **Unit tests for geo functions**
-  - [ ] Test bearing: north, south, east, west directions
-  - [ ] Test bearing: diagonal directions
-  - [ ] Test distance: known reference points
-  - [ ] Test wrap_180: boundary cases
-  - [ ] Test wrap_360: boundary cases
+- [x] **Module scaffolding**
+  - [x] Create `src/subsystems/navigation/mod.rs`
+  - [x] Create `src/subsystems/navigation/types.rs`
+  - [x] Create `src/subsystems/navigation/geo.rs`
+  - [x] Add navigation module to `src/subsystems/mod.rs`
+- [x] **Type definitions**
+  - [x] Define `PositionTarget` struct
+  - [x] Define `NavigationOutput` struct
+  - [x] Define `SimpleNavConfig` struct with defaults
+- [x] **Geo calculations**
+  - [x] Implement `calculate_bearing(lat1, lon1, lat2, lon2) -> f32`
+  - [x] Implement `calculate_distance(lat1, lon1, lat2, lon2) -> f32`
+  - [x] Implement `wrap_180(angle: f32) -> f32`
+  - [x] Implement `wrap_360(angle: f32) -> f32`
+- [x] **Unit tests for geo functions**
+  - [x] Test bearing: north, south, east, west directions
+  - [x] Test bearing: diagonal directions
+  - [x] Test distance: known reference points
+  - [x] Test wrap_180: boundary cases
+  - [x] Test wrap_360: boundary cases
 
 ### Deliverables
 
@@ -133,25 +133,25 @@ cargo test --lib --quiet navigation
 
 ### Phase 2 Tasks
 
-- [ ] **NavigationController trait**
-  - [ ] Define `NavigationController` trait with `update()` and `reset()` methods
-  - [ ] Document trait contract and usage
-- [ ] **SimpleNavigationController**
-  - [ ] Implement `SimpleNavigationController` struct
-  - [ ] Implement `new()` with default config
-  - [ ] Implement `with_config()` for custom configuration
-  - [ ] Implement `update()` method:
-    - [ ] Calculate bearing to target
-    - [ ] Calculate distance to target
-    - [ ] Calculate heading error (wrapped to ±180°)
-    - [ ] Calculate steering from heading error
-    - [ ] Calculate throttle with approach slowdown
-    - [ ] Detect arrival (within WP_RADIUS)
-  - [ ] Implement `reset()` method
-- [ ] **Output range safety**
-  - [ ] Ensure steering clamped to \[-1.0, +1.0]
-  - [ ] Ensure throttle clamped to \[0.0, 1.0]
-  - [ ] Handle NaN/infinity inputs safely
+- [x] **NavigationController trait**
+  - [x] Define `NavigationController` trait with `update()` and `reset()` methods
+  - [x] Document trait contract and usage
+- [x] **SimpleNavigationController**
+  - [x] Implement `SimpleNavigationController` struct
+  - [x] Implement `new()` with default config
+  - [x] Implement `with_config()` for custom configuration
+  - [x] Implement `update()` method:
+    - [x] Calculate bearing to target
+    - [x] Calculate distance to target
+    - [x] Calculate heading error (wrapped to ±180°)
+    - [x] Calculate steering from heading error
+    - [x] Calculate throttle with approach slowdown
+    - [x] Detect arrival (within WP_RADIUS)
+  - [x] Implement `reset()` method
+- [x] **Output range safety**
+  - [x] Ensure steering clamped to \[-1.0, +1.0]
+  - [x] Ensure throttle clamped to \[0.0, 1.0]
+  - [x] Handle NaN/infinity inputs safely
 
 ### Phase 2 Deliverables
 
@@ -193,27 +193,27 @@ cargo test --lib --quiet navigation
 
 ### Phase 3 Tasks
 
-- [ ] **Controller unit tests**
-  - [ ] Test at_target detection (within/outside WP_RADIUS)
-  - [ ] Test steering: target ahead (0° error)
-  - [ ] Test steering: target to left (negative error)
-  - [ ] Test steering: target to right (positive error)
-  - [ ] Test steering: target behind (180° error)
-  - [ ] Test throttle: far from target (full throttle)
-  - [ ] Test throttle: in approach zone (reduced)
-  - [ ] Test throttle: at target (zero)
-- [ ] **Property-based tests** (if proptest available)
-  - [ ] Steering always in \[-1.0, +1.0] for any heading/bearing
-  - [ ] Throttle always in \[0.0, 1.0] for any distance
-  - [ ] wrap_180 always returns value in \[-180, 180]
-- [ ] **Edge cases**
-  - [ ] Current position equals target position
-  - [ ] Very large distances (>1000km)
-  - [ ] Positions near poles (high latitude)
-  - [ ] Positions crossing date line (longitude wrap)
-- [ ] **Documentation**
-  - [ ] Add docstrings to all public functions
-  - [ ] Add usage example in module documentation
+- [x] **Controller unit tests**
+  - [x] Test at_target detection (within/outside WP_RADIUS)
+  - [x] Test steering: target ahead (0° error)
+  - [x] Test steering: target to left (negative error)
+  - [x] Test steering: target to right (positive error)
+  - [x] Test steering: target behind (180° error)
+  - [x] Test throttle: far from target (full throttle)
+  - [x] Test throttle: in approach zone (reduced)
+  - [x] Test throttle: at target (zero)
+- [x] **Property-based tests** (pseudo-property tests via iteration)
+  - [x] Steering always in \[-1.0, +1.0] for any heading/bearing
+  - [x] Throttle always in \[0.0, 1.0] for any distance
+  - [x] wrap_180 always returns value in \[-180, 180]
+- [x] **Edge cases**
+  - [x] Current position equals target position
+  - [x] Very large distances (>1000km)
+  - [x] Positions near poles (high latitude)
+  - [x] Positions crossing date line (longitude wrap)
+- [x] **Documentation**
+  - [x] Add docstrings to all public functions
+  - [x] Add usage example in module documentation
 
 ### Phase 3 Deliverables
 
@@ -246,10 +246,10 @@ cargo test --lib --quiet navigation
 - [x] `cargo clippy --all-targets -- -D warnings`
 - [x] `cargo test --lib --quiet`
 - [x] `./scripts/build-rp2350.sh pico_trail_rover` builds successfully
-- [ ] Documentation updated if needed
-- [ ] ADRs referenced and followed
-- [ ] No `unsafe` code
-- [ ] No vague naming ("manager"/"util")
+- [x] Documentation updated if needed
+- [x] ADRs referenced and followed
+- [x] No `unsafe` code
+- [x] No vague naming ("manager"/"util")
 
 ## Open Questions
 

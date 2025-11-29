@@ -6,3 +6,4 @@
 //! - Control: Steering and throttle control
 
 pub mod ahrs;
+pub mod navigation;

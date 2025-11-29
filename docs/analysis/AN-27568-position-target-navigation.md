@@ -20,7 +20,8 @@
   - [FR-2vbe8-navigation-controller](../requirements/FR-2vbe8-navigation-controller.md)
   - [FR-tmibt-position-target-state](../requirements/FR-tmibt-position-target-state.md)
   - [NFR-wtdig-navigation-controller-performance](../requirements/NFR-wtdig-navigation-controller-performance.md)
-- Related ADRs: N/A - ADRs will be created based on this analysis
+- Related ADRs:
+  - [ADR-wrcuk-navigation-controller-architecture](../adr/ADR-wrcuk-navigation-controller-architecture.md)
 - Related Tasks:
   - [T-tto4f-navigation-controller](../tasks/T-tto4f-navigation-controller/README.md)
 
