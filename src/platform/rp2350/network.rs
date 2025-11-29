@@ -370,6 +370,9 @@ pub async fn initialize_wifi(
             );
         }
     } else {
+        // Static IP でもリンク確立を待つ必要がある
+        crate::log_info!("Waiting for link up (static IP)...");
+        stack.wait_link_up().await;
         crate::log_info!("Static IP configured");
     }
 

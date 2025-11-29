@@ -333,7 +333,7 @@ impl TelemetryStreamer {
             Some(pos) => {
                 // Compute velocity components from speed and COG
                 let (vx, vy, hdg) = match pos.course_over_ground {
-                    Some(cog) if pos.speed >= 0.5 => {
+                    Some(cog) => {
                         // Convert COG to radians for sin/cos
                         let cog_rad = cog * core::f32::consts::PI / 180.0;
                         // vx = North velocity, vy = East velocity
@@ -341,7 +341,7 @@ impl TelemetryStreamer {
                         let vy = pos.speed * cog_rad.sin();
                         (mps_to_cms_i16(vx), mps_to_cms_i16(vy), degrees_to_cdeg(cog))
                     }
-                    _ => (0, 0, u16::MAX), // COG unknown or speed too low
+                    None => (0, 0, u16::MAX), // COG not available from GPS
                 };
 
                 (
