@@ -21,6 +21,7 @@
 //! ```
 
 use crate::platform::{traits::UartInterface, Result};
+use nmea0183::{ParseResult, Parser};
 
 /// GPS fix type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,8 +60,7 @@ pub struct GpsPosition {
 /// making it platform-independent.
 pub struct GpsDriver<U: UartInterface> {
     uart: U,
-    buffer: [u8; 256],
-    buffer_pos: usize,
+    parser: Parser,
 }
 
 impl<U: UartInterface> GpsDriver<U> {
@@ -72,8 +72,7 @@ impl<U: UartInterface> GpsDriver<U> {
     pub fn new(uart: U) -> Self {
         Self {
             uart,
-            buffer: [0u8; 256],
-            buffer_pos: 0,
+            parser: Parser::new(),
         }
     }
 
@@ -114,145 +113,56 @@ impl<U: UartInterface> GpsDriver<U> {
             return Ok(None);
         }
 
-        // Append to internal buffer
+        // Process each byte through the NMEA parser
         for &byte in temp_buf.iter().take(read_count) {
-            if self.buffer_pos < self.buffer.len() {
-                self.buffer[self.buffer_pos] = byte;
-                self.buffer_pos += 1;
-
-                // Check for end of NMEA sentence (\r\n)
-                if self.buffer_pos >= 2
-                    && self.buffer[self.buffer_pos - 2] == b'\r'
-                    && self.buffer[self.buffer_pos - 1] == b'\n'
-                {
-                    // Parse the sentence
-                    let sentence = &self.buffer[..self.buffer_pos - 2];
-                    let result = self.parse_nmea(sentence);
-
-                    // Reset buffer
-                    self.buffer_pos = 0;
-
-                    if let Some(pos) = result {
-                        return Ok(Some(pos));
+            if let Some(result) = self.parser.parse_from_byte(byte) {
+                match result {
+                    Ok(ParseResult::RMC(Some(rmc))) => {
+                        return Ok(Some(Self::convert_rmc(&rmc)));
                     }
+                    Ok(ParseResult::GGA(Some(gga))) => {
+                        return Ok(Some(Self::convert_gga(&gga)));
+                    }
+                    // Valid sentence but no data (receiver working but no fix)
+                    Ok(ParseResult::RMC(None) | ParseResult::GGA(None)) => {
+                        // Continue parsing, waiting for valid data
+                    }
+                    // Other sentence types (VTG, GLL) - ignore
+                    Ok(_) => {}
+                    // Parse errors - ignore and continue
+                    Err(_) => {}
                 }
-            } else {
-                // Buffer overflow, reset
-                self.buffer_pos = 0;
             }
         }
 
         Ok(None)
     }
 
-    /// Parse NMEA sentence (simplified GPRMC/GPGGA parser)
-    fn parse_nmea(&self, sentence: &[u8]) -> Option<GpsPosition> {
-        // Convert to string (simplified, assumes ASCII)
-        let s = core::str::from_utf8(sentence).ok()?;
+    /// Convert nmea0183::RMC to GpsPosition
+    fn convert_rmc(rmc: &nmea0183::RMC) -> GpsPosition {
+        let speed = rmc.speed.as_mps();
 
-        // Check if it's a GPRMC sentence (recommended minimum specific data)
-        if s.starts_with("$GPRMC") {
-            self.parse_gprmc(s)
-        } else if s.starts_with("$GPGGA") {
-            self.parse_gpgga(s)
-        } else {
-            None
-        }
-    }
-
-    /// Parse GPRMC sentence
-    /// Format: $GPRMC,time,status,lat,NS,lon,EW,speed,course,date,,,*checksum
-    fn parse_gprmc(&self, sentence: &str) -> Option<GpsPosition> {
-        // Use fixed-size array instead of Vec for no_std compatibility
-        let mut fields = [""; 16];
-        let mut field_count = 0;
-
-        for field in sentence.split(',') {
-            if field_count >= fields.len() {
-                break;
-            }
-            fields[field_count] = field;
-            field_count += 1;
-        }
-
-        if field_count < 10 {
-            return None;
-        }
-
-        // Check if data is valid (field 2)
-        if fields[2] != "A" {
-            return None; // Invalid or no fix
-        }
-
-        // Parse latitude (fields 3, 4)
-        let lat = self.parse_coordinate(fields[3], fields[4])?;
-
-        // Parse longitude (fields 5, 6)
-        let lon = self.parse_coordinate(fields[5], fields[6])?;
-
-        // Parse speed in knots (field 7)
-        let speed_knots: f32 = fields[7].parse().ok()?;
-        let speed = speed_knots * 0.514444; // Convert knots to m/s
-
-        // Parse course over ground (field 8) - track angle in degrees
         // COG is unreliable at low speeds, so only use when speed >= 0.5 m/s
         let course_over_ground = if speed >= 0.5 {
-            fields[8]
-                .parse::<f32>()
-                .ok()
-                .filter(|&cog| (0.0..=360.0).contains(&cog))
+            rmc.course.as_ref().map(|c| c.degrees)
         } else {
             None
         };
 
-        // GPRMC has valid fix but no altitude, so assume 2D fix
-        Some(GpsPosition {
-            latitude: lat,
-            longitude: lon,
-            altitude: 0.0, // Not available in GPRMC
+        GpsPosition {
+            latitude: rmc.latitude.as_f64() as f32,
+            longitude: rmc.longitude.as_f64() as f32,
+            altitude: 0.0, // Not available in RMC
             speed,
             course_over_ground,
-            fix_type: GpsFixType::Fix2D,
-            satellites: 0, // Not available in GPRMC
-        })
+            fix_type: GpsFixType::Fix2D, // RMC has valid fix but no altitude
+            satellites: 0,               // Not available in RMC
+        }
     }
 
-    /// Parse GPGGA sentence
-    /// Format: $GPGGA,time,lat,NS,lon,EW,quality,sats,hdop,altitude,M,...*checksum
-    fn parse_gpgga(&self, sentence: &str) -> Option<GpsPosition> {
-        // Use fixed-size array instead of Vec for no_std compatibility
-        let mut fields = [""; 16];
-        let mut field_count = 0;
-
-        for field in sentence.split(',') {
-            if field_count >= fields.len() {
-                break;
-            }
-            fields[field_count] = field;
-            field_count += 1;
-        }
-
-        if field_count < 10 {
-            return None;
-        }
-
-        // Check fix quality (field 6)
-        let quality: u8 = fields[6].parse().ok()?;
-        if quality == 0 {
-            return None; // No fix
-        }
-
-        // Parse number of satellites (field 7)
-        let satellites: u8 = fields[7].parse().unwrap_or(0);
-
-        // Parse latitude (fields 2, 3)
-        let lat = self.parse_coordinate(fields[2], fields[3])?;
-
-        // Parse longitude (fields 4, 5)
-        let lon = self.parse_coordinate(fields[4], fields[5])?;
-
-        // Parse altitude (field 9)
-        let altitude: f32 = fields[9].parse().ok()?;
+    /// Convert nmea0183::GGA to GpsPosition
+    fn convert_gga(gga: &nmea0183::GGA) -> GpsPosition {
+        let altitude = gga.altitude.meters;
 
         // Determine fix type based on altitude availability
         let fix_type = if altitude.abs() > 0.01 {
@@ -261,43 +171,15 @@ impl<U: UartInterface> GpsDriver<U> {
             GpsFixType::Fix2D
         };
 
-        Some(GpsPosition {
-            latitude: lat,
-            longitude: lon,
+        GpsPosition {
+            latitude: gga.latitude.as_f64() as f32,
+            longitude: gga.longitude.as_f64() as f32,
             altitude,
-            speed: 0.0,               // Not available in GPGGA
-            course_over_ground: None, // Not available in GPGGA
+            speed: 0.0,               // Not available in GGA
+            course_over_ground: None, // Not available in GGA
             fix_type,
-            satellites,
-        })
-    }
-
-    /// Parse coordinate from NMEA format
-    /// Example: "4807.038,N" -> 48.1173 degrees
-    fn parse_coordinate(&self, coord_str: &str, direction: &str) -> Option<f32> {
-        if coord_str.is_empty() {
-            return None;
+            satellites: gga.sat_in_use,
         }
-
-        // Find decimal point
-        let dot_pos = coord_str.find('.')?;
-
-        // Degrees are before the last 2 digits before decimal
-        let deg_end = dot_pos.saturating_sub(2);
-        let degrees: f32 = coord_str[..deg_end].parse().ok()?;
-
-        // Minutes are the last 2 digits and decimal part
-        let minutes: f32 = coord_str[deg_end..].parse().ok()?;
-
-        // Convert to decimal degrees
-        let mut result = degrees + (minutes / 60.0);
-
-        // Apply direction (S/W are negative)
-        if direction == "S" || direction == "W" {
-            result = -result;
-        }
-
-        Some(result)
     }
 }
 
@@ -392,7 +274,7 @@ mod tests {
         let mut gps = GpsDriver::new(uart);
 
         // GPRMC sentence with speed 0.5 knots (~0.26 m/s) - below threshold
-        let nmea = b"$GPRMC,123519,A,4807.038,N,01131.000,E,000.5,084.4,230394,003.1,W*6E\r\n";
+        let nmea = b"$GPRMC,123519,A,4807.038,N,01131.000,E,000.5,084.4,230394,003.1,W*6B\r\n";
         gps.uart_mut().inject_rx_data(nmea);
 
         let position = read_gps_position_complete(&mut gps).expect("Expected GPS position");
@@ -408,7 +290,7 @@ mod tests {
         let mut gps = GpsDriver::new(uart);
 
         // GPRMC sentence with speed 1.0 knots (~0.514 m/s) - at threshold
-        let nmea = b"$GPRMC,123519,A,4807.038,N,01131.000,E,001.0,180.0,230394,003.1,W*65\r\n";
+        let nmea = b"$GPRMC,123519,A,4807.038,N,01131.000,E,001.0,180.0,230394,003.1,W*6E\r\n";
         gps.uart_mut().inject_rx_data(nmea);
 
         let position = read_gps_position_complete(&mut gps).expect("Expected GPS position");
@@ -430,5 +312,35 @@ mod tests {
         let position = read_gps_position_complete(&mut gps).expect("Expected GPS position");
         // GPGGA does not provide COG, so it should be None
         assert!(position.course_over_ground.is_none());
+    }
+
+    #[test]
+    fn test_gps_parse_gnrmc() {
+        let uart = MockUart::new(UartConfig::default());
+        let mut gps = GpsDriver::new(uart);
+
+        // GNRMC sentence (GNSS combined - used by u-blox NEO-M8N and similar)
+        let nmea = b"$GNRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*74\r\n";
+        gps.uart_mut().inject_rx_data(nmea);
+
+        let position = read_gps_position_complete(&mut gps).expect("Expected GPS position");
+        assert!((position.latitude - 48.1173).abs() < 0.001);
+        assert!((position.longitude - 11.516_666).abs() < 0.001);
+        assert!(position.course_over_ground.is_some());
+    }
+
+    #[test]
+    fn test_gps_parse_gngga() {
+        let uart = MockUart::new(UartConfig::default());
+        let mut gps = GpsDriver::new(uart);
+
+        // GNGGA sentence (GNSS combined)
+        let nmea = b"$GNGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*59\r\n";
+        gps.uart_mut().inject_rx_data(nmea);
+
+        let position = read_gps_position_complete(&mut gps).expect("Expected GPS position");
+        assert!((position.latitude - 48.1173).abs() < 0.001);
+        assert!((position.longitude - 11.516_666).abs() < 0.001);
+        assert_eq!(position.satellites, 8);
     }
 }
