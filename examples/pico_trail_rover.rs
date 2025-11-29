@@ -776,14 +776,14 @@ async fn usb_task(
 #[embassy_executor::task]
 async fn gps_task(uart: embassy_rp::uart::BufferedUart) {
     use pico_trail::devices::gps::GpsDriver;
-    use pico_trail::devices::gps_operation::{GpsOperation, PollingRate};
+    use pico_trail::devices::gps_operation::GpsOperation;
 
     pico_trail::log_info!("GPS task started");
 
     // Create GPS driver with Embassy BufferedUart adapter
     let gps_uart = EmbassyBufferedUart::new(uart);
     let gps = GpsDriver::new(gps_uart);
-    let mut operation = GpsOperation::new(gps, PollingRate::Rate1Hz);
+    let mut operation = GpsOperation::new(gps);
 
     // Run the GPS polling loop
     operation.poll_loop().await;

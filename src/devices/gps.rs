@@ -114,20 +114,19 @@ impl<U: UartInterface> GpsDriver<U> {
         }
 
         // Process each byte through the NMEA parser
+        // Only use GGA sentences for position data (includes satellite count)
+        // RMC is ignored as it doesn't contain satellite information
         for &byte in temp_buf.iter().take(read_count) {
             if let Some(result) = self.parser.parse_from_byte(byte) {
                 match result {
-                    Ok(ParseResult::RMC(Some(rmc))) => {
-                        return Ok(Some(Self::convert_rmc(&rmc)));
-                    }
                     Ok(ParseResult::GGA(Some(gga))) => {
                         return Ok(Some(Self::convert_gga(&gga)));
                     }
                     // Valid sentence but no data (receiver working but no fix)
-                    Ok(ParseResult::RMC(None) | ParseResult::GGA(None)) => {
+                    Ok(ParseResult::GGA(None)) => {
                         // Continue parsing, waiting for valid data
                     }
-                    // Other sentence types (VTG, GLL) - ignore
+                    // RMC and other sentence types - ignore (RMC lacks satellite count)
                     Ok(_) => {}
                     // Parse errors - ignore and continue
                     Err(_) => {}
@@ -136,28 +135,6 @@ impl<U: UartInterface> GpsDriver<U> {
         }
 
         Ok(None)
-    }
-
-    /// Convert nmea0183::RMC to GpsPosition
-    fn convert_rmc(rmc: &nmea0183::RMC) -> GpsPosition {
-        let speed = rmc.speed.as_mps();
-
-        // COG is unreliable at low speeds, so only use when speed >= 0.5 m/s
-        let course_over_ground = if speed >= 0.5 {
-            rmc.course.as_ref().map(|c| c.degrees)
-        } else {
-            None
-        };
-
-        GpsPosition {
-            latitude: rmc.latitude.as_f64() as f32,
-            longitude: rmc.longitude.as_f64() as f32,
-            altitude: 0.0, // Not available in RMC
-            speed,
-            course_over_ground,
-            fix_type: GpsFixType::Fix2D, // RMC has valid fix but no altitude
-            satellites: 0,               // Not available in RMC
-        }
     }
 
     /// Convert nmea0183::GGA to GpsPosition
@@ -190,18 +167,17 @@ mod tests {
     use crate::platform::traits::UartConfig;
 
     #[test]
-    fn test_gps_parse_gprmc() {
+    fn test_gps_rmc_ignored() {
         let uart = MockUart::new(UartConfig::default());
         let mut gps = GpsDriver::new(uart);
 
-        // Inject GPRMC sentence
+        // Inject GPRMC sentence - should be ignored (no satellite count)
         let nmea = b"$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A\r\n";
         gps.uart.inject_rx_data(nmea);
 
-        // Note: This is a simplified test. Full GPS parsing would require more robust error handling.
-        // For demonstration purposes, we verify the driver compiles and runs.
-        let _position = gps.read_position().unwrap();
-        // In a real implementation, we would validate the parsed data
+        // RMC is ignored, so no position should be returned
+        let position = gps.read_position().unwrap();
+        assert!(position.is_none());
     }
 
     #[test]
@@ -251,56 +227,6 @@ mod tests {
     }
 
     #[test]
-    fn test_gps_parse_gprmc_with_cog() {
-        let uart = MockUart::new(UartConfig::default());
-        let mut gps = GpsDriver::new(uart);
-
-        // GPRMC sentence with speed 22.4 knots (~11.5 m/s) and COG 84.4 degrees
-        let nmea = b"$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A\r\n";
-        gps.uart_mut().inject_rx_data(nmea);
-
-        let position = read_gps_position_complete(&mut gps).expect("Expected GPS position");
-        assert!(position.course_over_ground.is_some());
-        let cog = position.course_over_ground.unwrap();
-        // COG should be approximately 84.4 degrees
-        assert!((cog - 84.4).abs() < 0.1);
-        // Speed should be approximately 11.5 m/s (22.4 knots * 0.514444)
-        assert!(position.speed > 11.0 && position.speed < 12.0);
-    }
-
-    #[test]
-    fn test_gps_parse_gprmc_low_speed_no_cog() {
-        let uart = MockUart::new(UartConfig::default());
-        let mut gps = GpsDriver::new(uart);
-
-        // GPRMC sentence with speed 0.5 knots (~0.26 m/s) - below threshold
-        let nmea = b"$GPRMC,123519,A,4807.038,N,01131.000,E,000.5,084.4,230394,003.1,W*6B\r\n";
-        gps.uart_mut().inject_rx_data(nmea);
-
-        let position = read_gps_position_complete(&mut gps).expect("Expected GPS position");
-        // COG should be None when speed < 0.5 m/s
-        assert!(position.course_over_ground.is_none());
-        // Speed should be approximately 0.26 m/s
-        assert!(position.speed < 0.5);
-    }
-
-    #[test]
-    fn test_gps_parse_gprmc_threshold_speed() {
-        let uart = MockUart::new(UartConfig::default());
-        let mut gps = GpsDriver::new(uart);
-
-        // GPRMC sentence with speed 1.0 knots (~0.514 m/s) - at threshold
-        let nmea = b"$GPRMC,123519,A,4807.038,N,01131.000,E,001.0,180.0,230394,003.1,W*6E\r\n";
-        gps.uart_mut().inject_rx_data(nmea);
-
-        let position = read_gps_position_complete(&mut gps).expect("Expected GPS position");
-        // COG should be valid when speed >= 0.5 m/s
-        assert!(position.course_over_ground.is_some());
-        let cog = position.course_over_ground.unwrap();
-        assert!((cog - 180.0).abs() < 0.1);
-    }
-
-    #[test]
     fn test_gps_parse_gpgga_no_cog() {
         let uart = MockUart::new(UartConfig::default());
         let mut gps = GpsDriver::new(uart);
@@ -315,18 +241,17 @@ mod tests {
     }
 
     #[test]
-    fn test_gps_parse_gnrmc() {
+    fn test_gps_gnrmc_ignored() {
         let uart = MockUart::new(UartConfig::default());
         let mut gps = GpsDriver::new(uart);
 
-        // GNRMC sentence (GNSS combined - used by u-blox NEO-M8N and similar)
+        // GNRMC sentence (GNSS combined) - should be ignored (no satellite count)
         let nmea = b"$GNRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*74\r\n";
         gps.uart_mut().inject_rx_data(nmea);
 
-        let position = read_gps_position_complete(&mut gps).expect("Expected GPS position");
-        assert!((position.latitude - 48.1173).abs() < 0.001);
-        assert!((position.longitude - 11.516_666).abs() < 0.001);
-        assert!(position.course_over_ground.is_some());
+        // RMC is ignored, so no position should be returned
+        let position = read_gps_position_complete(&mut gps);
+        assert!(position.is_none());
     }
 
     #[test]

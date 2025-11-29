@@ -280,14 +280,7 @@ impl<'a> MavlinkTransport for UdpTransport<'a> {
 
     async fn write(&mut self, buf: &[u8]) -> Result<usize, TransportError> {
         if self.gcs_endpoints.is_empty() {
-            // No GCS connected yet - log periodically for diagnostics
-            static mut DROP_COUNT: u32 = 0;
-            unsafe {
-                DROP_COUNT += 1;
-                if DROP_COUNT % 500 == 1 {
-                    crate::log_warn!("No GCS endpoint (dropped: {})", DROP_COUNT);
-                }
-            }
+            // No GCS connected yet - silently drop
             return Ok(buf.len());
         }
 

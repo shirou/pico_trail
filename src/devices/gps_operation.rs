@@ -17,7 +17,7 @@ use crate::platform::Result;
 #[cfg(feature = "pico2_w")]
 use crate::communication::mavlink::state::SYSTEM_STATE;
 #[cfg(feature = "pico2_w")]
-use embassy_time::{Duration, Instant, Ticker};
+use embassy_time::{Duration, Instant};
 
 // For host tests, provide stub types
 #[cfg(not(feature = "pico2_w"))]
@@ -94,7 +94,6 @@ impl Default for GpsState {
 #[cfg_attr(not(feature = "pico2_w"), allow(dead_code))]
 pub struct GpsOperation<U: UartInterface> {
     gps: GpsDriver<U>,
-    polling_rate: PollingRate,
     state: GpsState,
     no_fix_count: u8,
 }
@@ -109,11 +108,9 @@ impl<U: UartInterface> GpsOperation<U> {
     /// # Arguments
     ///
     /// * `gps` - GPS UART driver
-    /// * `polling_rate` - Polling rate configuration (1Hz, 5Hz, or 10Hz)
-    pub fn new(gps: GpsDriver<U>, polling_rate: PollingRate) -> Self {
+    pub fn new(gps: GpsDriver<U>) -> Self {
         Self {
             gps,
-            polling_rate,
             state: GpsState::default(),
             no_fix_count: 0,
         }
@@ -140,20 +137,17 @@ impl<U: UartInterface> GpsOperation<U> {
     /// This method is only available on embedded targets (requires `pico2_w` feature).
     #[cfg(feature = "pico2_w")]
     pub async fn poll_loop(&mut self) {
-        let mut ticker = Ticker::every(self.polling_rate.interval());
-
-        crate::log_info!("GPS: Starting polling at {:?}", self.polling_rate);
+        crate::log_info!("GPS: Starting continuous polling");
 
         loop {
-            ticker.next().await;
-
-            // Poll GPS with retry logic
+            // Poll GPS continuously - don't wait between reads
             match self.poll_with_retry().await {
                 Ok(Some(position)) => {
                     self.handle_gps_fix(position);
                 }
                 Ok(None) => {
-                    self.handle_no_data();
+                    // No data available - yield to other tasks briefly
+                    embassy_time::Timer::after(Duration::from_millis(1)).await;
                 }
                 Err(e) => {
                     self.handle_persistent_error(e);
@@ -222,9 +216,6 @@ impl<U: UartInterface> GpsOperation<U> {
             });
         }
 
-        // Debug output: show lat/lon
-        crate::log_debug!("GPS: lat={}, lon={}", position.latitude, position.longitude);
-
         if was_no_fix {
             crate::log_info!(
                 "GPS: Fix acquired ({:?}, {} satellites)",
@@ -235,6 +226,10 @@ impl<U: UartInterface> GpsOperation<U> {
     }
 
     /// Handle no data from GPS (still waiting for fix or sentence)
+    ///
+    /// Note: Currently used only by tests. Will be integrated with poll_loop
+    /// when periodic polling mode is implemented.
+    #[cfg_attr(feature = "pico2_w", allow(dead_code))]
     fn handle_no_data(&mut self) {
         // If we had a fix before, this might indicate fix loss
         if self.state.fix_type != GpsFixType::NoFix {
@@ -264,6 +259,7 @@ impl<U: UartInterface> GpsOperation<U> {
     ///
     /// Called after 3 consecutive NoFix readings (~3s).
     /// This should notify the navigation subsystem to take appropriate action.
+    #[cfg_attr(feature = "pico2_w", allow(dead_code))]
     fn trigger_gps_failsafe(&self) {
         crate::log_warn!("GPS: Failsafe triggered (3 consecutive NoFix readings)");
         // TODO: Integration with failsafe system (future task)
@@ -300,7 +296,7 @@ mod tests {
 
         // Create GPS driver and inject data
         let gps = GpsDriver::new(uart);
-        let mut operation = GpsOperation::new(gps, PollingRate::Rate1Hz);
+        let mut operation = GpsOperation::new(gps);
 
         // Inject data into the GPS driver's UART
         operation.gps.uart_mut().inject_rx_data(nmea_sentence);
@@ -327,7 +323,7 @@ mod tests {
     async fn test_gps_operation_handle_gps_fix() {
         let uart = MockUart::new(UartConfig::default());
         let gps = GpsDriver::new(uart);
-        let mut operation = GpsOperation::new(gps, PollingRate::Rate1Hz);
+        let mut operation = GpsOperation::new(gps);
 
         let position = GpsPosition {
             latitude: 48.1173,
@@ -350,7 +346,7 @@ mod tests {
     async fn test_gps_operation_handle_no_data() {
         let uart = MockUart::new(UartConfig::default());
         let gps = GpsDriver::new(uart);
-        let mut operation = GpsOperation::new(gps, PollingRate::Rate1Hz);
+        let mut operation = GpsOperation::new(gps);
 
         // Set initial fix
         operation.state.fix_type = GpsFixType::Fix3D;
@@ -371,7 +367,7 @@ mod tests {
     async fn test_gps_operation_state_access() {
         let uart = MockUart::new(UartConfig::default());
         let gps = GpsDriver::new(uart);
-        let operation = GpsOperation::new(gps, PollingRate::Rate5Hz);
+        let operation = GpsOperation::new(gps);
 
         let state = operation.state();
         assert!(state.position.is_none());
