@@ -188,8 +188,9 @@ impl<F: FlashInterface> MavlinkRouter<F> {
     ///
     /// # Returns
     ///
-    /// Vector of telemetry messages to send (HEARTBEAT, ATTITUDE, GPS, SYS_STATUS, BATTERY_STATUS)
-    pub fn update_telemetry(&mut self, current_time_us: u64) -> heapless::Vec<MavMessage, 5> {
+    /// Vector of telemetry messages to send (HEARTBEAT, ATTITUDE, GPS_RAW_INT,
+    /// GLOBAL_POSITION_INT, SYS_STATUS, BATTERY_STATUS)
+    pub fn update_telemetry(&mut self, current_time_us: u64) -> heapless::Vec<MavMessage, 6> {
         // Update stream rates from parameters
         if let Some(sr_extra1) = self.param_handler.store().get("SR_EXTRA1") {
             if let Some(sr_position) = self.param_handler.store().get("SR_POSITION") {
@@ -964,7 +965,10 @@ mod tests {
         let mut flash = MockFlash::new();
         let router = MavlinkRouter::new(&mut flash, 1, 1);
 
-        // Initially, no STATUSTEXT messages should be pending
+        // Clear any accumulated messages from other tests first
+        let _ = router.take_statustext_messages();
+
+        // After draining, no STATUSTEXT messages should be pending
         let messages = router.take_statustext_messages();
         assert!(messages.is_empty());
     }
@@ -975,6 +979,9 @@ mod tests {
 
         let mut flash = MockFlash::new();
         let router = MavlinkRouter::new(&mut flash, 1, 1);
+
+        // Clear any accumulated messages from other tests
+        let _ = router.take_statustext_messages();
 
         // Send a status message
         status_notifier::send_info("Test message");

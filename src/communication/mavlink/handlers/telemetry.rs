@@ -18,12 +18,51 @@
 //! - BATTERY_STATUS: Hardcoded at 2Hz (future: configurable via SR0_EXTRA1)
 
 use crate::communication::mavlink::state::SystemState;
+use crate::devices::gps::GpsFixType as DeviceGpsFixType;
 use mavlink::common::{
     GpsFixType, MavAutopilot, MavBatteryChargeState, MavBatteryFault, MavBatteryFunction,
     MavBatteryMode, MavBatteryType, MavMessage, MavModeFlag, MavState, MavSysStatusSensor,
-    MavSysStatusSensorExtended, MavType, ATTITUDE_DATA, BATTERY_STATUS_DATA, GPS_RAW_INT_DATA,
-    HEARTBEAT_DATA, SYS_STATUS_DATA,
+    MavSysStatusSensorExtended, MavType, ATTITUDE_DATA, BATTERY_STATUS_DATA,
+    GLOBAL_POSITION_INT_DATA, GPS_RAW_INT_DATA, HEARTBEAT_DATA, SYS_STATUS_DATA,
 };
+#[allow(unused_imports)]
+use micromath::F32Ext;
+
+// Unit conversion helper functions for GPS telemetry
+
+/// Convert degrees to degE7 (degrees * 1e7) for MAVLink lat/lon
+fn degrees_to_deg_e7(degrees: f32) -> i32 {
+    (degrees * 1e7) as i32
+}
+
+/// Convert meters to millimeters for MAVLink altitude
+fn meters_to_mm(meters: f32) -> i32 {
+    (meters * 1000.0) as i32
+}
+
+/// Convert m/s to cm/s for MAVLink velocity
+fn mps_to_cms(mps: f32) -> u16 {
+    (mps * 100.0).clamp(0.0, u16::MAX as f32) as u16
+}
+
+/// Convert m/s to cm/s (signed) for MAVLink velocity components
+fn mps_to_cms_i16(mps: f32) -> i16 {
+    (mps * 100.0).clamp(i16::MIN as f32, i16::MAX as f32) as i16
+}
+
+/// Convert degrees to centidegrees for MAVLink COG/heading
+fn degrees_to_cdeg(degrees: f32) -> u16 {
+    (degrees * 100.0).clamp(0.0, 35999.0) as u16
+}
+
+/// Convert device GPS fix type to MAVLink GPS fix type
+fn convert_gps_fix_type(fix_type: DeviceGpsFixType) -> GpsFixType {
+    match fix_type {
+        DeviceGpsFixType::NoFix => GpsFixType::GPS_FIX_TYPE_NO_FIX,
+        DeviceGpsFixType::Fix2D => GpsFixType::GPS_FIX_TYPE_2D_FIX,
+        DeviceGpsFixType::Fix3D => GpsFixType::GPS_FIX_TYPE_3D_FIX,
+    }
+}
 
 /// Stream configuration for a single telemetry message type
 #[derive(Debug, Clone, Copy)]
@@ -90,6 +129,8 @@ pub struct TelemetryStreamer {
     attitude: StreamConfig,
     /// GPS_RAW_INT stream config (SR_POSITION)
     gps: StreamConfig,
+    /// GLOBAL_POSITION_INT stream config (SR_POSITION)
+    global_position: StreamConfig,
     /// SYS_STATUS stream config (SR_EXTRA1)
     sys_status: StreamConfig,
     /// BATTERY_STATUS stream config (hardcoded 2Hz)
@@ -109,16 +150,18 @@ impl TelemetryStreamer {
     /// Returns a telemetry streamer with default stream rates:
     /// - HEARTBEAT: 1Hz
     /// - ATTITUDE: 10Hz
-    /// - GPS: 5Hz
+    /// - GPS_RAW_INT: 5Hz
+    /// - GLOBAL_POSITION_INT: 5Hz
     /// - SYS_STATUS: 1Hz
     /// - BATTERY_STATUS: 2Hz
     pub fn new(system_id: u8, component_id: u8) -> Self {
         Self {
             system_id,
             component_id,
-            heartbeat: StreamConfig::new(1),      // Always 1Hz
-            attitude: StreamConfig::new(10),      // SR_EXTRA1 default
-            gps: StreamConfig::new(5),            // SR_POSITION default
+            heartbeat: StreamConfig::new(1),       // Always 1Hz
+            attitude: StreamConfig::new(10),       // SR_EXTRA1 default
+            gps: StreamConfig::new(5),             // SR_POSITION default
+            global_position: StreamConfig::new(5), // SR_POSITION default
             sys_status: StreamConfig::new(1), // SR_EXTRA1 default (lower priority than attitude)
             battery_status: StreamConfig::new(2), // Hardcoded 2Hz
         }
@@ -129,11 +172,12 @@ impl TelemetryStreamer {
     /// # Arguments
     ///
     /// * `sr_extra1` - Rate for ATTITUDE and SYS_STATUS (Hz)
-    /// * `sr_position` - Rate for GPS_RAW_INT (Hz)
+    /// * `sr_position` - Rate for GPS_RAW_INT and GLOBAL_POSITION_INT (Hz)
     pub fn update_rates(&mut self, sr_extra1: u32, sr_position: u32) {
         self.attitude.rate_hz = sr_extra1;
         self.sys_status.rate_hz = sr_extra1.min(1); // SYS_STATUS max 1Hz
         self.gps.rate_hz = sr_position;
+        self.global_position.rate_hz = sr_position;
     }
 
     /// Generate telemetry messages that are due to be sent
@@ -145,12 +189,13 @@ impl TelemetryStreamer {
     ///
     /// # Returns
     ///
-    /// Vector of messages to send (max 5: HEARTBEAT, ATTITUDE, GPS, SYS_STATUS, BATTERY_STATUS)
+    /// Vector of messages to send (max 6: HEARTBEAT, ATTITUDE, GPS_RAW_INT,
+    /// GLOBAL_POSITION_INT, SYS_STATUS, BATTERY_STATUS)
     pub fn update(
         &mut self,
         state: &SystemState,
         current_time_us: u64,
-    ) -> heapless::Vec<MavMessage, 5> {
+    ) -> heapless::Vec<MavMessage, 6> {
         let mut messages = heapless::Vec::new();
 
         // HEARTBEAT (always at 1Hz)
@@ -174,6 +219,14 @@ impl TelemetryStreamer {
             if let Some(msg) = self.build_gps(state) {
                 let _ = messages.push(msg);
                 self.gps.mark_sent(current_time_us);
+            }
+        }
+
+        // GLOBAL_POSITION_INT (SR_POSITION rate)
+        if self.global_position.should_send(current_time_us) {
+            if let Some(msg) = self.build_global_position_int(state) {
+                let _ = messages.push(msg);
+                self.global_position.mark_sent(current_time_us);
             }
         }
 
@@ -231,25 +284,88 @@ impl TelemetryStreamer {
 
     /// Build GPS_RAW_INT message
     ///
-    /// Currently returns zeros until GPS integration is complete.
+    /// Builds GPS_RAW_INT message with real GPS data from SystemState.
+    /// Returns zeros for position if no GPS fix is available.
     fn build_gps(&self, state: &SystemState) -> Option<MavMessage> {
+        let (lat, lon, alt, vel, cog, fix_type, satellites) = match state.gps_position {
+            Some(pos) => (
+                degrees_to_deg_e7(pos.latitude),
+                degrees_to_deg_e7(pos.longitude),
+                meters_to_mm(pos.altitude),
+                mps_to_cms(pos.speed),
+                pos.course_over_ground
+                    .map(degrees_to_cdeg)
+                    .unwrap_or(u16::MAX),
+                convert_gps_fix_type(pos.fix_type),
+                pos.satellites,
+            ),
+            None => (0, 0, 0, 0, 0, GpsFixType::GPS_FIX_TYPE_NO_FIX, 0),
+        };
+
         Some(MavMessage::GPS_RAW_INT(GPS_RAW_INT_DATA {
             time_usec: state.uptime_us,
-            lat: 0,    // Placeholder: will be from GPS (degrees * 1e7)
-            lon: 0,    // Placeholder: will be from GPS (degrees * 1e7)
-            alt: 0,    // Placeholder: will be from GPS (mm)
-            eph: 9999, // Placeholder: GPS HDOP (cm)
-            epv: 9999, // Placeholder: GPS VDOP (cm)
-            vel: 0,    // Placeholder: ground speed (cm/s)
-            cog: 0,    // Placeholder: course over ground (cdeg)
-            fix_type: GpsFixType::GPS_FIX_TYPE_NO_FIX, // Placeholder: no fix
-            satellites_visible: 0, // Placeholder: satellites in view
-            alt_ellipsoid: 0, // MAVLink v2 extension: altitude above ellipsoid (mm)
-            h_acc: 0,  // MAVLink v2 extension: horizontal accuracy (mm)
-            v_acc: 0,  // MAVLink v2 extension: vertical accuracy (mm)
-            vel_acc: 0, // MAVLink v2 extension: velocity accuracy (cm/s)
-            hdg_acc: 0, // MAVLink v2 extension: heading accuracy (degE5)
-            yaw: 0,    // MAVLink v2 extension: yaw (cdeg)
+            lat,
+            lon,
+            alt,
+            eph: 9999, // HDOP not available (future enhancement)
+            epv: 9999, // VDOP not available (future enhancement)
+            vel,
+            cog,
+            fix_type,
+            satellites_visible: satellites,
+            alt_ellipsoid: alt, // Same as MSL alt for now
+            h_acc: 0,           // Horizontal accuracy not available
+            v_acc: 0,           // Vertical accuracy not available
+            vel_acc: 0,         // Velocity accuracy not available
+            hdg_acc: 0,         // Heading accuracy not available
+            yaw: 0,             // Yaw not available from GPS
+        }))
+    }
+
+    /// Build GLOBAL_POSITION_INT message
+    ///
+    /// Builds GLOBAL_POSITION_INT message with position and velocity data.
+    /// Velocity components (vx, vy) are computed from speed and COG.
+    /// Returns zeros if no GPS fix is available.
+    fn build_global_position_int(&self, state: &SystemState) -> Option<MavMessage> {
+        let (lat, lon, alt, vx, vy, vz, hdg) = match state.gps_position {
+            Some(pos) => {
+                // Compute velocity components from speed and COG
+                let (vx, vy, hdg) = match pos.course_over_ground {
+                    Some(cog) if pos.speed >= 0.5 => {
+                        // Convert COG to radians for sin/cos
+                        let cog_rad = cog * core::f32::consts::PI / 180.0;
+                        // vx = North velocity, vy = East velocity
+                        let vx = pos.speed * cog_rad.cos();
+                        let vy = pos.speed * cog_rad.sin();
+                        (mps_to_cms_i16(vx), mps_to_cms_i16(vy), degrees_to_cdeg(cog))
+                    }
+                    _ => (0, 0, u16::MAX), // COG unknown or speed too low
+                };
+
+                (
+                    degrees_to_deg_e7(pos.latitude),
+                    degrees_to_deg_e7(pos.longitude),
+                    meters_to_mm(pos.altitude),
+                    vx,
+                    vy,
+                    0i16, // vz (vertical rate) not available from GPS
+                    hdg,
+                )
+            }
+            None => (0, 0, 0, 0, 0, 0, u16::MAX),
+        };
+
+        Some(MavMessage::GLOBAL_POSITION_INT(GLOBAL_POSITION_INT_DATA {
+            time_boot_ms: (state.uptime_us / 1000) as u32,
+            lat,
+            lon,
+            alt,
+            relative_alt: 0, // Home position not implemented
+            vx,
+            vy,
+            vz,
+            hdg,
         }))
     }
 
@@ -515,7 +631,7 @@ mod tests {
 
         // At t=0, all messages should send (first time for all streams)
         let messages = streamer.update(&state, 0);
-        assert_eq!(messages.len(), 5); // HEARTBEAT, ATTITUDE, GPS, SYS_STATUS, BATTERY_STATUS
+        assert_eq!(messages.len(), 6); // HEARTBEAT, ATTITUDE, GPS_RAW_INT, GLOBAL_POSITION_INT, SYS_STATUS, BATTERY_STATUS
         assert!(messages
             .iter()
             .any(|m| matches!(m, MavMessage::HEARTBEAT(_))));
@@ -574,5 +690,350 @@ mod tests {
 
         // GPS: ~5Hz = 5 messages in 1 second
         assert!((4..=6).contains(&gps_count));
+    }
+
+    // Unit conversion tests
+
+    #[test]
+    fn test_degrees_to_deg_e7_positive() {
+        // Standard positive latitude (allow small float precision error)
+        let result = degrees_to_deg_e7(48.1173);
+        assert!(
+            (result - 481173000).abs() < 100,
+            "Expected ~481173000, got {}",
+            result
+        );
+        // Maximum latitude - exact values should work
+        assert_eq!(degrees_to_deg_e7(90.0), 900000000);
+        // Equator
+        assert_eq!(degrees_to_deg_e7(0.0), 0);
+    }
+
+    #[test]
+    fn test_degrees_to_deg_e7_negative() {
+        // Southern hemisphere latitude (allow small float precision error)
+        let result = degrees_to_deg_e7(-33.8688);
+        assert!(
+            (result + 338688000).abs() < 100,
+            "Expected ~-338688000, got {}",
+            result
+        );
+        // Maximum negative latitude
+        assert_eq!(degrees_to_deg_e7(-90.0), -900000000);
+    }
+
+    #[test]
+    fn test_degrees_to_deg_e7_longitude() {
+        // Standard positive longitude (allow small float precision error)
+        let result = degrees_to_deg_e7(11.5166);
+        assert!(
+            (result - 115166000).abs() < 100,
+            "Expected ~115166000, got {}",
+            result
+        );
+        // Maximum positive longitude
+        assert_eq!(degrees_to_deg_e7(180.0), 1800000000);
+        // Maximum negative longitude
+        assert_eq!(degrees_to_deg_e7(-180.0), -1800000000);
+    }
+
+    #[test]
+    fn test_meters_to_mm_typical() {
+        // Typical altitude values
+        assert_eq!(meters_to_mm(545.4), 545400);
+        assert_eq!(meters_to_mm(0.0), 0);
+        assert_eq!(meters_to_mm(100.5), 100500);
+    }
+
+    #[test]
+    fn test_meters_to_mm_negative() {
+        // Below sea level (Dead Sea area ~-430m)
+        assert_eq!(meters_to_mm(-430.0), -430000);
+    }
+
+    #[test]
+    fn test_meters_to_mm_high_altitude() {
+        // Everest height
+        assert_eq!(meters_to_mm(8848.86), 8848860);
+        // Typical drone ceiling
+        assert_eq!(meters_to_mm(400.0), 400000);
+    }
+
+    #[test]
+    fn test_mps_to_cms_typical() {
+        // Walking speed (~1.4 m/s)
+        assert_eq!(mps_to_cms(1.4), 140);
+        // Car speed (~30 m/s)
+        assert_eq!(mps_to_cms(30.0), 3000);
+        // Zero speed
+        assert_eq!(mps_to_cms(0.0), 0);
+    }
+
+    #[test]
+    fn test_mps_to_cms_boundary() {
+        // Maximum representable speed (u16::MAX cm/s = 655.35 m/s)
+        // Due to float precision, 655.35 * 100 may be 65534.xxx
+        let result = mps_to_cms(655.35);
+        assert!(result >= 65534, "Expected >= 65534, got {}", result);
+        // Above maximum should clamp to u16::MAX
+        assert_eq!(mps_to_cms(1000.0), 65535);
+        // Negative should clamp to 0
+        assert_eq!(mps_to_cms(-10.0), 0);
+    }
+
+    #[test]
+    fn test_mps_to_cms_i16_typical() {
+        // Forward velocity
+        assert_eq!(mps_to_cms_i16(10.0), 1000);
+        // Backward velocity
+        assert_eq!(mps_to_cms_i16(-10.0), -1000);
+        // Zero
+        assert_eq!(mps_to_cms_i16(0.0), 0);
+    }
+
+    #[test]
+    fn test_mps_to_cms_i16_boundary() {
+        // Maximum positive (i16::MAX = 32767 cm/s = 327.67 m/s)
+        assert_eq!(mps_to_cms_i16(327.67), 32767);
+        // Above maximum should clamp
+        assert_eq!(mps_to_cms_i16(500.0), 32767);
+        // Maximum negative
+        assert_eq!(mps_to_cms_i16(-327.68), -32768);
+        // Below minimum should clamp
+        assert_eq!(mps_to_cms_i16(-500.0), -32768);
+    }
+
+    #[test]
+    fn test_degrees_to_cdeg_typical() {
+        // North
+        assert_eq!(degrees_to_cdeg(0.0), 0);
+        // East
+        assert_eq!(degrees_to_cdeg(90.0), 9000);
+        // South
+        assert_eq!(degrees_to_cdeg(180.0), 18000);
+        // West
+        assert_eq!(degrees_to_cdeg(270.0), 27000);
+    }
+
+    #[test]
+    fn test_degrees_to_cdeg_boundary() {
+        // Maximum valid COG (just under 360)
+        assert_eq!(degrees_to_cdeg(359.99), 35999);
+        // Should clamp to max
+        assert_eq!(degrees_to_cdeg(360.0), 35999);
+        // Negative should clamp to 0
+        assert_eq!(degrees_to_cdeg(-10.0), 0);
+    }
+
+    #[test]
+    fn test_convert_gps_fix_type() {
+        use crate::devices::gps::GpsFixType as DeviceGpsFixType;
+
+        assert_eq!(
+            convert_gps_fix_type(DeviceGpsFixType::NoFix),
+            GpsFixType::GPS_FIX_TYPE_NO_FIX
+        );
+        assert_eq!(
+            convert_gps_fix_type(DeviceGpsFixType::Fix2D),
+            GpsFixType::GPS_FIX_TYPE_2D_FIX
+        );
+        assert_eq!(
+            convert_gps_fix_type(DeviceGpsFixType::Fix3D),
+            GpsFixType::GPS_FIX_TYPE_3D_FIX
+        );
+    }
+
+    #[test]
+    fn test_build_gps_with_no_fix() {
+        let streamer = TelemetryStreamer::new(1, 1);
+        let state = SystemState::new(); // No GPS data
+
+        let msg = streamer.build_gps(&state).unwrap();
+        if let MavMessage::GPS_RAW_INT(data) = msg {
+            assert_eq!(data.fix_type, GpsFixType::GPS_FIX_TYPE_NO_FIX);
+            assert_eq!(data.lat, 0);
+            assert_eq!(data.lon, 0);
+            assert_eq!(data.satellites_visible, 0);
+        } else {
+            panic!("Expected GPS_RAW_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_gps_with_valid_position() {
+        use crate::devices::gps::{GpsFixType as DeviceGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::new(1, 1);
+        let mut state = SystemState::new();
+
+        // Set GPS position
+        let position = GpsPosition {
+            latitude: 48.1173,
+            longitude: 11.5166,
+            altitude: 545.4,
+            speed: 10.5,
+            course_over_ground: Some(84.4),
+            fix_type: DeviceGpsFixType::Fix3D,
+            satellites: 8,
+        };
+        state.update_gps(position, 1000000);
+
+        let msg = streamer.build_gps(&state).unwrap();
+        if let MavMessage::GPS_RAW_INT(data) = msg {
+            assert_eq!(data.fix_type, GpsFixType::GPS_FIX_TYPE_3D_FIX);
+            // Allow small float precision error in degE7 conversion
+            assert!((data.lat - 481173000).abs() < 100, "lat mismatch");
+            assert!((data.lon - 115166000).abs() < 100, "lon mismatch");
+            assert_eq!(data.alt, 545400); // 545.4m in mm
+            assert_eq!(data.vel, 1050); // 10.5 m/s in cm/s
+            assert_eq!(data.cog, 8440); // 84.4 degrees in cdeg
+            assert_eq!(data.satellites_visible, 8);
+        } else {
+            panic!("Expected GPS_RAW_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_gps_with_no_cog() {
+        use crate::devices::gps::{GpsFixType as DeviceGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::new(1, 1);
+        let mut state = SystemState::new();
+
+        // Set GPS position without COG (low speed)
+        let position = GpsPosition {
+            latitude: 48.1173,
+            longitude: 11.5166,
+            altitude: 545.4,
+            speed: 0.2,               // Low speed, COG unreliable
+            course_over_ground: None, // No COG
+            fix_type: DeviceGpsFixType::Fix3D,
+            satellites: 8,
+        };
+        state.update_gps(position, 1000000);
+
+        let msg = streamer.build_gps(&state).unwrap();
+        if let MavMessage::GPS_RAW_INT(data) = msg {
+            // COG should be u16::MAX when unavailable
+            assert_eq!(data.cog, u16::MAX);
+        } else {
+            panic!("Expected GPS_RAW_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_global_position_int_no_gps() {
+        let streamer = TelemetryStreamer::new(1, 1);
+        let state = SystemState::new(); // No GPS data
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            assert_eq!(data.lat, 0);
+            assert_eq!(data.lon, 0);
+            assert_eq!(data.alt, 0);
+            assert_eq!(data.vx, 0);
+            assert_eq!(data.vy, 0);
+            assert_eq!(data.vz, 0);
+            assert_eq!(data.hdg, u16::MAX); // Unknown heading
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_global_position_int_with_velocity() {
+        use crate::devices::gps::{GpsFixType as DeviceGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::new(1, 1);
+        let mut state = SystemState::new();
+
+        // Set GPS position with velocity heading east (90 degrees)
+        let position = GpsPosition {
+            latitude: 48.1173,
+            longitude: 11.5166,
+            altitude: 545.4,
+            speed: 10.0,                    // 10 m/s
+            course_over_ground: Some(90.0), // East
+            fix_type: DeviceGpsFixType::Fix3D,
+            satellites: 8,
+        };
+        state.update_gps(position, 1000000);
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            // Allow small float precision error in degE7 conversion
+            assert!((data.lat - 481173000).abs() < 100, "lat mismatch");
+            assert!((data.lon - 115166000).abs() < 100, "lon mismatch");
+            assert_eq!(data.alt, 545400);
+            // Heading east (90 deg): vx ≈ 0, vy ≈ 1000 cm/s
+            // Due to floating point, allow small tolerance
+            assert!(data.vx.abs() < 10); // Nearly 0
+            assert!((data.vy - 1000).abs() < 10); // Nearly 1000 cm/s
+            assert_eq!(data.vz, 0); // No vertical velocity
+            assert_eq!(data.hdg, 9000); // 90 degrees in cdeg
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_global_position_int_heading_north() {
+        use crate::devices::gps::{GpsFixType as DeviceGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::new(1, 1);
+        let mut state = SystemState::new();
+
+        // Set GPS position with velocity heading north (0 degrees)
+        let position = GpsPosition {
+            latitude: 48.1173,
+            longitude: 11.5166,
+            altitude: 100.0,
+            speed: 10.0,                   // 10 m/s
+            course_over_ground: Some(0.0), // North
+            fix_type: DeviceGpsFixType::Fix3D,
+            satellites: 6,
+        };
+        state.update_gps(position, 1000000);
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            // Heading north (0 deg): vx ≈ 1000 cm/s, vy ≈ 0
+            assert!((data.vx - 1000).abs() < 10); // Nearly 1000 cm/s
+            assert!(data.vy.abs() < 10); // Nearly 0
+            assert_eq!(data.hdg, 0); // 0 degrees
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_global_position_int_no_cog() {
+        use crate::devices::gps::{GpsFixType as DeviceGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::new(1, 1);
+        let mut state = SystemState::new();
+
+        // Set GPS position without COG
+        let position = GpsPosition {
+            latitude: 48.1173,
+            longitude: 11.5166,
+            altitude: 100.0,
+            speed: 0.3,
+            course_over_ground: None, // No COG
+            fix_type: DeviceGpsFixType::Fix2D,
+            satellites: 4,
+        };
+        state.update_gps(position, 1000000);
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            // Without COG, velocity components should be 0
+            assert_eq!(data.vx, 0);
+            assert_eq!(data.vy, 0);
+            // Heading should be unknown
+            assert_eq!(data.hdg, u16::MAX);
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
     }
 }

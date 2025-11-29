@@ -85,6 +85,7 @@ bitflags = "2.6"
 
 # MAVLink 2.0 protocol (FR-gpzpz: MAVLink Protocol)
 mavlink = { version = "0.16.1", default-features = false, features = ["embedded", "common", "emit-extensions"] }
+embedded-io = "0.6"
 embedded-io-async = "0.6"
 
 # AHRS subsystem dependencies (FR-eyuh8: AHRS Attitude Estimation)
@@ -99,6 +100,7 @@ rp235x-hal = { version = "0.3.0", optional = true }
 embedded-hal = { version = "0.2.7", features = ["unproven"], optional = true }
 embedded-hal-1 = { package = "embedded-hal", version = "1.0", optional = true }
 embedded-hal-async = { version = "1.0", optional = true }
+embedded-hal-nb = { version = "1.0", optional = true }
 nb = { version = "1.1.0", optional = true }
 fugit = { version = "0.3.7", optional = true }
 
@@ -139,7 +141,7 @@ default = []
 pico2_w = [
     "cortex-m", "cortex-m-rt", "defmt", "defmt-rtt",
     "panic-probe", "rp235x-hal",
-    "embedded-hal", "embedded-hal-1", "embedded-hal-async", "nb", "fugit",
+    "embedded-hal", "embedded-hal-1", "embedded-hal-async", "embedded-hal-nb", "nb", "fugit",
     "embassy-executor", "embassy-time", "embassy-rp", "embassy-usb",
     "embassy-sync", "embassy-net", "embassy-embedded-hal",
     "cyw43", "cyw43-pio", "static_cell", "embedded-alloc",

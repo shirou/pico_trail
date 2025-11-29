@@ -45,6 +45,8 @@ pub struct GpsPosition {
     pub altitude: f32,
     /// Speed in meters per second
     pub speed: f32,
+    /// Course over ground in degrees (0-360), None if invalid (speed < 0.5 m/s)
+    pub course_over_ground: Option<f32>,
     /// GPS fix type
     pub fix_type: GpsFixType,
     /// Number of satellites used in fix
@@ -192,12 +194,24 @@ impl<U: UartInterface> GpsDriver<U> {
         let speed_knots: f32 = fields[7].parse().ok()?;
         let speed = speed_knots * 0.514444; // Convert knots to m/s
 
+        // Parse course over ground (field 8) - track angle in degrees
+        // COG is unreliable at low speeds, so only use when speed >= 0.5 m/s
+        let course_over_ground = if speed >= 0.5 {
+            fields[8]
+                .parse::<f32>()
+                .ok()
+                .filter(|&cog| (0.0..=360.0).contains(&cog))
+        } else {
+            None
+        };
+
         // GPRMC has valid fix but no altitude, so assume 2D fix
         Some(GpsPosition {
             latitude: lat,
             longitude: lon,
             altitude: 0.0, // Not available in GPRMC
             speed,
+            course_over_ground,
             fix_type: GpsFixType::Fix2D,
             satellites: 0, // Not available in GPRMC
         })
@@ -251,7 +265,8 @@ impl<U: UartInterface> GpsDriver<U> {
             latitude: lat,
             longitude: lon,
             altitude,
-            speed: 0.0, // Not available in GPGGA
+            speed: 0.0,               // Not available in GPGGA
+            course_over_ground: None, // Not available in GPGGA
             fix_type,
             satellites,
         })
@@ -340,5 +355,80 @@ mod tests {
 
         let position = gps.read_position().unwrap();
         assert!(position.is_none());
+    }
+
+    /// Helper to read GPS position, calling read_position multiple times until data is parsed
+    fn read_gps_position_complete(gps: &mut GpsDriver<MockUart>) -> Option<GpsPosition> {
+        // GPS driver reads 64 bytes at a time, so longer sentences may need multiple reads
+        for _ in 0..5 {
+            if let Ok(Some(pos)) = gps.read_position() {
+                return Some(pos);
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn test_gps_parse_gprmc_with_cog() {
+        let uart = MockUart::new(UartConfig::default());
+        let mut gps = GpsDriver::new(uart);
+
+        // GPRMC sentence with speed 22.4 knots (~11.5 m/s) and COG 84.4 degrees
+        let nmea = b"$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A\r\n";
+        gps.uart_mut().inject_rx_data(nmea);
+
+        let position = read_gps_position_complete(&mut gps).expect("Expected GPS position");
+        assert!(position.course_over_ground.is_some());
+        let cog = position.course_over_ground.unwrap();
+        // COG should be approximately 84.4 degrees
+        assert!((cog - 84.4).abs() < 0.1);
+        // Speed should be approximately 11.5 m/s (22.4 knots * 0.514444)
+        assert!(position.speed > 11.0 && position.speed < 12.0);
+    }
+
+    #[test]
+    fn test_gps_parse_gprmc_low_speed_no_cog() {
+        let uart = MockUart::new(UartConfig::default());
+        let mut gps = GpsDriver::new(uart);
+
+        // GPRMC sentence with speed 0.5 knots (~0.26 m/s) - below threshold
+        let nmea = b"$GPRMC,123519,A,4807.038,N,01131.000,E,000.5,084.4,230394,003.1,W*6E\r\n";
+        gps.uart_mut().inject_rx_data(nmea);
+
+        let position = read_gps_position_complete(&mut gps).expect("Expected GPS position");
+        // COG should be None when speed < 0.5 m/s
+        assert!(position.course_over_ground.is_none());
+        // Speed should be approximately 0.26 m/s
+        assert!(position.speed < 0.5);
+    }
+
+    #[test]
+    fn test_gps_parse_gprmc_threshold_speed() {
+        let uart = MockUart::new(UartConfig::default());
+        let mut gps = GpsDriver::new(uart);
+
+        // GPRMC sentence with speed 1.0 knots (~0.514 m/s) - at threshold
+        let nmea = b"$GPRMC,123519,A,4807.038,N,01131.000,E,001.0,180.0,230394,003.1,W*65\r\n";
+        gps.uart_mut().inject_rx_data(nmea);
+
+        let position = read_gps_position_complete(&mut gps).expect("Expected GPS position");
+        // COG should be valid when speed >= 0.5 m/s
+        assert!(position.course_over_ground.is_some());
+        let cog = position.course_over_ground.unwrap();
+        assert!((cog - 180.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_gps_parse_gpgga_no_cog() {
+        let uart = MockUart::new(UartConfig::default());
+        let mut gps = GpsDriver::new(uart);
+
+        // GPGGA sentence does not contain COG
+        let nmea = b"$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47\r\n";
+        gps.uart_mut().inject_rx_data(nmea);
+
+        let position = read_gps_position_complete(&mut gps).expect("Expected GPS position");
+        // GPGGA does not provide COG, so it should be None
+        assert!(position.course_over_ground.is_none());
     }
 }

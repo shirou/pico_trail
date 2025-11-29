@@ -71,7 +71,7 @@ use embassy_rp::{
 use static_cell::StaticCell;
 
 /// Maximum WiFi connection attempts before giving up
-const MAX_WIFI_RETRIES: u8 = 5;
+const MAX_WIFI_RETRIES: u8 = 10;
 
 /// Initial retry delay (1 second)
 const INITIAL_RETRY_DELAY_MS: u64 = 1000;

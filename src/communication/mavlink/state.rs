@@ -7,6 +7,7 @@
 //! - **Armed State**: Vehicle arming status (disarmed/armed)
 //! - **Flight Mode**: Current flight mode (Stabilize, Loiter, Auto, etc.)
 //! - **Battery**: Battery voltage and current
+//! - **GPS**: GPS position and timestamp
 //! - **System Status**: Overall system health and status
 //!
 //! # Thread Safety
@@ -14,10 +15,13 @@
 //! System state is designed to be accessed from multiple tasks:
 //! - Command handler updates armed state
 //! - Telemetry task reads state for streaming
+//! - GPS driver updates position data
 //! - AHRS/Control loops update mode and status
 //!
 //! Use appropriate synchronization primitives (Mutex, critical sections)
 //! when accessing state from multiple tasks.
+
+use crate::devices::gps::GpsPosition;
 
 #[cfg(feature = "defmt")]
 use defmt::warn;
@@ -264,6 +268,10 @@ pub struct SystemState {
     pub mode: FlightMode,
     /// Battery state
     pub battery: BatteryState,
+    /// GPS position (None if no fix or stale)
+    pub gps_position: Option<GpsPosition>,
+    /// GPS timestamp (microseconds since boot when position was updated)
+    pub gps_timestamp_us: u64,
     /// System uptime (microseconds since boot)
     pub uptime_us: u64,
     /// CPU load (percentage, 0.0-100.0)
@@ -282,6 +290,8 @@ impl Default for SystemState {
             armed: ArmedState::Disarmed,
             mode: FlightMode::Manual,
             battery: BatteryState::placeholder(),
+            gps_position: None,
+            gps_timestamp_us: 0,
             uptime_us: 0,
             cpu_load: 0.0,
             arming_checks: 0xFFFF, // All checks enabled by default
@@ -297,6 +307,8 @@ impl SystemState {
             armed: ArmedState::Disarmed,
             mode: FlightMode::Manual,
             battery: BatteryState::placeholder(),
+            gps_position: None,
+            gps_timestamp_us: 0,
             uptime_us: 0,
             cpu_load: 0.0,
             arming_checks: 0xFFFF, // All checks enabled by default
@@ -341,6 +353,8 @@ impl SystemState {
             armed: ArmedState::Disarmed,
             mode: FlightMode::Manual,
             battery: BatteryState::placeholder(),
+            gps_position: None,
+            gps_timestamp_us: 0,
             uptime_us: 0,
             cpu_load: 0.0,
             arming_checks: arming_params.check_bitmask as u16,
@@ -554,6 +568,39 @@ impl SystemState {
     /// Update system uptime
     pub fn update_uptime(&mut self, uptime_us: u64) {
         self.uptime_us = uptime_us;
+    }
+
+    /// Update GPS position and timestamp
+    ///
+    /// Called by GPS driver after successful NMEA parse.
+    ///
+    /// # Arguments
+    ///
+    /// * `position` - GPS position from NMEA parser
+    /// * `timestamp_us` - Current system uptime in microseconds
+    pub fn update_gps(&mut self, position: GpsPosition, timestamp_us: u64) {
+        self.gps_position = Some(position);
+        self.gps_timestamp_us = timestamp_us;
+    }
+
+    /// Check if GPS data is fresh (updated within threshold)
+    ///
+    /// GPS data is considered stale if it hasn't been updated within
+    /// the specified threshold. Default threshold is 1 second (1_000_000 us).
+    ///
+    /// # Arguments
+    ///
+    /// * `current_time_us` - Current system uptime in microseconds
+    /// * `threshold_us` - Maximum age for GPS data to be considered fresh
+    ///
+    /// # Returns
+    ///
+    /// true if GPS position exists and was updated within threshold
+    pub fn is_gps_fresh(&self, current_time_us: u64, threshold_us: u64) -> bool {
+        if self.gps_position.is_none() {
+            return false;
+        }
+        current_time_us.saturating_sub(self.gps_timestamp_us) < threshold_us
     }
 }
 

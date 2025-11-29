@@ -15,6 +15,8 @@ use crate::platform::traits::UartInterface;
 use crate::platform::Result;
 
 #[cfg(feature = "pico2_w")]
+use crate::communication::mavlink::state::SYSTEM_STATE;
+#[cfg(feature = "pico2_w")]
 use embassy_time::{Duration, Instant, Ticker};
 
 // For host tests, provide stub types
@@ -202,11 +204,23 @@ impl<U: UartInterface> GpsOperation<U> {
         // Check if this is a new fix acquisition
         let was_no_fix = self.state.fix_type == GpsFixType::NoFix;
 
-        // Update state
+        // Update local state
         self.state.position = Some(position);
         self.state.last_update = Instant::now();
         self.state.fix_type = position.fix_type;
         self.no_fix_count = 0;
+
+        // Update global SYSTEM_STATE for telemetry access
+        #[cfg(feature = "pico2_w")]
+        {
+            let timestamp_us = Instant::now().as_micros();
+            critical_section::with(|cs| {
+                SYSTEM_STATE
+                    .borrow(cs)
+                    .borrow_mut()
+                    .update_gps(position, timestamp_us);
+            });
+        }
 
         if was_no_fix {
             crate::log_info!(
@@ -317,6 +331,7 @@ mod tests {
             longitude: 11.5166,
             altitude: 545.4,
             speed: 0.0,
+            course_over_ground: None,
             fix_type: GpsFixType::Fix3D,
             satellites: 8,
         };

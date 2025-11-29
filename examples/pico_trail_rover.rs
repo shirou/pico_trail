@@ -247,12 +247,8 @@ async fn main(spawner: Spawner) {
 
         pico_trail::log_info!("UART0 initialized (GPIO 0/1, 9600 baud)");
 
-        // Spawn GPS NMEA debug task (passthrough to USB serial)
-        #[cfg(feature = "usb_serial")]
-        {
-            let (_tx, rx) = uart0.split();
-            spawner.spawn(uart0_debug_task(rx)).unwrap();
-        }
+        // GPS task will be spawned after WiFi connects (to avoid blocking DHCP)
+        // Keep uart0 for later use
 
         // Load WiFi configuration from parameters
         let wifi_config = WifiParams::from_store(param_handler.store());
@@ -349,6 +345,9 @@ async fn main(spawner: Spawner) {
 
                     // Spawn motor control task
                     spawner.spawn(motor_control_task(motor_group).unwrap());
+
+                    // Spawn GPS task (after WiFi to avoid blocking DHCP)
+                    spawner.spawn(gps_task(uart0).unwrap());
                 }
                 Err(e) => {
                     pico_trail::log_warn!("WiFi initialization failed: {:?}", e);
@@ -771,37 +770,128 @@ async fn usb_task(
     usb.run().await;
 }
 
-/// UART0 GPS NMEA Debug Task
+/// GPS polling task
 ///
-/// Reads raw NMEA data from UART0 and outputs to USB serial (via log)
-#[cfg(feature = "usb_serial")]
+/// Reads NMEA data from UART0 (GPS module) and updates global SYSTEM_STATE.
+/// Uses BufferedUart wrapped in EmbassyBufferedUart adapter.
+#[cfg(feature = "pico2_w")]
 #[embassy_executor::task]
-async fn uart0_debug_task(mut uart0_rx: embassy_rp::uart::BufferedUartRx<'static>) {
-    use embedded_io_async::Read;
+async fn gps_task(uart: embassy_rp::uart::BufferedUart) {
+    use pico_trail::devices::gps::GpsDriver;
+    use pico_trail::devices::gps_operation::{GpsOperation, PollingRate};
 
-    pico_trail::log_info!("UART0 GPS Debug task started - NMEA passthrough to USB");
+    pico_trail::log_info!("GPS task started");
 
-    let mut buffer = [0u8; 128];
+    // Create GPS driver with Embassy BufferedUart adapter
+    let gps_uart = EmbassyBufferedUart::new(uart);
+    let gps = GpsDriver::new(gps_uart);
+    let mut operation = GpsOperation::new(gps, PollingRate::Rate1Hz);
 
-    loop {
-        // Read available data from UART0 (GPS)
-        match uart0_rx.read(&mut buffer).await {
-            Ok(n) if n > 0 => {
-                // Output raw bytes as string (NMEA is ASCII)
-                if let Ok(nmea_str) = core::str::from_utf8(&buffer[..n]) {
-                    pico_trail::log_info!("{}", nmea_str.trim());
-                } else {
-                    pico_trail::log_warn!("GPS: Non-UTF8 data ({} bytes)", n);
+    // Run the GPS polling loop
+    operation.poll_loop().await;
+}
+
+/// Embassy BufferedUart adapter for UartInterface trait
+///
+/// Wraps embassy_rp::uart::BufferedUart to implement the sync UartInterface.
+/// Uses blocking read with timeout semantics.
+#[cfg(feature = "pico2_w")]
+struct EmbassyBufferedUart {
+    uart: embassy_rp::uart::BufferedUart,
+}
+
+#[cfg(feature = "pico2_w")]
+impl EmbassyBufferedUart {
+    fn new(uart: embassy_rp::uart::BufferedUart) -> Self {
+        Self { uart }
+    }
+}
+
+#[cfg(feature = "pico2_w")]
+impl pico_trail::platform::traits::UartInterface for EmbassyBufferedUart {
+    fn read(&mut self, buffer: &mut [u8]) -> pico_trail::platform::Result<usize> {
+        use embedded_hal_nb::serial::Read;
+        // Use non-blocking read - returns WouldBlock if no data available
+        // This prevents blocking the executor
+        let mut count = 0;
+        for byte in buffer.iter_mut() {
+            match self.uart.read() {
+                Ok(b) => {
+                    *byte = b;
+                    count += 1;
+                }
+                Err(nb::Error::WouldBlock) => break,
+                Err(nb::Error::Other(e)) => {
+                    // Handle UART errors based on type
+                    // Overrun: RX FIFO overflowed - data was lost but we can continue reading
+                    // Other errors (Break, Parity, Framing): indicate signal/config issues
+                    match e {
+                        embassy_rp::uart::Error::Overrun => {
+                            // Overrun means the FIFO filled up - some data was lost
+                            // but the remaining data in the buffer is still valid.
+                            // Return what we have and let the next read continue.
+                            if count > 0 {
+                                break;
+                            }
+                            // No data yet, try to continue reading (error is cleared)
+                            continue;
+                        }
+                        _ => {
+                            // Other errors are more serious (signal issues)
+                            let error_type = match e {
+                                embassy_rp::uart::Error::Break => "Break",
+                                embassy_rp::uart::Error::Parity => "Parity",
+                                embassy_rp::uart::Error::Framing => "Framing",
+                                _ => "Unknown",
+                            };
+                            pico_trail::log_debug!(
+                                "UART read error: {}, count so far: {}",
+                                error_type,
+                                count
+                            );
+                            if count > 0 {
+                                // Return what we have so far
+                                break;
+                            }
+                            // No data read yet - return error
+                            return Err(pico_trail::platform::PlatformError::Uart(
+                                pico_trail::platform::error::UartError::ReadFailed,
+                            ));
+                        }
+                    }
                 }
             }
-            Ok(_) => {
-                // No data available (shouldn't happen with buffered UART)
-                Timer::after_millis(10).await;
-            }
-            Err(e) => {
-                pico_trail::log_error!("GPS UART0 read error: {:?}", e);
-                Timer::after_millis(100).await;
-            }
         }
+        Ok(count)
+    }
+
+    fn write(&mut self, data: &[u8]) -> pico_trail::platform::Result<usize> {
+        use embedded_io::Write;
+        self.uart.write(data).map_err(|_| {
+            pico_trail::platform::PlatformError::Uart(
+                pico_trail::platform::error::UartError::WriteFailed,
+            )
+        })
+    }
+
+    fn flush(&mut self) -> pico_trail::platform::Result<()> {
+        use embedded_io::Write;
+        self.uart.flush().map_err(|_| {
+            pico_trail::platform::PlatformError::Uart(
+                pico_trail::platform::error::UartError::WriteFailed,
+            )
+        })
+    }
+
+    fn set_baud_rate(&mut self, _baud: u32) -> pico_trail::platform::Result<()> {
+        // Embassy BufferedUart doesn't support runtime baud rate changes
+        Err(pico_trail::platform::PlatformError::Uart(
+            pico_trail::platform::error::UartError::InvalidBaudRate,
+        ))
+    }
+
+    fn available(&self) -> bool {
+        // Cannot check without mutable reference, assume data may be available
+        true
     }
 }
