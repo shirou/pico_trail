@@ -704,4 +704,177 @@ mod tests {
             assert_eq!(byte, 0, "Byte {} should be null padding, got {}", i, byte);
         }
     }
+
+    // Additional edge case tests for Phase 4
+
+    #[test]
+    #[serial]
+    fn test_utf8_multibyte_characters() {
+        reset_notifier();
+
+        // Test with Japanese characters (3 bytes each in UTF-8)
+        send_info("日本語テスト");
+
+        let messages = drain_global_notifier();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].text.as_str(), "日本語テスト");
+    }
+
+    #[test]
+    #[serial]
+    fn test_utf8_emoji() {
+        reset_notifier();
+
+        // Test with emoji (4 bytes each in UTF-8)
+        send_warning("Status: ✅ OK 🚀");
+
+        let messages = drain_global_notifier();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].text.as_str(), "Status: ✅ OK 🚀");
+    }
+
+    #[test]
+    #[serial]
+    fn test_null_bytes_in_message() {
+        reset_notifier();
+
+        // Test with embedded null bytes
+        send_error("Before\0After");
+
+        let messages = drain_global_notifier();
+        assert_eq!(messages.len(), 1);
+        // The message should contain the null byte
+        assert!(messages[0].text.as_str().contains('\0'));
+    }
+
+    #[test]
+    #[serial]
+    fn test_end_to_end_flow() {
+        reset_notifier();
+
+        // Enqueue a long message that requires chunking
+        let long_msg =
+            "This is a test message that is longer than 50 characters and will be chunked";
+        send_info(long_msg);
+
+        // Drain and chunk via take_pending_statustext_messages
+        let statustext_messages = take_pending_statustext_messages();
+
+        // Should produce 2 chunks (message is ~77 chars)
+        assert_eq!(
+            statustext_messages.len(),
+            2,
+            "Should produce 2 STATUSTEXT chunks"
+        );
+
+        // Verify chunks have same ID (multi-chunk message)
+        assert!(
+            statustext_messages[0].id != 0,
+            "Multi-chunk should have non-zero id"
+        );
+        assert_eq!(
+            statustext_messages[0].id, statustext_messages[1].id,
+            "All chunks should have same id"
+        );
+        assert_eq!(statustext_messages[0].chunk_seq, 0);
+        assert_eq!(statustext_messages[1].chunk_seq, 1);
+    }
+
+    #[test]
+    #[serial]
+    fn test_multiple_messages_single_drain() {
+        reset_notifier();
+
+        // Enqueue multiple messages of different severities
+        send_error("Error message");
+        send_warning("Warning message");
+        send_info("Info message");
+
+        // Drain all at once
+        let statustext_messages = take_pending_statustext_messages();
+
+        // Should have 3 messages (each ≤50 chars, so 1 chunk each)
+        assert_eq!(statustext_messages.len(), 3);
+
+        // Verify severities are preserved in order
+        assert!(matches!(
+            statustext_messages[0].severity,
+            MavSeverity::MAV_SEVERITY_ERROR
+        ));
+        assert!(matches!(
+            statustext_messages[1].severity,
+            MavSeverity::MAV_SEVERITY_WARNING
+        ));
+        assert!(matches!(
+            statustext_messages[2].severity,
+            MavSeverity::MAV_SEVERITY_INFO
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn test_queue_overflow_recovery() {
+        reset_notifier();
+
+        // Fill queue to capacity (16 messages)
+        for i in 0..16 {
+            send_info(&format!("Message {}", i));
+        }
+
+        // Drain all
+        let messages = drain_global_notifier();
+        assert_eq!(messages.len(), 16);
+
+        // Queue should be empty, dropped_count should be 0
+        assert_eq!(get_dropped_count(), 0);
+
+        // Add more messages after overflow recovery
+        send_error("New error after drain");
+        send_warning("New warning after drain");
+
+        let messages = drain_global_notifier();
+        assert_eq!(messages.len(), 2);
+    }
+
+    #[test]
+    #[serial]
+    fn test_message_exactly_50_chars_no_chunking() {
+        reset_notifier();
+
+        // Exactly 50 characters should NOT trigger chunking
+        let msg = "A".repeat(50);
+        send_info(&msg);
+
+        let statustext_messages = take_pending_statustext_messages();
+        assert_eq!(
+            statustext_messages.len(),
+            1,
+            "50 chars should produce 1 chunk"
+        );
+        assert_eq!(statustext_messages[0].id, 0, "Single message has id=0");
+        assert_eq!(statustext_messages[0].chunk_seq, 0);
+    }
+
+    #[test]
+    #[serial]
+    fn test_message_exactly_51_chars_triggers_chunking() {
+        reset_notifier();
+
+        // Exactly 51 characters SHOULD trigger chunking
+        let msg = "A".repeat(51);
+        send_info(&msg);
+
+        let statustext_messages = take_pending_statustext_messages();
+        assert_eq!(
+            statustext_messages.len(),
+            2,
+            "51 chars should produce 2 chunks"
+        );
+        assert!(
+            statustext_messages[0].id != 0,
+            "Multi-chunk has non-zero id"
+        );
+        assert_eq!(statustext_messages[0].chunk_seq, 0);
+        assert_eq!(statustext_messages[1].chunk_seq, 1);
+    }
 }

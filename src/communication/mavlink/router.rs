@@ -216,6 +216,28 @@ impl<F: FlashInterface> MavlinkRouter<F> {
         core::mem::replace(&mut self.pending_messages, heapless::Vec::new())
     }
 
+    /// Get pending STATUSTEXT messages
+    ///
+    /// Returns queued STATUSTEXT messages from the global status notifier.
+    /// Messages are chunked according to MAVLink v2 protocol (50 chars per chunk).
+    /// Should be called periodically (e.g., in telemetry loop) to drain the queue.
+    ///
+    /// # Returns
+    ///
+    /// Vector of STATUSTEXT messages ready to send to GCS.
+    pub fn take_statustext_messages(&self) -> heapless::Vec<MavMessage, 32> {
+        use super::status_notifier::take_pending_statustext_messages;
+
+        let statustext_data = take_pending_statustext_messages();
+        let mut messages = heapless::Vec::new();
+
+        for data in statustext_data {
+            let _ = messages.push(MavMessage::STATUSTEXT(data));
+        }
+
+        messages
+    }
+
     /// Handle incoming MAVLink message
     ///
     /// Routes the message to the appropriate handler based on message type.
@@ -935,5 +957,45 @@ mod tests {
 
         let result = router.handle_message(&header, &request1, 0);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_take_statustext_messages_empty() {
+        let mut flash = MockFlash::new();
+        let router = MavlinkRouter::new(&mut flash, 1, 1);
+
+        // Initially, no STATUSTEXT messages should be pending
+        let messages = router.take_statustext_messages();
+        assert!(messages.is_empty());
+    }
+
+    #[test]
+    fn test_take_statustext_messages_after_arm() {
+        use crate::communication::mavlink::status_notifier;
+
+        let mut flash = MockFlash::new();
+        let router = MavlinkRouter::new(&mut flash, 1, 1);
+
+        // Send a status message
+        status_notifier::send_info("Test message");
+
+        // Retrieve STATUSTEXT messages
+        let messages = router.take_statustext_messages();
+        assert_eq!(messages.len(), 1);
+
+        // Verify it's a STATUSTEXT message
+        match &messages[0] {
+            MavMessage::STATUSTEXT(data) => {
+                // Check the text starts with "Test message"
+                let text_bytes: &[u8] = data.text.as_ref();
+                let text = core::str::from_utf8(text_bytes).unwrap_or("");
+                assert!(text.starts_with("Test message"));
+            }
+            _ => panic!("Expected STATUSTEXT message"),
+        }
+
+        // After draining, queue should be empty
+        let messages_again = router.take_statustext_messages();
+        assert!(messages_again.is_empty());
     }
 }
