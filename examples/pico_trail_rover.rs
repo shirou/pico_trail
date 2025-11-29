@@ -544,8 +544,6 @@ async fn rover_mavlink_task(
         // Handle received messages
         match read_result {
             embassy_futures::select::Either::Second(Ok((n, _transport_id))) => {
-                pico_trail::log_debug!("RX {} bytes", n);
-
                 // Create reader for parsing - may contain multiple messages
                 let mut reader = ByteReader::new(&buf[..n]);
 

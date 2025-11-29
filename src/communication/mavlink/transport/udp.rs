@@ -176,7 +176,11 @@ impl<'a> UdpTransport<'a> {
 
         let _ = self.gcs_endpoints.push(endpoint);
 
-        crate::log_info!("New GCS endpoint registered");
+        crate::log_info!(
+            "GCS endpoint registered: port {} (total: {})",
+            addr.port,
+            self.gcs_endpoints.len()
+        );
     }
 
     /// Cleanup inactive GCS endpoints
@@ -276,7 +280,14 @@ impl<'a> MavlinkTransport for UdpTransport<'a> {
 
     async fn write(&mut self, buf: &[u8]) -> Result<usize, TransportError> {
         if self.gcs_endpoints.is_empty() {
-            // No GCS connected yet, drop the message
+            // No GCS connected yet - log periodically for diagnostics
+            static mut DROP_COUNT: u32 = 0;
+            unsafe {
+                DROP_COUNT += 1;
+                if DROP_COUNT % 500 == 1 {
+                    crate::log_warn!("No GCS endpoint (dropped: {})", DROP_COUNT);
+                }
+            }
             return Ok(buf.len());
         }
 

@@ -222,6 +222,9 @@ impl<U: UartInterface> GpsOperation<U> {
             });
         }
 
+        // Debug output: show lat/lon
+        crate::log_debug!("GPS: lat={}, lon={}", position.latitude, position.longitude);
+
         if was_no_fix {
             crate::log_info!(
                 "GPS: Fix acquired ({:?}, {} satellites)",
