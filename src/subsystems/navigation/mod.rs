@@ -49,3 +49,31 @@ mod types;
 pub use controller::{NavigationController, SimpleNavigationController};
 pub use geo::{calculate_bearing, calculate_distance, wrap_180, wrap_360};
 pub use types::{NavigationOutput, PositionTarget, SimpleNavConfig};
+
+// Global navigation state (for multi-task access)
+#[cfg(feature = "pico2_w")]
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+#[cfg(feature = "pico2_w")]
+use embassy_sync::mutex::Mutex;
+
+/// Global navigation target (protected by Mutex)
+///
+/// Set by MAVLink handler when receiving SET_POSITION_TARGET_GLOBAL_INT.
+/// Read by navigation_task to compute steering/throttle commands.
+#[cfg(feature = "pico2_w")]
+pub static NAV_TARGET: Mutex<CriticalSectionRawMutex, Option<PositionTarget>> = Mutex::new(None);
+
+/// Global navigation output (protected by Mutex)
+///
+/// Updated by navigation_task at 50Hz.
+/// Read by motor_control_task when in Guided/Auto mode.
+#[cfg(feature = "pico2_w")]
+pub static NAV_OUTPUT: Mutex<CriticalSectionRawMutex, NavigationOutput> =
+    Mutex::new(NavigationOutput {
+        steering: 0.0,
+        throttle: 0.0,
+        distance_m: 0.0,
+        bearing_deg: 0.0,
+        heading_error_deg: 0.0,
+        at_target: false,
+    });

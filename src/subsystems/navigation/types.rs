@@ -6,7 +6,7 @@
 //! - `SimpleNavConfig`: Configuration for simple navigation controller
 
 /// Target position for navigation
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct PositionTarget {
     /// Latitude in degrees (-90 to +90)
     pub latitude: f32,
@@ -37,7 +37,7 @@ impl PositionTarget {
 }
 
 /// Output from navigation controller
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct NavigationOutput {
     /// Steering command: -1.0 (full left) to +1.0 (full right)
     pub steering: f32,

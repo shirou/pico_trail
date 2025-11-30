@@ -415,7 +415,8 @@ mod tests {
         });
         let mut handler = CommandHandler::new();
 
-        let cmd = create_command_long(MavCmd::MAV_CMD_DO_SET_MODE, 0.0, 3.0); // Mode 3 = Auto
+        // ArduPilot Rover mode numbers: Auto=10
+        let cmd = create_command_long(MavCmd::MAV_CMD_DO_SET_MODE, 0.0, 10.0);
         let (ack, _) = handler.handle_command_long(&cmd);
 
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);

@@ -9,9 +9,11 @@
 //! - **Command Handler** (Phase 4): COMMAND_LONG, COMMAND_ACK
 //! - **Mission Handler** (Phase 5): MISSION_COUNT, MISSION_ITEM, MISSION_ACK
 //! - **RC Input Handler** (Phase 6): RC_CHANNELS, RC_CHANNELS_OVERRIDE
+//! - **Navigation Handler**: SET_POSITION_TARGET_GLOBAL_INT
 
 pub mod command;
 pub mod mission;
+pub mod navigation;
 pub mod param;
 pub mod rc_input;
 pub mod telemetry;
@@ -19,6 +21,7 @@ pub mod telemetry;
 // Re-export commonly used types
 pub use command::CommandHandler;
 pub use mission::MissionHandler;
+pub use navigation::NavigationHandler;
 pub use param::ParamHandler;
 pub use rc_input::RcInputHandler;
 pub use telemetry::TelemetryStreamer;

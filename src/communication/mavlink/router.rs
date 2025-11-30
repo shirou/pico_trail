@@ -724,13 +724,14 @@ mod tests {
         let mut flash = MockFlash::new();
         let mut router = MavlinkRouter::new(&mut flash, 1, 1);
 
+        // ArduPilot Rover mode numbers: Auto=10
         let command = MavMessage::COMMAND_LONG(mavlink::common::COMMAND_LONG_DATA {
             target_system: 1,
             target_component: 1,
             command: mavlink::common::MavCmd::MAV_CMD_DO_SET_MODE,
             confirmation: 0,
             param1: 0.0,
-            param2: 3.0, // Mode 3 = Auto
+            param2: 10.0, // Auto mode
             param3: 0.0,
             param4: 0.0,
             param5: 0.0,

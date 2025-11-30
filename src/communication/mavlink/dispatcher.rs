@@ -20,7 +20,10 @@
 //! - **Response collection**: Handlers return heapless::Vec of responses
 
 use super::{
-    handlers::{CommandHandler, MissionHandler, ParamHandler, RcInputHandler, TelemetryStreamer},
+    handlers::{
+        CommandHandler, MissionHandler, NavigationHandler, ParamHandler, RcInputHandler,
+        TelemetryStreamer,
+    },
     state::SystemState,
 };
 use heapless::Vec;
@@ -44,6 +47,8 @@ pub struct MessageDispatcher {
     mission_handler: MissionHandler,
     /// RC input handler
     rc_input_handler: RcInputHandler,
+    /// Navigation handler
+    navigation_handler: NavigationHandler,
 }
 
 impl MessageDispatcher {
@@ -69,6 +74,7 @@ impl MessageDispatcher {
             telemetry_streamer,
             mission_handler,
             rc_input_handler,
+            navigation_handler: NavigationHandler::new(),
         }
     }
 
@@ -346,6 +352,37 @@ impl MessageDispatcher {
             }
             _ => false,
         }
+    }
+
+    /// Process navigation input messages (async)
+    ///
+    /// Navigation messages update global NAV_TARGET and don't produce response messages.
+    /// This method should be called for SET_POSITION_TARGET_GLOBAL_INT messages.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - Parsed MAVLink message
+    ///
+    /// # Returns
+    ///
+    /// `true` if the message was handled, `false` if not a navigation message
+    #[cfg(feature = "pico2_w")]
+    pub async fn process_navigation_input(&mut self, message: &MavMessage) -> bool {
+        use mavlink::common::MavMessage::*;
+
+        match message {
+            SET_POSITION_TARGET_GLOBAL_INT(data) => {
+                self.navigation_handler
+                    .handle_set_position_target(data)
+                    .await
+            }
+            _ => false,
+        }
+    }
+
+    /// Get reference to navigation handler
+    pub fn navigation_handler(&self) -> &NavigationHandler {
+        &self.navigation_handler
     }
 }
 

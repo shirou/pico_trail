@@ -118,6 +118,9 @@ use pico_trail::{
     libraries::{kinematics::DifferentialDrive, motor_driver::MotorGroup, RC_INPUT},
     parameters::wifi::WifiParams,
     platform::rp2350::{network::WifiConfig, Rp2350Flash},
+    subsystems::navigation::{
+        NavigationController, SimpleNavigationController, NAV_OUTPUT, NAV_TARGET,
+    },
 };
 
 #[embassy_executor::main]
@@ -348,6 +351,9 @@ async fn main(spawner: Spawner) {
 
                     // Spawn GPS task (after WiFi to avoid blocking DHCP)
                     spawner.spawn(gps_task(uart0).unwrap());
+
+                    // Spawn navigation task
+                    spawner.spawn(navigation_task().unwrap());
                 }
                 Err(e) => {
                     pico_trail::log_warn!("WiFi initialization failed: {:?}", e);
@@ -564,6 +570,9 @@ async fn rover_mavlink_task(
                             // Process RC input messages (async, updates global state)
                             dispatcher.process_rc_input(&msg, timestamp_us).await;
 
+                            // Process navigation input messages (async, updates NAV_TARGET)
+                            dispatcher.process_navigation_input(&msg).await;
+
                             // Dispatch message to appropriate handler
                             let responses = dispatcher.dispatch(&header, &msg, timestamp_us);
 
@@ -681,8 +690,9 @@ async fn rover_mavlink_task(
 
 /// Motor control task
 ///
-/// Reads RC input (steering/throttle), applies differential drive kinematics,
-/// and controls the 4-wheel drive motors. Enforces armed state check.
+/// Reads input from RC (Manual mode) or Navigation Controller (Guided mode),
+/// applies differential drive kinematics, and controls the 4-wheel drive motors.
+/// Enforces armed state check.
 #[cfg(feature = "pico2_w")]
 #[embassy_executor::task]
 async fn motor_control_task(
@@ -693,21 +703,49 @@ async fn motor_control_task(
         >,
     >,
 ) {
-    use pico_trail::communication::mavlink::state::SYSTEM_STATE;
+    use pico_trail::communication::mavlink::state::{FlightMode, SYSTEM_STATE};
 
     pico_trail::log_info!("Motor control task started");
 
     loop {
-        // Read RC input
-        let rc = RC_INPUT.lock().await;
+        // Get current mode and armed state
+        let (mode, is_armed) = critical_section::with(|cs| {
+            let state = SYSTEM_STATE.borrow_ref(cs);
+            (state.mode, state.is_armed())
+        });
 
-        // Get steering (channel 1) and throttle (channel 3)
-        // ArduPilot standard: Ch1=Roll/Steering, Ch3=Throttle
-        let steering = rc.channels[0]; // Channel 1 (index 0)
-        let throttle = rc.channels[2]; // Channel 3 (index 2)
-        let rc_status = rc.status;
-
-        drop(rc); // Release mutex
+        // Get steering/throttle based on mode
+        let (steering, throttle, rc_status) = match mode {
+            FlightMode::Manual => {
+                // Manual mode: use RC input directly
+                let rc = RC_INPUT.lock().await;
+                let steering = rc.channels[0]; // Channel 1 (index 0)
+                let throttle = rc.channels[2]; // Channel 3 (index 2)
+                let status = rc.status;
+                drop(rc);
+                (steering, throttle, Some(status))
+            }
+            FlightMode::Guided => {
+                // Guided mode: use navigation controller output
+                let nav_output = NAV_OUTPUT.lock().await;
+                // Navigation output: steering is [-1, 1], throttle is [0, 1]
+                // For bidirectional movement, we keep throttle as-is (forward only in Guided)
+                let steering = nav_output.steering;
+                let throttle = nav_output.throttle;
+                drop(nav_output);
+                (steering, throttle, None) // No RC status in Guided mode
+            }
+            _ => {
+                // Other modes (Stabilize, Loiter, Auto, RTL): not implemented yet
+                // For now, use RC input as fallback
+                let rc = RC_INPUT.lock().await;
+                let steering = rc.channels[0];
+                let throttle = rc.channels[2];
+                let status = rc.status;
+                drop(rc);
+                (steering, throttle, Some(status))
+            }
+        };
 
         // Apply differential drive kinematics
         // steering: -1.0 (left) to +1.0 (right)
@@ -722,18 +760,15 @@ async fn motor_control_task(
             right_speed, // Motor 4 (Right Front)
         ];
 
-        // Set motor speeds (with armed check inside)
-        let is_armed = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).is_armed());
-
         // Only log when there's significant input or state change
         if is_armed && (steering.abs() > 0.05 || throttle.abs() > 0.05) {
             pico_trail::log_debug!(
-                "RC: steering={}, throttle={}, L={}, R={}, armed={}",
+                "Motor: mode={:?}, steering={}, throttle={}, L={}, R={}",
+                mode,
                 steering,
                 throttle,
                 left_speed,
-                right_speed,
-                is_armed
+                right_speed
             );
         }
 
@@ -744,11 +779,13 @@ async fn motor_control_task(
             }
         }
 
-        // Check RC timeout
-        if rc_status != pico_trail::libraries::RcStatus::Active {
-            // RC lost or never connected - ensure motors stop
-            if motor_group.stop_all().is_err() {
-                pico_trail::log_warn!("Failed to stop motors on RC timeout");
+        // Check RC timeout (only in modes that use RC)
+        if let Some(status) = rc_status {
+            if status != pico_trail::libraries::RcStatus::Active {
+                // RC lost or never connected - ensure motors stop
+                if motor_group.stop_all().is_err() {
+                    pico_trail::log_warn!("Failed to stop motors on RC timeout");
+                }
             }
         }
 
@@ -787,6 +824,73 @@ async fn gps_task(uart: embassy_rp::uart::BufferedUart) {
 
     // Run the GPS polling loop
     operation.poll_loop().await;
+}
+
+/// Navigation task
+///
+/// Reads GPS position from SYSTEM_STATE and navigation target from NAV_TARGET,
+/// computes steering/throttle using SimpleNavigationController, and updates NAV_OUTPUT.
+/// Runs at 50Hz (20ms interval).
+#[cfg(feature = "pico2_w")]
+#[embassy_executor::task]
+async fn navigation_task() {
+    use pico_trail::communication::mavlink::state::{FlightMode, SYSTEM_STATE};
+
+    pico_trail::log_info!("Navigation task started");
+
+    let mut controller = SimpleNavigationController::new();
+
+    loop {
+        // Get current mode and GPS from SYSTEM_STATE
+        let (mode, gps_position) = critical_section::with(|cs| {
+            let state = SYSTEM_STATE.borrow_ref(cs);
+            (state.mode, state.gps_position)
+        });
+
+        // Only run navigation in Guided mode (for now)
+        if mode == FlightMode::Guided {
+            // Get navigation target
+            let target = {
+                let nav_target = NAV_TARGET.lock().await;
+                *nav_target
+            };
+
+            if let (Some(current), Some(target)) = (gps_position, target) {
+                // Compute navigation output
+                let output = controller.update(&current, &target, 0.02); // 20ms dt
+
+                // Update global NAV_OUTPUT
+                {
+                    let mut nav_output = NAV_OUTPUT.lock().await;
+                    *nav_output = output;
+                }
+
+                // Log navigation status periodically (every ~1s = 50 iterations)
+                static mut LOG_COUNTER: u32 = 0;
+                unsafe {
+                    LOG_COUNTER += 1;
+                    if LOG_COUNTER >= 50 {
+                        LOG_COUNTER = 0;
+                        pico_trail::log_debug!(
+                            "Nav: dist={}m, bearing={}°, steering={}, throttle={}, at_target={}",
+                            output.distance_m,
+                            output.bearing_deg,
+                            output.steering,
+                            output.throttle,
+                            output.at_target
+                        );
+                    }
+                }
+            } else {
+                // No GPS or no target - output zero
+                let mut nav_output = NAV_OUTPUT.lock().await;
+                *nav_output = pico_trail::subsystems::navigation::NavigationOutput::default();
+            }
+        }
+
+        // 50 Hz update rate (20ms)
+        Timer::after_millis(20).await;
+    }
 }
 
 /// Embassy BufferedUart adapter for UartInterface trait

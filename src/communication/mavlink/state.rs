@@ -82,6 +82,8 @@ pub enum FlightMode {
     Loiter,
     /// Auto mode (following waypoints)
     Auto,
+    /// Guided mode (navigate to target position)
+    Guided,
     /// Return to launch
     Rtl,
 }
@@ -96,26 +98,30 @@ impl FlightMode {
     /// Convert to MAVLink custom mode number
     ///
     /// This mapping follows ArduPilot's mode numbering for rovers.
+    /// See: https://ardupilot.org/rover/docs/rover-features.html#flight-modes
     pub fn to_custom_mode(self) -> u32 {
         match self {
             FlightMode::Manual => 0,
             FlightMode::Stabilize => 1,
-            FlightMode::Loiter => 2,
-            FlightMode::Auto => 3,
-            FlightMode::Rtl => 4,
+            FlightMode::Loiter => 5,
+            FlightMode::Auto => 10,
+            FlightMode::Guided => 15,
+            FlightMode::Rtl => 11,
         }
     }
 
     /// Convert from MAVLink custom mode number
     ///
     /// Returns None if mode number is unrecognized.
+    /// See: https://ardupilot.org/rover/docs/rover-features.html#flight-modes
     pub fn from_custom_mode(mode: u32) -> Option<Self> {
         match mode {
             0 => Some(FlightMode::Manual),
             1 => Some(FlightMode::Stabilize),
-            2 => Some(FlightMode::Loiter),
-            3 => Some(FlightMode::Auto),
-            4 => Some(FlightMode::Rtl),
+            5 => Some(FlightMode::Loiter),
+            10 => Some(FlightMode::Auto),
+            15 => Some(FlightMode::Guided),
+            11 => Some(FlightMode::Rtl),
             _ => None,
         }
     }
@@ -623,10 +629,17 @@ mod tests {
 
     #[test]
     fn test_flight_mode_conversion() {
+        // ArduPilot Rover mode numbers
         assert_eq!(FlightMode::Manual.to_custom_mode(), 0);
-        assert_eq!(FlightMode::Auto.to_custom_mode(), 3);
+        assert_eq!(FlightMode::Stabilize.to_custom_mode(), 1);
+        assert_eq!(FlightMode::Loiter.to_custom_mode(), 5);
+        assert_eq!(FlightMode::Auto.to_custom_mode(), 10);
+        assert_eq!(FlightMode::Guided.to_custom_mode(), 15);
+        assert_eq!(FlightMode::Rtl.to_custom_mode(), 11);
+
         assert_eq!(FlightMode::from_custom_mode(0), Some(FlightMode::Manual));
-        assert_eq!(FlightMode::from_custom_mode(3), Some(FlightMode::Auto));
+        assert_eq!(FlightMode::from_custom_mode(10), Some(FlightMode::Auto));
+        assert_eq!(FlightMode::from_custom_mode(15), Some(FlightMode::Guided));
         assert_eq!(FlightMode::from_custom_mode(99), None);
     }
 
