@@ -16,7 +16,7 @@ pub mod rc_channel;
 pub mod srv_channel;
 
 // Re-export commonly used types
-#[cfg(feature = "pico2_w")]
+#[cfg(feature = "embassy")]
 pub use rc_channel::RC_INPUT;
 pub use rc_channel::{RcInput, RcStatus};
 

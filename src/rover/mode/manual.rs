@@ -24,9 +24,9 @@
 
 use crate::libraries::ActuatorInterface;
 
-#[cfg(feature = "pico2_w")]
+#[cfg(feature = "embassy")]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-#[cfg(feature = "pico2_w")]
+#[cfg(feature = "embassy")]
 use embassy_sync::mutex::Mutex;
 
 use super::Mode;
@@ -35,7 +35,7 @@ use super::Mode;
 ///
 /// Provides direct RC control with no stabilization.
 pub struct ManualMode<'a> {
-    #[cfg(feature = "pico2_w")]
+    #[cfg(feature = "embassy")]
     rc_input: &'static Mutex<CriticalSectionRawMutex, crate::libraries::RcInput>,
     actuators: &'a mut dyn ActuatorInterface,
 }
@@ -53,7 +53,7 @@ impl<'a> ManualMode<'a> {
     /// ```rust,ignore
     /// let manual_mode = ManualMode::new(&RC_INPUT, actuators);
     /// ```
-    #[cfg(feature = "pico2_w")]
+    #[cfg(feature = "embassy")]
     pub fn new(
         rc_input: &'static Mutex<CriticalSectionRawMutex, crate::libraries::RcInput>,
         actuators: &'a mut dyn ActuatorInterface,
@@ -65,7 +65,7 @@ impl<'a> ManualMode<'a> {
     }
 
     /// Create new Manual mode (host tests)
-    #[cfg(not(feature = "pico2_w"))]
+    #[cfg(not(feature = "embassy"))]
     pub fn new(actuators: &'a mut dyn ActuatorInterface) -> Self {
         Self { actuators }
     }
@@ -78,14 +78,14 @@ impl<'a> Mode for ManualMode<'a> {
     }
 
     fn update(&mut self, _dt: f32) -> Result<(), &'static str> {
-        #[cfg(feature = "pico2_w")]
+        #[cfg(feature = "embassy")]
         {
             // This function is async because we need to lock the RC input mutex
             // Embassy's async runtime will handle this
             embassy_futures::block_on(self.update_async())
         }
 
-        #[cfg(not(feature = "pico2_w"))]
+        #[cfg(not(feature = "embassy"))]
         {
             // Host tests: no RC input, just return Ok
             Ok(())
@@ -107,7 +107,7 @@ impl<'a> Mode for ManualMode<'a> {
     }
 }
 
-#[cfg(feature = "pico2_w")]
+#[cfg(feature = "embassy")]
 impl<'a> ManualMode<'a> {
     /// Async update implementation (embedded only)
     ///

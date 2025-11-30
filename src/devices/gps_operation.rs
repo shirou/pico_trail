@@ -14,13 +14,13 @@ use crate::devices::gps::{GpsDriver, GpsFixType, GpsPosition};
 use crate::platform::traits::UartInterface;
 use crate::platform::Result;
 
-#[cfg(feature = "pico2_w")]
+#[cfg(feature = "embassy")]
 use crate::communication::mavlink::state::SYSTEM_STATE;
-#[cfg(feature = "pico2_w")]
+#[cfg(feature = "embassy")]
 use embassy_time::{Duration, Instant};
 
 // For host tests, provide stub types
-#[cfg(not(feature = "pico2_w"))]
+#[cfg(not(feature = "embassy"))]
 mod stub_time {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct Instant(u64);
@@ -41,7 +41,7 @@ mod stub_time {
     }
 }
 
-#[cfg(not(feature = "pico2_w"))]
+#[cfg(not(feature = "embassy"))]
 use stub_time::{Duration, Instant};
 
 /// GPS polling rate configuration
@@ -91,14 +91,14 @@ impl Default for GpsState {
 /// GPS operation manager
 ///
 /// Manages GPS polling, validation, error recovery, and state updates.
-#[cfg_attr(not(feature = "pico2_w"), allow(dead_code))]
+#[cfg_attr(not(feature = "embassy"), allow(dead_code))]
 pub struct GpsOperation<U: UartInterface> {
     gps: GpsDriver<U>,
     state: GpsState,
     no_fix_count: u8,
 }
 
-#[cfg_attr(not(feature = "pico2_w"), allow(dead_code))]
+#[cfg_attr(not(feature = "embassy"), allow(dead_code))]
 impl<U: UartInterface> GpsOperation<U> {
     /// Maximum retry attempts for UART errors
     const MAX_RETRIES: u8 = 3;
@@ -134,8 +134,8 @@ impl<U: UartInterface> GpsOperation<U> {
     ///
     /// # Availability
     ///
-    /// This method is only available on embedded targets (requires `pico2_w` feature).
-    #[cfg(feature = "pico2_w")]
+    /// This method is only available on embedded targets (requires `embassy` feature).
+    #[cfg(feature = "embassy")]
     pub async fn poll_loop(&mut self) {
         crate::log_info!("GPS: Starting continuous polling");
 
@@ -182,11 +182,11 @@ impl<U: UartInterface> GpsOperation<U> {
                     // Exponential backoff: 100ms, 200ms, 400ms
                     let delay_ms = 100 * (1 << (retry_count - 1));
 
-                    #[cfg(feature = "pico2_w")]
+                    #[cfg(feature = "embassy")]
                     embassy_time::Timer::after(Duration::from_millis(delay_ms)).await;
 
                     // For host tests, we can't actually delay, so just skip
-                    #[cfg(not(feature = "pico2_w"))]
+                    #[cfg(not(feature = "embassy"))]
                     let _ = delay_ms;
                 }
             }
@@ -205,7 +205,7 @@ impl<U: UartInterface> GpsOperation<U> {
         self.no_fix_count = 0;
 
         // Update global SYSTEM_STATE for telemetry access
-        #[cfg(feature = "pico2_w")]
+        #[cfg(feature = "embassy")]
         {
             let timestamp_us = Instant::now().as_micros();
             critical_section::with(|cs| {
@@ -229,7 +229,7 @@ impl<U: UartInterface> GpsOperation<U> {
     ///
     /// Note: Currently used only by tests. Will be integrated with poll_loop
     /// when periodic polling mode is implemented.
-    #[cfg_attr(feature = "pico2_w", allow(dead_code))]
+    #[cfg_attr(feature = "embassy", allow(dead_code))]
     fn handle_no_data(&mut self) {
         // If we had a fix before, this might indicate fix loss
         if self.state.fix_type != GpsFixType::NoFix {
@@ -259,7 +259,7 @@ impl<U: UartInterface> GpsOperation<U> {
     ///
     /// Called after 3 consecutive NoFix readings (~3s).
     /// This should notify the navigation subsystem to take appropriate action.
-    #[cfg_attr(feature = "pico2_w", allow(dead_code))]
+    #[cfg_attr(feature = "embassy", allow(dead_code))]
     fn trigger_gps_failsafe(&self) {
         crate::log_warn!("GPS: Failsafe triggered (3 consecutive NoFix readings)");
         // TODO: Integration with failsafe system (future task)

@@ -14,7 +14,7 @@
 //! - MAVLink RC_CHANNELS: https://mavlink.io/en/messages/common.html#RC_CHANNELS
 //! - MAVLink RC_CHANNELS_OVERRIDE: https://mavlink.io/en/messages/common.html#RC_CHANNELS_OVERRIDE
 
-#[cfg(feature = "pico2_w")]
+#[cfg(feature = "embassy")]
 use crate::libraries::RC_INPUT;
 
 /// RC input message handler
@@ -37,7 +37,7 @@ impl RcInputHandler {
     ///
     /// * `rc_data` - RC_CHANNELS message data
     /// * `current_time_us` - Current timestamp in microseconds
-    #[cfg(feature = "pico2_w")]
+    #[cfg(feature = "embassy")]
     pub async fn handle_rc_channels(
         &mut self,
         rc_data: &mavlink::common::RC_CHANNELS_DATA,
@@ -87,7 +87,7 @@ impl RcInputHandler {
     /// # Returns
     ///
     /// `true` if the message was processed (target system matches), `false` otherwise
-    #[cfg(feature = "pico2_w")]
+    #[cfg(feature = "embassy")]
     pub async fn handle_rc_channels_override(
         &mut self,
         rc_override: &mavlink::common::RC_CHANNELS_OVERRIDE_DATA,
@@ -130,8 +130,8 @@ impl RcInputHandler {
         true
     }
 
-    /// No-op handler for non-pico2_w builds
-    #[cfg(not(feature = "pico2_w"))]
+    /// No-op handler for non-embassy builds
+    #[cfg(not(feature = "embassy"))]
     pub async fn handle_rc_channels(
         &mut self,
         _rc_data: &mavlink::common::RC_CHANNELS_DATA,
@@ -140,8 +140,8 @@ impl RcInputHandler {
         // No-op on non-embedded platforms
     }
 
-    /// No-op handler for non-pico2_w builds
-    #[cfg(not(feature = "pico2_w"))]
+    /// No-op handler for non-embassy builds
+    #[cfg(not(feature = "embassy"))]
     pub async fn handle_rc_channels_override(
         &mut self,
         _rc_override: &mavlink::common::RC_CHANNELS_OVERRIDE_DATA,

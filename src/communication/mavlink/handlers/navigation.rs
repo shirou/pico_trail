@@ -86,7 +86,7 @@ impl NavigationHandler {
     /// # Returns
     ///
     /// `true` if target was successfully updated, `false` if invalid
-    #[cfg(feature = "pico2_w")]
+    #[cfg(feature = "embassy")]
     pub async fn handle_set_position_target(
         &self,
         data: &SET_POSITION_TARGET_GLOBAL_INT_DATA,
@@ -110,7 +110,7 @@ impl NavigationHandler {
     }
 
     /// Synchronous version for non-async contexts (host tests)
-    #[cfg(not(feature = "pico2_w"))]
+    #[cfg(not(feature = "embassy"))]
     pub fn handle_set_position_target(&self, data: &SET_POSITION_TARGET_GLOBAL_INT_DATA) -> bool {
         self.extract_target(data).is_some()
     }

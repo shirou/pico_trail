@@ -91,3 +91,64 @@ ArduPilot uses `hwdef.dat` files for compile-time pin configuration. This projec
 ```
 
 **If uncertain, ask the user to verify against ArduPilot documentation before proceeding.**
+
+## Feature Flags
+
+### Embassy Async Runtime
+
+This project uses [Embassy](https://embassy.dev/) as the async runtime for all embedded targets. Embassy provides cooperative multitasking, timers, and synchronization primitives for no_std environments.
+
+#### Feature Hierarchy
+
+```toml
+[features]
+# Common embassy feature (platform-agnostic async primitives)
+embassy = ["embassy-time", "embassy-sync", "embassy-embedded-hal", "static_cell"]
+
+# Platform-specific features depend on embassy
+pico2_w = ["embassy", ...]  # RP2350/Pico 2 W
+# esp32 = ["embassy", ...]  # Future: ESP32 support
+```
+
+#### When to Use Each Feature Gate
+
+- **`#[cfg(feature = "embassy")]`** - Code using embassy-sync (Mutex, Channel) or embassy-time
+  - Global state with `Mutex<CriticalSectionRawMutex, T>`
+  - Async functions using `.await`
+  - Timer operations (`embassy_time::Timer`, `Instant`, `Duration`)
+
+- **`#[cfg(feature = "pico2_w")]`** - RP2350-specific code
+  - `embassy_rp::*` (UART, PWM, GPIO, USB)
+  - `cyw43` WiFi driver
+  - `defmt` logging with RTT
+  - Platform HAL (`rp235x-hal`)
+
+#### Why Feature Gates Are Needed
+
+Even though Embassy is mandatory for embedded builds, feature gates are required for **host tests**:
+
+- `cargo test --lib` runs on host (x86_64) without embassy features
+- Embassy crates are no_std/embedded-only and don't compile on host
+- Host tests use stub implementations gated with `#[cfg(not(feature = "embassy"))]`
+
+#### Examples
+
+```rust
+// Global state - use embassy feature
+#[cfg(feature = "embassy")]
+pub static RC_INPUT: Mutex<CriticalSectionRawMutex, RcInput> = Mutex::new(RcInput::new());
+
+// Async handler - use embassy feature
+#[cfg(feature = "embassy")]
+pub async fn handle_message(&self, data: &Data) -> bool {
+    let mut state = STATE.lock().await;
+    // ...
+}
+
+// Platform-specific task - use pico2_w feature
+#[cfg(feature = "pico2_w")]
+#[embassy_executor::task]
+pub async fn uart_task(uart: embassy_rp::uart::BufferedUartRx) {
+    // RP2350-specific UART handling
+}
+```

@@ -141,15 +141,24 @@ debug = 2
 
 [features]
 default = []
+
+# Common embassy feature (enabled by any embassy-based platform)
+# Contains platform-agnostic embassy dependencies (sync primitives, time)
+embassy = [
+    "embassy-time", "embassy-sync", "embassy-embedded-hal", "static_cell"
+]
+
+# RP2350/Pico 2 W platform (includes embassy + RP2350-specific dependencies)
 pico2_w = [
+    "embassy",  # Enable common embassy features
     "cortex-m", "cortex-m-rt", "defmt", "defmt-rtt",
     "panic-probe", "rp235x-hal",
     "embedded-hal", "embedded-hal-1", "embedded-hal-async", "embedded-hal-nb", "nb", "fugit",
-    "embassy-executor", "embassy-time", "embassy-rp", "embassy-usb",
-    "embassy-sync", "embassy-net", "embassy-embedded-hal",
-    "cyw43", "cyw43-pio", "static_cell", "embedded-alloc",
+    "embassy-executor", "embassy-rp", "embassy-usb", "embassy-net",
+    "cyw43", "cyw43-pio", "embedded-alloc",
     "embassy-rp/rp235xa", "embassy-rp/critical-section-impl", "embassy-rp/binary-info"
 ]
+
 usb_serial = ["pico2_w"]  # Enable USB Serial logging (requires pico2_w)
 mock = []
 

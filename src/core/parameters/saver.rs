@@ -5,7 +5,7 @@
 //!
 //! This module requires Embassy runtime and is only available on embedded targets.
 
-#![cfg(feature = "pico2_w")]
+#![cfg(feature = "embassy")]
 
 use super::registry::ParameterRegistry;
 use crate::platform::traits::flash::FlashInterface;

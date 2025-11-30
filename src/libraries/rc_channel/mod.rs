@@ -10,9 +10,9 @@
 //! - ADR-ea7fw-rc-input-processing: RC input design
 //! - FR-993xy-rc-channels-processing: RC requirements
 
-#[cfg(feature = "pico2_w")]
+#[cfg(feature = "embassy")]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-#[cfg(feature = "pico2_w")]
+#[cfg(feature = "embassy")]
 use embassy_sync::mutex::Mutex;
 
 /// RC timeout threshold (1 second in microseconds)
@@ -246,7 +246,7 @@ impl RcInput {
 }
 
 /// Global RC input (protected by Mutex)
-#[cfg(feature = "pico2_w")]
+#[cfg(feature = "embassy")]
 pub static RC_INPUT: Mutex<CriticalSectionRawMutex, RcInput> = Mutex::new(RcInput::new());
 
 #[cfg(test)]

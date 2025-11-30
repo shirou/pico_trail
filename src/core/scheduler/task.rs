@@ -79,7 +79,7 @@ where
 ///
 /// This is a placeholder that should be replaced with platform-specific
 /// timer access in production. For now, it uses a simple counter for testing.
-#[cfg(not(feature = "pico2_w"))]
+#[cfg(not(feature = "embassy"))]
 fn current_time_us() -> u64 {
     // In tests/host environment, use std::time
     #[cfg(test)]
@@ -100,7 +100,7 @@ fn current_time_us() -> u64 {
 /// Get current time in microseconds (Embassy version)
 ///
 /// Uses Embassy's time driver for hardware targets
-#[cfg(feature = "pico2_w")]
+#[cfg(feature = "embassy")]
 fn current_time_us() -> u64 {
     embassy_time::Instant::now().as_micros()
 }

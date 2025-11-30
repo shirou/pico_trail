@@ -366,7 +366,7 @@ impl MessageDispatcher {
     /// # Returns
     ///
     /// `true` if the message was handled, `false` if not a navigation message
-    #[cfg(feature = "pico2_w")]
+    #[cfg(feature = "embassy")]
     pub async fn process_navigation_input(&mut self, message: &MavMessage) -> bool {
         use mavlink::common::MavMessage::*;
 
