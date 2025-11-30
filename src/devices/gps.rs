@@ -171,15 +171,22 @@ impl GpsInternalState {
     fn update_from_gga(&mut self, gga: &nmea0183::GGA) {
         self.latitude = Some(gga.latitude.as_f64() as f32);
         self.longitude = Some(gga.longitude.as_f64() as f32);
-        self.altitude = Some(gga.altitude.meters);
+        self.altitude = gga.altitude.as_ref().map(|a| a.meters);
         self.satellites = Some(gga.sat_in_use);
 
         // Determine fix type based on altitude availability
-        self.fix_type = Some(if gga.altitude.meters.abs() > 0.01 {
-            GpsFixType::Fix3D
-        } else {
-            GpsFixType::Fix2D
-        });
+        self.fix_type = Some(
+            if gga
+                .altitude
+                .as_ref()
+                .map(|a| a.meters.abs() > 0.01)
+                .unwrap_or(false)
+            {
+                GpsFixType::Fix3D
+            } else {
+                GpsFixType::Fix2D
+            },
+        );
     }
 
     /// Update from RMC sentence

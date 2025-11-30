@@ -38,8 +38,8 @@ required-features = ["pico2_w"]
 [dependencies]
 cortex-m = { version = "0.7", optional = true }
 cortex-m-rt = { version = "0.7", optional = true }
-defmt = { version = "1.0", optional = true }
-defmt-rtt = { version = "1.0", optional = true }
+defmt = { version = "1.0.1", optional = true }
+defmt-rtt = { version = "1.0.1", optional = true }
 panic-probe = { version = "1.0", features = ["print-defmt"], optional = true }
 panic-halt = "1.0"
 
@@ -62,13 +62,13 @@ cyw43 = { git = "https://github.com/embassy-rs/embassy", features = ["firmware-l
 cyw43-pio = { git = "https://github.com/embassy-rs/embassy", optional = true }
 
 # Static cell for embassy static variables
-static_cell = { version = "2.1", optional = true }
+static_cell = { version = "2.1.1", optional = true }
 
 # Embassy embedded HAL utilities (for shared I2C bus, etc.)
 embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", optional = true }
 
 # heapless for no_std collections (required for parameter storage)
-heapless = "0.8"
+heapless = "0.9"
 
 # Heap allocator for no_std (required for Box in mode manager)
 embedded-alloc = { version = "0.6", optional = true }
@@ -78,25 +78,25 @@ embedded-alloc = { version = "0.6", optional = true }
 critical-section = "1.2"
 
 # CRC calculation for Flash parameter storage (no_std compatible)
-crc = { version = "3.2", default-features = false }
+crc = { version = "3.4", default-features = false }
 
 # Bitflags for parameter flags
-bitflags = "2.6"
+bitflags = "2.10"
 
 # MAVLink 2.0 protocol (FR-gpzpz: MAVLink Protocol)
-mavlink = { version = "0.16.1", default-features = false, features = ["embedded", "common", "emit-extensions"] }
+mavlink = { version = "0.16.2", default-features = false, features = ["embedded", "common", "emit-extensions"] }
 embedded-io = "0.6"
 embedded-io-async = "0.6"
 
 # AHRS subsystem dependencies (FR-eyuh8: AHRS Attitude Estimation)
-nalgebra = { version = "0.33", default-features = false, features = ["libm"] }
+nalgebra = { version = "0.34", default-features = false, features = ["libm"] }
 micromath = "2.1"
 
 # Math functions for no_std (FR-2vbe8: Navigation Controller)
 libm = "0.2"
 
 # GPS NMEA parser (FR-qfwhl: GPS I2C Driver)
-nmea0183 = { version = "0.3", default-features = false }
+nmea0183 = { version = "0.6", default-features = false }
 
 # Platform HALs (optional, enabled via features)
 rp235x-hal = { version = "0.3.0", optional = true }
@@ -163,4 +163,4 @@ usb_serial = ["pico2_w"]  # Enable USB Serial logging (requires pico2_w)
 mock = []
 
 [build-dependencies]
-tempfile = "3.14"
+tempfile = "3.23"

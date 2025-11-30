@@ -44,7 +44,8 @@
 use crate::platform::traits::FlashInterface;
 use crate::platform::Result;
 use bitflags::bitflags;
-use heapless::{FnvIndexMap, String, Vec};
+use heapless::index_map::FnvIndexMap;
+use heapless::{String, Vec};
 
 /// Parameter block base address (Flash offset)
 const PARAM_BLOCK_BASE: u32 = 0x040000; // 256 KB

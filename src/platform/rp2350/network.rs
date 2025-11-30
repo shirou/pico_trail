@@ -283,7 +283,7 @@ pub async fn initialize_wifi(
                 config.gateway[2],
                 config.gateway[3],
             )),
-            dns_servers: heapless::Vec::new(),
+            dns_servers: Default::default(),
         })
     };
 

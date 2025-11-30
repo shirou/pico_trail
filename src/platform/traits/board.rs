@@ -117,7 +117,7 @@ impl BoardPinConfig {
     /// Returns `PinError::InvalidGpio` if a GPIO number is invalid
     /// Returns `PinError::InvalidGpio` if ADC pin is not on a valid ADC channel
     pub fn validate(&self) -> Result<(), PinError> {
-        use heapless::FnvIndexSet;
+        use heapless::index_set::FnvIndexSet;
 
         const RP2350_MAX_GPIO: u8 = 29;
         const RP2350_ADC_MIN: u8 = 26;
