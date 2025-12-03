@@ -116,6 +116,12 @@ impl MessageDispatcher {
 
             PARAM_SET(data) => match self.param_handler.handle_set(data) {
                 Ok(msg) => {
+                    // Sync parameter-based fields to global SYSTEM_STATE
+                    critical_section::with(|cs| {
+                        super::state::SYSTEM_STATE
+                            .borrow_ref_mut(cs)
+                            .sync_from_params(self.param_handler.store());
+                    });
                     let mut responses = Vec::new();
                     let _ = responses.push(msg);
                     responses

@@ -173,16 +173,28 @@ impl ArmingChecker {
 /// Battery voltage check
 ///
 /// Verifies that battery voltage is above the minimum arming threshold.
-/// Currently uses the hardcoded critical threshold (10.0V).
+/// Uses the BATT_ARM_VOLT parameter from SystemState.
 ///
-/// In the future, this will check against BATT_ARM_VOLT parameter.
+/// If BATT_ARM_VOLT is 0, the battery voltage check is disabled.
 pub struct BatteryVoltageCheck;
 
 impl PreArmCheck for BatteryVoltageCheck {
     fn check(&self, state: &SystemState) -> CheckResult {
-        if state.battery.is_critical() {
+        // If BATT_ARM_VOLT is 0, skip the battery voltage check
+        if state.battery_arm_volt == 0.0 {
+            crate::log_debug!("Battery voltage check disabled (BATT_ARM_VOLT=0)");
+            return Ok(());
+        }
+
+        // Check if battery voltage is below the arming threshold
+        if state.battery.voltage < state.battery_arm_volt {
+            crate::log_warn!(
+                "Battery voltage {}V below minimum {}V",
+                state.battery.voltage,
+                state.battery_arm_volt
+            );
             Err(ArmingError::CheckFailed {
-                reason: "Battery voltage below minimum (< 10.0V)",
+                reason: "Battery voltage below BATT_ARM_VOLT",
                 category: CheckCategory::Battery,
             })
         } else {
@@ -256,6 +268,7 @@ mod tests {
     fn test_battery_check_passes() {
         let mut state = SystemState::new();
         state.battery.voltage = 12.0;
+        state.battery_arm_volt = 10.5; // Default threshold
 
         let check = BatteryVoltageCheck;
         assert!(check.check(&state).is_ok());
@@ -264,7 +277,8 @@ mod tests {
     #[test]
     fn test_battery_check_fails_low_voltage() {
         let mut state = SystemState::new();
-        state.battery.voltage = 9.0; // Below critical (10.0V)
+        state.battery.voltage = 9.0; // Below BATT_ARM_VOLT threshold
+        state.battery_arm_volt = 10.5;
 
         let check = BatteryVoltageCheck;
         let result = check.check(&state);
@@ -272,10 +286,36 @@ mod tests {
 
         if let Err(ArmingError::CheckFailed { reason, category }) = result {
             assert_eq!(category, CheckCategory::Battery);
-            assert!(reason.contains("voltage"));
+            assert!(reason.contains("voltage") || reason.contains("BATT_ARM_VOLT"));
         } else {
             panic!("Expected CheckFailed error");
         }
+    }
+
+    #[test]
+    fn test_battery_check_disabled_when_zero() {
+        let mut state = SystemState::new();
+        state.battery.voltage = 5.0; // Very low voltage
+        state.battery_arm_volt = 0.0; // Disabled
+
+        let check = BatteryVoltageCheck;
+        // Should pass even with very low voltage because check is disabled
+        assert!(check.check(&state).is_ok());
+    }
+
+    #[test]
+    fn test_battery_check_uses_custom_threshold() {
+        let mut state = SystemState::new();
+        state.battery_arm_volt = 8.0; // Custom low threshold
+
+        // Voltage below custom threshold - should fail
+        state.battery.voltage = 7.5;
+        let check = BatteryVoltageCheck;
+        assert!(check.check(&state).is_err());
+
+        // Voltage above custom threshold - should pass
+        state.battery.voltage = 8.5;
+        assert!(check.check(&state).is_ok());
     }
 
     #[test]

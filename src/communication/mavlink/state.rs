@@ -288,6 +288,9 @@ pub struct SystemState {
     /// Battery voltage multiplier for ADC conversion (BATT_VOLT_MULT parameter)
     /// Default: 3.95 (Freenove voltage divider coefficient)
     pub battery_volt_mult: f32,
+    /// Minimum battery voltage to arm (BATT_ARM_VOLT parameter)
+    /// Default: 10.5V. Set to 0 to disable battery voltage check.
+    pub battery_arm_volt: f32,
 }
 
 impl Default for SystemState {
@@ -302,6 +305,7 @@ impl Default for SystemState {
             cpu_load: 0.0,
             arming_checks: 0xFFFF, // All checks enabled by default
             battery_volt_mult: 3.95,
+            battery_arm_volt: 10.5,
         }
     }
 }
@@ -319,6 +323,7 @@ impl SystemState {
             cpu_load: 0.0,
             arming_checks: 0xFFFF, // All checks enabled by default
             battery_volt_mult: 3.95,
+            battery_arm_volt: 10.5,
         }
     }
 
@@ -365,7 +370,30 @@ impl SystemState {
             cpu_load: 0.0,
             arming_checks: arming_params.check_bitmask as u16,
             battery_volt_mult: battery_params.volt_mult,
+            battery_arm_volt: battery_params.arm_voltage,
         }
+    }
+
+    /// Sync parameter-based fields from parameter store
+    ///
+    /// Call this after parameters are changed via MAVLink (PARAM_SET) to ensure
+    /// the SystemState reflects the current parameter values.
+    ///
+    /// # Parameters synced
+    ///
+    /// - `arming_checks` from ARMING_CHECK
+    /// - `battery_volt_mult` from BATT_VOLT_MULT
+    /// - `battery_arm_volt` from BATT_ARM_VOLT
+    pub fn sync_from_params(&mut self, param_store: &crate::parameters::storage::ParameterStore) {
+        use crate::parameters::arming::ArmingParams;
+        use crate::parameters::battery::BatteryParams;
+
+        let arming_params = ArmingParams::from_store(param_store);
+        let battery_params = BatteryParams::from_store(param_store);
+
+        self.arming_checks = arming_params.check_bitmask as u16;
+        self.battery_volt_mult = battery_params.volt_mult;
+        self.battery_arm_volt = battery_params.arm_voltage;
     }
 
     /// Check if vehicle is armed
