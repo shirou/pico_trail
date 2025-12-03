@@ -25,7 +25,8 @@
 
 use crate::communication::mavlink::state::{FlightMode, SystemState};
 use crate::communication::mavlink::status_notifier;
-use heapless::Vec;
+use core::fmt::Write;
+use heapless::{String, Vec};
 use mavlink::common::{
     MavCmd, MavMessage, MavResult, COMMAND_ACK_DATA, COMMAND_LONG_DATA, PROTOCOL_VERSION_DATA,
 };
@@ -141,9 +142,25 @@ impl CommandHandler {
                     }
                     (MavResult::MAV_RESULT_ACCEPTED, true, Vec::new())
                 }
-                Err(_reason) => {
-                    crate::log_warn!("Arm rejected");
-                    status_notifier::send_error("Arm rejected");
+                Err(reason) => {
+                    // Build detailed error message for GCS
+                    let mut msg: String<64> = String::new();
+                    match &reason {
+                        crate::core::arming::ArmingError::CheckFailed {
+                            reason: r,
+                            category,
+                        } => {
+                            let _ = write!(msg, "PreArm: {}: {}", category, r);
+                        }
+                        crate::core::arming::ArmingError::InitializationFailed { subsystem } => {
+                            let _ = write!(msg, "Arm: {} init failed", subsystem);
+                        }
+                        crate::core::arming::ArmingError::AlreadyArmed => {
+                            let _ = write!(msg, "Arm: Already armed");
+                        }
+                    }
+                    crate::log_warn!("{}", msg.as_str());
+                    status_notifier::send_error(&msg);
                     // TODO: Investigate duplicate STATUSTEXT messages
                     // Current observation: ARM/DISARM status messages sometimes appear twice in GCS
                     // Possible causes:
@@ -178,9 +195,25 @@ impl CommandHandler {
                     }
                     (MavResult::MAV_RESULT_ACCEPTED, true, Vec::new())
                 }
-                Err(_reason) => {
-                    crate::log_warn!("Disarm rejected");
-                    status_notifier::send_error("Disarm rejected");
+                Err(reason) => {
+                    // Build detailed error message for GCS
+                    let mut msg: String<64> = String::new();
+                    match &reason {
+                        crate::core::arming::DisarmError::ValidationFailed { reason: r } => {
+                            let _ = write!(msg, "Disarm: {}", r);
+                        }
+                        crate::core::arming::DisarmError::NotArmed => {
+                            let _ = write!(msg, "Disarm: Not armed");
+                        }
+                        crate::core::arming::DisarmError::ThrottleNotLow { current } => {
+                            let _ = write!(msg, "Disarm: Throttle {:.0}% (needs <10%)", current);
+                        }
+                        crate::core::arming::DisarmError::VelocityTooHigh { current, max } => {
+                            let _ = write!(msg, "Disarm: Speed {:.1}m/s (max {:.1})", current, max);
+                        }
+                    }
+                    crate::log_warn!("{}", msg.as_str());
+                    status_notifier::send_error(&msg);
                     (MavResult::MAV_RESULT_DENIED, false, Vec::new())
                 }
             }
