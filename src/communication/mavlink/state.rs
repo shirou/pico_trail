@@ -139,6 +139,52 @@ impl FlightMode {
             _ => None,
         }
     }
+
+    /// Convert to MAVLink base_mode flags
+    ///
+    /// Returns the appropriate MavModeFlag bitmask for this flight mode.
+    /// The armed flag should be OR'd separately based on arm state.
+    ///
+    /// Key flags:
+    /// - CUSTOM_MODE_ENABLED (1): Always set to indicate custom_mode field is valid
+    /// - MANUAL_INPUT_ENABLED (64): RC input is being used
+    /// - STABILIZE_ENABLED (16): Attitude stabilization active
+    /// - GUIDED_ENABLED (8): Guided mode (external position commands)
+    /// - AUTO_ENABLED (4): Autonomous mode (waypoint following)
+    pub fn to_base_mode_flags(self) -> u8 {
+        use mavlink::common::MavModeFlag;
+
+        // Always set CUSTOM_MODE_ENABLED so GCS reads custom_mode field
+        let mut flags = MavModeFlag::MAV_MODE_FLAG_CUSTOM_MODE_ENABLED;
+
+        match self {
+            FlightMode::Manual => {
+                flags |= MavModeFlag::MAV_MODE_FLAG_MANUAL_INPUT_ENABLED;
+            }
+            FlightMode::Stabilize => {
+                flags |= MavModeFlag::MAV_MODE_FLAG_MANUAL_INPUT_ENABLED;
+                flags |= MavModeFlag::MAV_MODE_FLAG_STABILIZE_ENABLED;
+            }
+            FlightMode::Loiter => {
+                flags |= MavModeFlag::MAV_MODE_FLAG_STABILIZE_ENABLED;
+                flags |= MavModeFlag::MAV_MODE_FLAG_GUIDED_ENABLED;
+            }
+            FlightMode::Auto => {
+                flags |= MavModeFlag::MAV_MODE_FLAG_STABILIZE_ENABLED;
+                flags |= MavModeFlag::MAV_MODE_FLAG_AUTO_ENABLED;
+            }
+            FlightMode::Guided => {
+                flags |= MavModeFlag::MAV_MODE_FLAG_STABILIZE_ENABLED;
+                flags |= MavModeFlag::MAV_MODE_FLAG_GUIDED_ENABLED;
+            }
+            FlightMode::Rtl => {
+                flags |= MavModeFlag::MAV_MODE_FLAG_STABILIZE_ENABLED;
+                flags |= MavModeFlag::MAV_MODE_FLAG_AUTO_ENABLED;
+            }
+        }
+
+        flags.bits()
+    }
 }
 
 /// Battery state
@@ -683,6 +729,51 @@ mod tests {
         assert_eq!(FlightMode::from_custom_mode(10), Some(FlightMode::Auto));
         assert_eq!(FlightMode::from_custom_mode(15), Some(FlightMode::Guided));
         assert_eq!(FlightMode::from_custom_mode(99), None);
+    }
+
+    #[test]
+    fn test_flight_mode_to_base_mode_flags() {
+        use mavlink::common::MavModeFlag;
+
+        // All modes should have CUSTOM_MODE_ENABLED set
+        let custom_enabled = MavModeFlag::MAV_MODE_FLAG_CUSTOM_MODE_ENABLED.bits();
+
+        // Manual: CUSTOM_MODE_ENABLED | MANUAL_INPUT_ENABLED
+        let flags = FlightMode::Manual.to_base_mode_flags();
+        assert!(
+            flags & custom_enabled != 0,
+            "Manual should have CUSTOM_MODE_ENABLED"
+        );
+        assert!(
+            flags & MavModeFlag::MAV_MODE_FLAG_MANUAL_INPUT_ENABLED.bits() != 0,
+            "Manual should have MANUAL_INPUT_ENABLED"
+        );
+
+        // Guided: CUSTOM_MODE_ENABLED | STABILIZE_ENABLED | GUIDED_ENABLED
+        let flags = FlightMode::Guided.to_base_mode_flags();
+        assert!(
+            flags & custom_enabled != 0,
+            "Guided should have CUSTOM_MODE_ENABLED"
+        );
+        assert!(
+            flags & MavModeFlag::MAV_MODE_FLAG_GUIDED_ENABLED.bits() != 0,
+            "Guided should have GUIDED_ENABLED"
+        );
+        assert!(
+            flags & MavModeFlag::MAV_MODE_FLAG_STABILIZE_ENABLED.bits() != 0,
+            "Guided should have STABILIZE_ENABLED"
+        );
+
+        // Auto: CUSTOM_MODE_ENABLED | STABILIZE_ENABLED | AUTO_ENABLED
+        let flags = FlightMode::Auto.to_base_mode_flags();
+        assert!(
+            flags & custom_enabled != 0,
+            "Auto should have CUSTOM_MODE_ENABLED"
+        );
+        assert!(
+            flags & MavModeFlag::MAV_MODE_FLAG_AUTO_ENABLED.bits() != 0,
+            "Auto should have AUTO_ENABLED"
+        );
     }
 
     #[test]

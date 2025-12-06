@@ -86,9 +86,11 @@ impl CommandHandler {
             MavCmd::MAV_CMD_DO_REPOSITION => (self.handle_do_reposition(cmd), false, Vec::new()),
             // These commands are marked deprecated in mavlink crate but still used by Mission Planner
             #[allow(deprecated)]
-            MavCmd::MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES => {
-                (self.handle_request_autopilot_capabilities(), false, Vec::new())
-            }
+            MavCmd::MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES => (
+                self.handle_request_autopilot_capabilities(),
+                false,
+                Vec::new(),
+            ),
             #[allow(deprecated)]
             MavCmd::MAV_CMD_REQUEST_CAMERA_INFORMATION => {
                 // Camera not supported - silently return unsupported to avoid log spam
@@ -416,15 +418,21 @@ impl CommandHandler {
         use crate::communication::mavlink::state::SYSTEM_STATE;
         use mavlink::common::{MavAutopilot, MavModeFlag, MavState, MavType, HEARTBEAT_DATA};
 
-        let is_armed = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).is_armed());
-        let base_mode = if is_armed {
-            MavModeFlag::MAV_MODE_FLAG_SAFETY_ARMED
-        } else {
-            MavModeFlag::empty()
-        };
+        let (is_armed, mode) = critical_section::with(|cs| {
+            let state = SYSTEM_STATE.borrow_ref(cs);
+            (state.is_armed(), state.mode)
+        });
+
+        // Get base mode flags from flight mode (includes CUSTOM_MODE_ENABLED)
+        let mut base_mode = MavModeFlag::from_bits_truncate(mode.to_base_mode_flags());
+
+        // Add armed flag if armed
+        if is_armed {
+            base_mode |= MavModeFlag::MAV_MODE_FLAG_SAFETY_ARMED;
+        }
 
         MavMessage::HEARTBEAT(HEARTBEAT_DATA {
-            custom_mode: 0,
+            custom_mode: mode.to_custom_mode(),
             mavtype: MavType::MAV_TYPE_GROUND_ROVER,
             autopilot: MavAutopilot::MAV_AUTOPILOT_GENERIC,
             base_mode,

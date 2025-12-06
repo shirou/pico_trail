@@ -252,14 +252,16 @@ impl TelemetryStreamer {
 
     /// Build HEARTBEAT message
     fn build_heartbeat(&self, state: &SystemState) -> Option<MavMessage> {
-        let base_mode = if state.is_armed() {
-            MavModeFlag::MAV_MODE_FLAG_SAFETY_ARMED
-        } else {
-            MavModeFlag::empty()
-        };
+        // Get base mode flags from flight mode (includes CUSTOM_MODE_ENABLED)
+        let mut base_mode = MavModeFlag::from_bits_truncate(state.mode.to_base_mode_flags());
+
+        // Add armed flag if armed
+        if state.is_armed() {
+            base_mode |= MavModeFlag::MAV_MODE_FLAG_SAFETY_ARMED;
+        }
 
         Some(MavMessage::HEARTBEAT(HEARTBEAT_DATA {
-            custom_mode: 0,
+            custom_mode: state.mode.to_custom_mode(),
             mavtype: MavType::MAV_TYPE_GROUND_ROVER, // Rover/boat autopilot
             autopilot: MavAutopilot::MAV_AUTOPILOT_GENERIC,
             base_mode,
