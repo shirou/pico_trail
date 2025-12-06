@@ -80,9 +80,17 @@ impl<V: VehicleType> CommandHandler<V> {
     /// Returns COMMAND_ACK message and optional additional messages (HEARTBEAT, STATUSTEXT) to send back to GCS.
     /// The HEARTBEAT is sent immediately after arm/disarm to update GCS state without waiting.
     /// The STATUSTEXT is sent for force-arm/disarm operations to warn the operator.
+    ///
+    /// # Arguments
+    ///
+    /// * `cmd` - The COMMAND_LONG message data
+    /// * `sender_system_id` - System ID of the sender (from MAVLink header)
+    /// * `sender_component_id` - Component ID of the sender (from MAVLink header)
     pub fn handle_command_long(
         &mut self,
         cmd: &COMMAND_LONG_DATA,
+        sender_system_id: u8,
+        sender_component_id: u8,
     ) -> (COMMAND_ACK_DATA, Vec<MavMessage, 4>) {
         crate::log_debug!("Received COMMAND_LONG: command={}", cmd.command as u32);
 
@@ -120,10 +128,10 @@ impl<V: VehicleType> CommandHandler<V> {
         let ack = COMMAND_ACK_DATA {
             command: cmd.command,
             result,
-            progress: 0,         // MAVLink v2 extension
-            result_param2: 0,    // MAVLink v2 extension
-            target_system: 0,    // MAVLink v2 extension
-            target_component: 0, // MAVLink v2 extension
+            progress: 0,                           // MAVLink v2 extension
+            result_param2: 0,                      // MAVLink v2 extension
+            target_system: sender_system_id,       // Reply to sender
+            target_component: sender_component_id, // Reply to sender
         };
 
         let mut messages = extra_messages;
@@ -419,9 +427,17 @@ impl<V: VehicleType> CommandHandler<V> {
     /// - MAV_CMD_DO_SET_HOME (179): Set home position
     ///
     /// Returns COMMAND_ACK message and optional additional messages (HOME_POSITION) to send back to GCS.
+    ///
+    /// # Arguments
+    ///
+    /// * `cmd` - The COMMAND_INT message data
+    /// * `sender_system_id` - System ID of the sender (from MAVLink header)
+    /// * `sender_component_id` - Component ID of the sender (from MAVLink header)
     pub fn handle_command_int(
         &mut self,
         cmd: &COMMAND_INT_DATA,
+        sender_system_id: u8,
+        sender_component_id: u8,
     ) -> (COMMAND_ACK_DATA, Vec<MavMessage, 4>) {
         crate::log_debug!("Received COMMAND_INT: command={}", cmd.command as u32);
 
@@ -438,8 +454,8 @@ impl<V: VehicleType> CommandHandler<V> {
             result,
             progress: 0,
             result_param2: 0,
-            target_system: 0,
-            target_component: 0,
+            target_system: sender_system_id,       // Reply to sender
+            target_component: sender_component_id, // Reply to sender
         };
 
         (ack, extra_messages)
@@ -687,9 +703,11 @@ mod tests {
         let mut handler = TestHandler::new();
 
         let cmd = create_command_long(MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, 1.0, 0.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1); // GCS sender IDs
 
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+        assert_eq!(ack.target_system, 255); // Reply to GCS
+        assert_eq!(ack.target_component, 1);
         assert!(handler.state().is_armed());
     }
 
@@ -705,7 +723,7 @@ mod tests {
         let mut handler = TestHandler::new();
 
         let cmd = create_command_long(MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, 1.0, 0.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
     }
@@ -721,7 +739,7 @@ mod tests {
         let mut handler = TestHandler::new();
 
         let cmd = create_command_long(MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, 1.0, 0.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
         assert!(!handler.state().is_armed());
@@ -738,7 +756,7 @@ mod tests {
         let mut handler = TestHandler::new();
 
         let cmd = create_command_long(MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, 0.0, 0.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
         assert!(!handler.state().is_armed());
@@ -754,7 +772,7 @@ mod tests {
         let mut handler = TestHandler::new();
 
         let cmd = create_command_long(MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, 0.0, 0.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
     }
@@ -769,7 +787,7 @@ mod tests {
 
         // ArduPilot Rover mode numbers: Auto=10
         let cmd = create_command_long(MavCmd::MAV_CMD_DO_SET_MODE, 0.0, 10.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
         assert_eq!(handler.state().mode, FlightMode::Auto);
@@ -784,7 +802,7 @@ mod tests {
         let mut handler = TestHandler::new();
 
         let cmd = create_command_long(MavCmd::MAV_CMD_DO_SET_MODE, 0.0, 99.0); // Invalid mode
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
     }
@@ -798,7 +816,7 @@ mod tests {
         let mut handler = TestHandler::new();
 
         let cmd = create_command_long(MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION, 1.0, 0.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
     }
@@ -812,7 +830,7 @@ mod tests {
         let mut handler = TestHandler::new();
 
         let cmd = create_command_long(MavCmd::MAV_CMD_NAV_WAYPOINT, 0.0, 0.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.result, MavResult::MAV_RESULT_UNSUPPORTED);
     }
@@ -827,7 +845,7 @@ mod tests {
 
         let cmd = create_command_long(MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION, 0.0, 0.0);
 
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION);
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
@@ -843,7 +861,7 @@ mod tests {
 
         // MAV_CMD_REQUEST_MESSAGE with param1=300 (PROTOCOL_VERSION message ID)
         let cmd = create_command_long(MavCmd::MAV_CMD_REQUEST_MESSAGE, 300.0, 0.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_REQUEST_MESSAGE);
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
@@ -871,7 +889,7 @@ mod tests {
 
         // MAV_CMD_REQUEST_MESSAGE with param1=148 (AUTOPILOT_VERSION message ID)
         let cmd = create_command_long(MavCmd::MAV_CMD_REQUEST_MESSAGE, 148.0, 0.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_REQUEST_MESSAGE);
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
@@ -887,7 +905,7 @@ mod tests {
 
         // MAV_CMD_REQUEST_MESSAGE with param1=259 (CAMERA_INFORMATION message ID)
         let cmd = create_command_long(MavCmd::MAV_CMD_REQUEST_MESSAGE, 259.0, 0.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_REQUEST_MESSAGE);
         // Camera is not supported, but should return UNSUPPORTED gracefully
@@ -920,7 +938,7 @@ mod tests {
 
         // Valid coordinates (Tokyo)
         let cmd = create_do_reposition_cmd(35.6762, 139.6503, 100.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_DO_REPOSITION);
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
@@ -936,7 +954,7 @@ mod tests {
 
         // Invalid latitude (> 90)
         let cmd = create_do_reposition_cmd(91.0, 139.6503, 100.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_DO_REPOSITION);
         assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
@@ -952,7 +970,7 @@ mod tests {
 
         // Invalid longitude (> 180)
         let cmd = create_do_reposition_cmd(35.6762, 181.0, 100.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_DO_REPOSITION);
         assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
@@ -968,7 +986,7 @@ mod tests {
 
         // Valid negative coordinates (New York area)
         let cmd = create_do_reposition_cmd(40.7128, -74.0060, 50.0);
-        let (ack, _) = handler.handle_command_long(&cmd);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_DO_REPOSITION);
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
@@ -1010,9 +1028,11 @@ mod tests {
         let lat_e7 = (35.6762 * 1e7) as i32;
         let lon_e7 = (139.6503 * 1e7) as i32;
         let cmd = create_command_int_set_home(false, lat_e7, lon_e7, 100.0);
-        let (ack, messages) = handler.handle_command_int(&cmd);
+        let (ack, messages) = handler.handle_command_int(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_DO_SET_HOME);
+        assert_eq!(ack.target_system, 255); // Reply to GCS
+        assert_eq!(ack.target_component, 1);
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
         // HOME_POSITION message should be included in response
         assert_eq!(messages.len(), 1);
@@ -1041,7 +1061,7 @@ mod tests {
 
         // Try to set home to current location (no GPS)
         let cmd = create_command_int_set_home(true, 0, 0, 0.0);
-        let (ack, messages) = handler.handle_command_int(&cmd);
+        let (ack, messages) = handler.handle_command_int(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_DO_SET_HOME);
         assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
@@ -1070,7 +1090,7 @@ mod tests {
 
         // Set home to current location
         let cmd = create_command_int_set_home(true, 0, 0, 0.0);
-        let (ack, messages) = handler.handle_command_int(&cmd);
+        let (ack, messages) = handler.handle_command_int(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_DO_SET_HOME);
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
@@ -1103,7 +1123,7 @@ mod tests {
         let lat_e7 = (91.0 * 1e7) as i32;
         let lon_e7 = (139.0 * 1e7) as i32;
         let cmd = create_command_int_set_home(false, lat_e7, lon_e7, 100.0);
-        let (ack, messages) = handler.handle_command_int(&cmd);
+        let (ack, messages) = handler.handle_command_int(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_DO_SET_HOME);
         assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
@@ -1123,7 +1143,7 @@ mod tests {
         let lat_e7 = (-34.6037 * 1e7) as i32;
         let lon_e7 = (-58.3816 * 1e7) as i32;
         let cmd = create_command_int_set_home(false, lat_e7, lon_e7, 25.0);
-        let (ack, messages) = handler.handle_command_int(&cmd);
+        let (ack, messages) = handler.handle_command_int(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_DO_SET_HOME);
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
@@ -1167,7 +1187,7 @@ mod tests {
             y: 0,
             z: 0.0,
         };
-        let (ack, messages) = handler.handle_command_int(&cmd);
+        let (ack, messages) = handler.handle_command_int(&cmd, 255, 1);
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_NAV_WAYPOINT);
         assert_eq!(ack.result, MavResult::MAV_RESULT_UNSUPPORTED);

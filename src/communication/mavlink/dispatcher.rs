@@ -110,7 +110,7 @@ impl<V: VehicleType> MessageDispatcher<V> {
     /// Vector of response messages to send back (may be empty)
     pub fn dispatch(
         &mut self,
-        _header: &mavlink::MavHeader,
+        header: &mavlink::MavHeader,
         message: &MavMessage,
         timestamp_us: u64,
     ) -> Vec<MavMessage, MAX_RESPONSES> {
@@ -152,7 +152,11 @@ impl<V: VehicleType> MessageDispatcher<V> {
                 use super::handlers::telemetry::TelemetryStreamer;
                 use mavlink::common::MavCmd;
 
-                let (ack, additional_messages) = self.command_handler.handle_command_long(data);
+                let (ack, additional_messages) = self.command_handler.handle_command_long(
+                    data,
+                    header.system_id,
+                    header.component_id,
+                );
                 let mut responses = Vec::new();
                 let _ = responses.push(COMMAND_ACK(ack));
                 // Add any additional messages (HEARTBEAT, STATUSTEXT, etc.)
@@ -188,7 +192,11 @@ impl<V: VehicleType> MessageDispatcher<V> {
             }
 
             COMMAND_INT(data) => {
-                let (ack, extra_messages) = self.command_handler.handle_command_int(data);
+                let (ack, extra_messages) = self.command_handler.handle_command_int(
+                    data,
+                    header.system_id,
+                    header.component_id,
+                );
                 let mut responses = Vec::new();
                 let _ = responses.push(COMMAND_ACK(ack));
                 // Add extra messages (e.g., HOME_POSITION)
@@ -200,7 +208,12 @@ impl<V: VehicleType> MessageDispatcher<V> {
 
             // Mission protocol
             MISSION_REQUEST_LIST(data) => {
-                let msg = self.mission_handler.handle_request_list(data, timestamp_us);
+                let msg = self.mission_handler.handle_request_list(
+                    data,
+                    timestamp_us,
+                    header.system_id,
+                    header.component_id,
+                );
                 let mut responses = Vec::new();
                 let _ = responses.push(MISSION_COUNT(msg));
                 responses
@@ -214,8 +227,12 @@ impl<V: VehicleType> MessageDispatcher<V> {
                         responses
                     }
                     Err(result) => {
-                        // Send MISSION_ACK with error
-                        let ack = self.mission_handler.create_ack(result, 1, 1);
+                        // Send MISSION_ACK with error - reply to sender
+                        let ack = self.mission_handler.create_ack(
+                            result,
+                            header.system_id,
+                            header.component_id,
+                        );
                         let mut responses = Vec::new();
                         let _ = responses.push(MISSION_ACK(ack));
                         responses
@@ -224,7 +241,12 @@ impl<V: VehicleType> MessageDispatcher<V> {
             }
 
             MISSION_COUNT(data) => {
-                let req = self.mission_handler.handle_count(data, timestamp_us);
+                let req = self.mission_handler.handle_count(
+                    data,
+                    timestamp_us,
+                    header.system_id,
+                    header.component_id,
+                );
                 let mut responses = Vec::new();
                 let _ = responses.push(MISSION_REQUEST_INT(req));
                 responses
@@ -238,18 +260,106 @@ impl<V: VehicleType> MessageDispatcher<V> {
                         responses
                     }
                     Ok(None) => {
-                        // Upload complete, send ACK
+                        // Upload complete, send ACK - reply to sender
                         let ack = self.mission_handler.create_ack(
                             mavlink::common::MavMissionResult::MAV_MISSION_ACCEPTED,
-                            1,
-                            1,
+                            header.system_id,
+                            header.component_id,
                         );
                         let mut responses = Vec::new();
                         let _ = responses.push(MISSION_ACK(ack));
                         responses
                     }
                     Err(result) => {
-                        let ack = self.mission_handler.create_ack(result, 1, 1);
+                        let ack = self.mission_handler.create_ack(
+                            result,
+                            header.system_id,
+                            header.component_id,
+                        );
+                        let mut responses = Vec::new();
+                        let _ = responses.push(MISSION_ACK(ack));
+                        responses
+                    }
+                }
+            }
+
+            // MISSION_ITEM (deprecated since 2020-06) - convert to MISSION_ITEM_INT format
+            // Mission Planner uses this for "Fly Here" command
+            #[allow(deprecated)]
+            MISSION_ITEM(data) => {
+                use mavlink::common::MISSION_ITEM_INT_DATA;
+
+                // Debug: log incoming MISSION_ITEM details
+                crate::log_debug!(
+                    "MISSION_ITEM: seq={} frame={} cmd={} current={} lat={} lon={} alt={} target=({},{})",
+                    data.seq,
+                    data.frame as u8,
+                    data.command as u16,
+                    data.current,
+                    data.x,
+                    data.y,
+                    data.z,
+                    data.target_system,
+                    data.target_component
+                );
+
+                // Convert float lat/lon (degrees) to int32 (degE7)
+                let int_data = MISSION_ITEM_INT_DATA {
+                    target_system: data.target_system,
+                    target_component: data.target_component,
+                    seq: data.seq,
+                    frame: data.frame,
+                    command: data.command,
+                    current: data.current,
+                    autocontinue: data.autocontinue,
+                    param1: data.param1,
+                    param2: data.param2,
+                    param3: data.param3,
+                    param4: data.param4,
+                    x: (data.x as f64 * 1e7) as i32,
+                    y: (data.y as f64 * 1e7) as i32,
+                    z: data.z,
+                    mission_type: data.mission_type,
+                };
+
+                match self
+                    .mission_handler
+                    .handle_item_int(&int_data, timestamp_us)
+                {
+                    Ok(Some(req)) => {
+                        let mut responses = Vec::new();
+                        let _ = responses.push(MISSION_REQUEST_INT(req));
+                        responses
+                    }
+                    Ok(None) => {
+                        // ACK target is the sender (from header)
+                        let ack = self.mission_handler.create_ack(
+                            mavlink::common::MavMissionResult::MAV_MISSION_ACCEPTED,
+                            header.system_id,
+                            header.component_id,
+                        );
+                        crate::log_debug!(
+                            "MISSION_ACK: result={} target=({},{})",
+                            ack.mavtype as u8,
+                            ack.target_system,
+                            ack.target_component
+                        );
+                        let mut responses = Vec::new();
+                        let _ = responses.push(MISSION_ACK(ack));
+                        responses
+                    }
+                    Err(result) => {
+                        let ack = self.mission_handler.create_ack(
+                            result,
+                            header.system_id,
+                            header.component_id,
+                        );
+                        crate::log_debug!(
+                            "MISSION_ACK error: result={} target=({},{})",
+                            ack.mavtype as u8,
+                            ack.target_system,
+                            ack.target_component
+                        );
                         let mut responses = Vec::new();
                         let _ = responses.push(MISSION_ACK(ack));
                         responses
@@ -325,12 +435,14 @@ impl<V: VehicleType> MessageDispatcher<V> {
     ///
     /// Optional MISSION_ACK message if timeout occurred
     pub fn check_mission_timeout(&mut self, timestamp_us: u64) -> Option<MavMessage> {
-        if self.mission_handler.check_timeout(timestamp_us) {
-            // Timeout occurred, send MISSION_ACK with error
+        if let Some((sender_system_id, sender_component_id)) =
+            self.mission_handler.check_timeout(timestamp_us)
+        {
+            // Timeout occurred, send MISSION_ACK with error to the original sender
             let ack = self.mission_handler.create_ack(
                 mavlink::common::MavMissionResult::MAV_MISSION_OPERATION_CANCELLED,
-                1,
-                1,
+                sender_system_id,
+                sender_component_id,
             );
             Some(MavMessage::MISSION_ACK(ack))
         } else {

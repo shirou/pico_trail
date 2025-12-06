@@ -48,11 +48,19 @@ pub enum MissionState {
         next_seq: u16,
         /// Last activity timestamp (microseconds)
         last_activity_us: u64,
+        /// Sender's system ID for ACK response
+        sender_system_id: u8,
+        /// Sender's component ID for ACK response
+        sender_component_id: u8,
     },
     /// Download in progress (Autopilot → GCS)
     DownloadInProgress {
         /// Last activity timestamp (microseconds)
         last_activity_us: u64,
+        /// Sender's system ID for ACK response
+        sender_system_id: u8,
+        /// Sender's component ID for ACK response
+        sender_component_id: u8,
     },
 }
 
@@ -117,22 +125,29 @@ impl MissionHandler {
     ///
     /// # Returns
     ///
-    /// Returns true if timeout occurred and transfer was aborted
-    pub fn check_timeout(&mut self, current_time_us: u64) -> bool {
+    /// Returns Some((sender_system_id, sender_component_id)) if timeout occurred, None otherwise
+    pub fn check_timeout(&mut self, current_time_us: u64) -> Option<(u8, u8)> {
         match self.state {
             MissionState::UploadInProgress {
-                last_activity_us, ..
+                last_activity_us,
+                sender_system_id,
+                sender_component_id,
+                ..
             }
-            | MissionState::DownloadInProgress { last_activity_us } => {
+            | MissionState::DownloadInProgress {
+                last_activity_us,
+                sender_system_id,
+                sender_component_id,
+            } => {
                 if current_time_us - last_activity_us > MISSION_TIMEOUT_US {
                     crate::log_warn!("Mission transfer timeout, aborting");
                     self.abort_transfer();
-                    true
+                    Some((sender_system_id, sender_component_id))
                 } else {
-                    false
+                    None
                 }
             }
-            MissionState::Idle => false,
+            MissionState::Idle => None,
         }
     }
 
@@ -154,19 +169,30 @@ impl MissionHandler {
     /// Handle MISSION_REQUEST_LIST message
     ///
     /// Initiates mission download from autopilot to GCS.
+    ///
+    /// # Arguments
+    ///
+    /// * `_data` - The MISSION_REQUEST_LIST message data
+    /// * `current_time_us` - Current timestamp in microseconds
+    /// * `sender_system_id` - System ID of the sender (from MAVLink header)
+    /// * `sender_component_id` - Component ID of the sender (from MAVLink header)
     pub fn handle_request_list(
         &mut self,
         _data: &MISSION_REQUEST_LIST_DATA,
         current_time_us: u64,
+        sender_system_id: u8,
+        sender_component_id: u8,
     ) -> MISSION_COUNT_DATA {
         crate::log_info!("Mission download requested");
         self.state = MissionState::DownloadInProgress {
             last_activity_us: current_time_us,
+            sender_system_id,
+            sender_component_id,
         };
 
         MISSION_COUNT_DATA {
-            target_system: 255, // GCS
-            target_component: 0,
+            target_system: sender_system_id,       // Reply to sender
+            target_component: sender_component_id, // Reply to sender
             count: self.storage.count(),
             mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION, // MAVLink v2 extension
             opaque_id: 0,                                           // MAVLink v2 extension
@@ -181,9 +207,15 @@ impl MissionHandler {
         data: &MISSION_REQUEST_INT_DATA,
         current_time_us: u64,
     ) -> Result<MISSION_ITEM_INT_DATA, MavMissionResult> {
-        // Update activity timestamp
-        if let MissionState::DownloadInProgress { last_activity_us } = &mut self.state {
+        // Update activity timestamp while preserving sender IDs
+        if let MissionState::DownloadInProgress {
+            last_activity_us,
+            sender_system_id,
+            sender_component_id,
+        } = &mut self.state
+        {
             *last_activity_us = current_time_us;
+            let _ = (*sender_system_id, *sender_component_id); // keep sender IDs
         } else {
             crate::log_warn!("Received MISSION_REQUEST_INT while not downloading");
             return Err(MavMissionResult::MAV_MISSION_ERROR);
@@ -205,10 +237,19 @@ impl MissionHandler {
     /// Handle MISSION_COUNT message
     ///
     /// Initiates mission upload from GCS to autopilot.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The MISSION_COUNT message data
+    /// * `current_time_us` - Current timestamp in microseconds
+    /// * `sender_system_id` - System ID of the sender (from MAVLink header)
+    /// * `sender_component_id` - Component ID of the sender (from MAVLink header)
     pub fn handle_count(
         &mut self,
         data: &MISSION_COUNT_DATA,
         current_time_us: u64,
+        sender_system_id: u8,
+        sender_component_id: u8,
     ) -> MISSION_REQUEST_INT_DATA {
         let count = data.count;
         crate::log_info!("Mission upload started: {} waypoints", count);
@@ -220,12 +261,14 @@ impl MissionHandler {
             count,
             next_seq: 0,
             last_activity_us: current_time_us,
+            sender_system_id,
+            sender_component_id,
         };
 
-        // Request first waypoint
+        // Request first waypoint - reply to sender
         MISSION_REQUEST_INT_DATA {
-            target_system: data.target_system,
-            target_component: data.target_component,
+            target_system: sender_system_id,
+            target_component: sender_component_id,
             seq: 0,
             mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION, // MAVLink v2 extension
         }
@@ -244,6 +287,8 @@ impl MissionHandler {
                 count,
                 next_seq,
                 last_activity_us: _,
+                sender_system_id,
+                sender_component_id,
             } => {
                 // Verify sequence number
                 if data.seq != next_seq {
@@ -266,12 +311,14 @@ impl MissionHandler {
 
                 crate::log_debug!("Received waypoint {}/{}", next_seq + 1, count);
 
-                // Update state
+                // Update state - preserve sender IDs
                 let new_next_seq = next_seq + 1;
                 self.state = MissionState::UploadInProgress {
                     count,
                     next_seq: new_next_seq,
                     last_activity_us: current_time_us,
+                    sender_system_id,
+                    sender_component_id,
                 };
 
                 // Check if upload complete
@@ -280,17 +327,40 @@ impl MissionHandler {
                     self.state = MissionState::Idle;
                     Ok(None) // No more requests, upload complete
                 } else {
-                    // Request next waypoint
+                    // Request next waypoint - reply to sender
                     Ok(Some(MISSION_REQUEST_INT_DATA {
-                        target_system: data.target_system,
-                        target_component: data.target_component,
+                        target_system: sender_system_id,
+                        target_component: sender_component_id,
                         seq: new_next_seq,
                         mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION, // MAVLink v2 extension
                     }))
                 }
             }
-            _ => {
-                crate::log_warn!("Received MISSION_ITEM_INT while not uploading");
+            MissionState::Idle => {
+                // Handle "Fly Here" command from Mission Planner
+                // This sends a single MISSION_ITEM directly without MISSION_COUNT
+                if data.seq == 0 {
+                    crate::log_info!("Fly Here: single waypoint received");
+                    // Clear existing mission and store the single waypoint
+                    self.storage.clear();
+                    self.storage.reserve(1);
+                    let wp = self.mission_item_to_waypoint(data);
+                    if let Err(_e) = self.storage.add_waypoint(wp) {
+                        crate::log_warn!("Failed to add waypoint");
+                        return Err(MavMissionResult::MAV_MISSION_ERROR);
+                    }
+                    // Return None to signal completion (sends MISSION_ACK with ACCEPTED)
+                    Ok(None)
+                } else {
+                    crate::log_warn!(
+                        "Received MISSION_ITEM_INT seq={} while idle (expected 0)",
+                        data.seq
+                    );
+                    Err(MavMissionResult::MAV_MISSION_INVALID_SEQUENCE)
+                }
+            }
+            MissionState::DownloadInProgress { .. } => {
+                crate::log_warn!("Received MISSION_ITEM_INT while downloading");
                 Err(MavMissionResult::MAV_MISSION_ERROR)
             }
         }
@@ -397,7 +467,7 @@ mod tests {
     fn test_upload_flow() {
         let mut handler = MissionHandler::new(1, 1);
 
-        // 1. Receive MISSION_COUNT
+        // 1. Receive MISSION_COUNT (GCS sender: system_id=255, component_id=1)
         let count_msg = MISSION_COUNT_DATA {
             target_system: 1,
             target_component: 1,
@@ -405,8 +475,10 @@ mod tests {
             mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
             opaque_id: 0,
         };
-        let request = handler.handle_count(&count_msg, 0);
+        let request = handler.handle_count(&count_msg, 0, 255, 1);
         assert_eq!(request.seq, 0);
+        assert_eq!(request.target_system, 255); // Reply to GCS
+        assert_eq!(request.target_component, 1);
         assert!(matches!(
             handler.state(),
             MissionState::UploadInProgress { count: 2, .. }
@@ -462,14 +534,16 @@ mod tests {
         handler.storage_mut().add_waypoint(wp1).unwrap();
         handler.storage_mut().add_waypoint(wp2).unwrap();
 
-        // 1. Receive MISSION_REQUEST_LIST
+        // 1. Receive MISSION_REQUEST_LIST (GCS sender: system_id=255, component_id=1)
         let request_list = MISSION_REQUEST_LIST_DATA {
             target_system: 1,
             target_component: 1,
             mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         };
-        let count_msg = handler.handle_request_list(&request_list, 0);
+        let count_msg = handler.handle_request_list(&request_list, 0, 255, 1);
         assert_eq!(count_msg.count, 2);
+        assert_eq!(count_msg.target_system, 255); // Reply to GCS
+        assert_eq!(count_msg.target_component, 1);
         assert!(matches!(
             handler.state(),
             MissionState::DownloadInProgress { .. }
@@ -512,7 +586,7 @@ mod tests {
     fn test_upload_sequence_error() {
         let mut handler = MissionHandler::new(1, 1);
 
-        // Start upload
+        // Start upload (GCS sender: system_id=255, component_id=1)
         let count_msg = MISSION_COUNT_DATA {
             target_system: 1,
             target_component: 1,
@@ -520,7 +594,7 @@ mod tests {
             mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
             opaque_id: 0,
         };
-        handler.handle_count(&count_msg, 0);
+        handler.handle_count(&count_msg, 0, 255, 1);
 
         // Send waypoint with wrong sequence
         let item = MISSION_ITEM_INT_DATA {
@@ -553,7 +627,7 @@ mod tests {
     fn test_timeout() {
         let mut handler = MissionHandler::new(1, 1);
 
-        // Start upload
+        // Start upload (GCS sender: system_id=255, component_id=1)
         let count_msg = MISSION_COUNT_DATA {
             target_system: 1,
             target_component: 1,
@@ -561,11 +635,14 @@ mod tests {
             mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
             opaque_id: 0,
         };
-        handler.handle_count(&count_msg, 0);
+        handler.handle_count(&count_msg, 0, 255, 1);
 
         // Check timeout after 6 seconds (> 5 second timeout)
-        let timed_out = handler.check_timeout(6_000_000);
-        assert!(timed_out);
+        let timeout_result = handler.check_timeout(6_000_000);
+        assert!(timeout_result.is_some());
+        let (sys_id, comp_id) = timeout_result.unwrap();
+        assert_eq!(sys_id, 255); // Original sender's IDs preserved
+        assert_eq!(comp_id, 1);
         assert_eq!(handler.state(), MissionState::Idle);
     }
 
@@ -573,13 +650,13 @@ mod tests {
     fn test_download_waypoint_not_found() {
         let mut handler = MissionHandler::new(1, 1);
 
-        // Start download with empty storage
+        // Start download with empty storage (GCS sender: system_id=255, component_id=1)
         let request_list = MISSION_REQUEST_LIST_DATA {
             target_system: 1,
             target_component: 1,
             mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         };
-        handler.handle_request_list(&request_list, 0);
+        handler.handle_request_list(&request_list, 0, 255, 1);
 
         // Request nonexistent waypoint
         let request = MISSION_REQUEST_INT_DATA {
