@@ -29,13 +29,13 @@
 //! - UDP: Network transport over WiFi
 //! - TCP: Reliable network transport (future)
 
-pub mod dispatcher; // Message dispatcher (routing to handlers)
-pub mod handlers; // Message handlers
-pub mod parser; // Message parsing
-pub mod router; // Protocol message routing
-pub mod state; // System state
-pub mod status_notifier; // STATUSTEXT notification system
-pub mod task; // MAVLink task
-pub mod transport; // Transport abstraction layer
-pub mod transport_router; // Multi-transport routing
-pub mod writer; // Message writing
+pub mod dispatcher;
+pub mod handlers;
+pub mod parser;
+pub mod state;
+pub mod status_notifier;
+pub mod task;
+pub mod transport;
+pub mod transport_router;
+pub mod vehicle;
+pub mod writer;

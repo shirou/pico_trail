@@ -114,6 +114,7 @@ use pico_trail::{
         state::BatteryAdcReader,
         transport::udp::UdpTransport,
         transport_router::TransportRouter,
+        vehicle::GroundRover,
     },
     libraries::{kinematics::DifferentialDrive, motor_driver::MotorGroup, RC_INPUT},
     parameters::wifi::WifiParams,
@@ -323,7 +324,7 @@ async fn main(spawner: Spawner) {
                     let rc_input_handler = RcInputHandler::new();
 
                     // Create message dispatcher
-                    let dispatcher = MessageDispatcher::new(
+                    let dispatcher = MessageDispatcher::<GroundRover>::new(
                         param_handler,
                         command_handler,
                         telemetry_streamer,
@@ -523,7 +524,7 @@ async fn rover_mavlink_task(
         embassy_rp::uart::BufferedUartRx,
         embassy_rp::uart::BufferedUartTx,
     >,
-    mut dispatcher: MessageDispatcher,
+    mut dispatcher: MessageDispatcher<GroundRover>,
     mut adc_reader: Rp2350AdcReader<'static>,
 ) {
     use embassy_time::Instant;

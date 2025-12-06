@@ -5,15 +5,15 @@
 //! # Task Responsibilities
 //!
 //! 1. **Message Reception**: Read MAVLink messages from UART asynchronously
-//! 2. **Message Routing**: Dispatch messages to appropriate handlers via router
-//! 3. **Telemetry Streaming**: Send periodic telemetry messages (Phase 3)
+//! 2. **Message Routing**: Dispatch messages to appropriate handlers via dispatcher
+//! 3. **Telemetry Streaming**: Send periodic telemetry messages
 //! 4. **Connection Monitoring**: Track GCS connection status
 //!
 //! # Integration
 //!
 //! This task integrates with:
-//! - Platform abstraction UART interface (from T-egg4f)
-//! - Task scheduler (from T-g729p)
+//! - Platform abstraction UART interface
+//! - Task scheduler
 //! - System state management (local to this module)
 //!
 //! # Usage
@@ -32,7 +32,15 @@
 //! ```
 
 use super::{
-    parser::MavlinkParser, router::MavlinkRouter, state::SystemState, writer::MavlinkWriter,
+    dispatcher::{DispatcherStats, MessageDispatcher},
+    handlers::{
+        command::CommandHandler, mission::MissionHandler, param::ParamHandler,
+        rc_input::RcInputHandler, telemetry::TelemetryStreamer,
+    },
+    parser::MavlinkParser,
+    state::SystemState,
+    vehicle::{GroundRover, VehicleType},
+    writer::MavlinkWriter,
 };
 use crate::platform::traits::flash::FlashInterface;
 
@@ -63,16 +71,11 @@ impl Default for MavlinkConfig {
 /// MAVLink communication task context
 ///
 /// Contains all state and components needed for MAVLink communication.
-pub struct MavlinkContext<F: FlashInterface> {
-    /// Message parser
+pub struct MavlinkContext<V: VehicleType> {
     parser: MavlinkParser,
-    /// Message writer
     writer: MavlinkWriter,
-    /// Message router
-    router: MavlinkRouter<F>,
-    /// System state
+    dispatcher: MessageDispatcher<V>,
     state: SystemState,
-    /// Configuration (will be used in actual implementation)
     #[allow(dead_code)]
     config: MavlinkConfig,
 }
@@ -110,7 +113,7 @@ async fn mavlink_task_impl<R, W, F>(
     crate::log_info!("  System ID: {}", config.system_id);
     crate::log_info!("  Component ID: {}", config.component_id);
 
-    let mut context = MavlinkContext::new(config, &mut flash);
+    let mut context = MavlinkContext::<GroundRover>::new(config, &mut flash);
     let mut last_telemetry = Instant::now();
     let telemetry_interval = Duration::from_millis(100); // 10Hz base rate
 
@@ -131,18 +134,13 @@ async fn mavlink_task_impl<R, W, F>(
                 // Get current timestamp
                 let timestamp_us = Instant::now().as_micros();
 
-                // Route message to handlers
-                if let Err(e) = context.router.handle_message(&header, &msg, timestamp_us) {
-                    if !matches!(e, super::router::RouterError::NoHandler) {
-                        crate::log_warn!("Handler error: {:?}", e);
-                    }
-                }
+                // Route message to dispatcher
+                let responses = context.dispatcher.dispatch(&header, &msg, timestamp_us);
 
-                // Send any pending response messages (COMMAND_ACK, AUTOPILOT_VERSION, etc.)
-                let pending = context.router.take_pending_messages();
-                for pending_msg in &pending {
-                    if let Err(e) = context.writer.write_message(&mut uart_tx, pending_msg).await {
-                        crate::log_warn!("TX pending error: {:?}", e);
+                // Send response messages
+                for response in &responses {
+                    if let Err(e) = context.writer.write_message(&mut uart_tx, response).await {
+                        crate::log_warn!("TX response error: {:?}", e);
                     }
                 }
             }
@@ -157,7 +155,9 @@ async fn mavlink_task_impl<R, W, F>(
         // Send telemetry at regular intervals
         if last_telemetry.elapsed() >= telemetry_interval {
             let timestamp_us = Instant::now().as_micros();
-            let telemetry_msgs = context.router.update_telemetry(timestamp_us);
+            let telemetry_msgs = context
+                .dispatcher
+                .update_telemetry(&context.state, timestamp_us);
 
             for msg in &telemetry_msgs {
                 if let Err(e) = context.writer.write_message(&mut uart_tx, msg).await {
@@ -173,18 +173,26 @@ async fn mavlink_task_impl<R, W, F>(
     }
 }
 
-impl<F: FlashInterface> MavlinkContext<F> {
-    /// Create a new MAVLink task context with Flash-backed parameters
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - MAVLink configuration
-    /// * `flash` - Flash interface for parameter storage
-    pub fn new(config: MavlinkConfig, flash: &mut F) -> Self {
+impl<V: VehicleType> MavlinkContext<V> {
+    pub fn new<F: FlashInterface>(config: MavlinkConfig, flash: &mut F) -> Self {
+        let param_handler = ParamHandler::new(flash);
+        let command_handler = CommandHandler::new();
+        let telemetry_streamer = TelemetryStreamer::new(config.system_id, config.component_id);
+        let mission_handler = MissionHandler::new(config.system_id, config.component_id);
+        let rc_input_handler = RcInputHandler::new();
+
+        let dispatcher = MessageDispatcher::new(
+            param_handler,
+            command_handler,
+            telemetry_streamer,
+            mission_handler,
+            rc_input_handler,
+        );
+
         Self {
             parser: MavlinkParser::new(),
             writer: MavlinkWriter::new(config.system_id, config.component_id),
-            router: MavlinkRouter::new(flash, config.system_id, config.component_id),
+            dispatcher,
             state: SystemState::new(),
             config,
         }
@@ -210,36 +218,24 @@ impl<F: FlashInterface> MavlinkContext<F> {
         self.writer.stats()
     }
 
-    /// Get router statistics
-    pub fn router_stats(&self) -> super::router::RouterStats {
-        self.router.stats()
+    /// Get dispatcher statistics
+    pub fn dispatcher_stats(&self) -> DispatcherStats {
+        self.dispatcher.stats()
     }
 }
 
-/// MAVLink communication task (placeholder for Phase 1-2)
+/// MAVLink communication task (placeholder for testing)
 ///
 /// This is a placeholder implementation demonstrating the task structure.
 /// The actual UART integration will be completed when integrating with
 /// hardware examples.
-///
-/// # Phase 1-2 Progress
-///
-/// - Task structure and component integration ✓
-/// - Parameter handlers integrated ✓
-/// - Provide foundation for Phase 3 telemetry streaming
-///
-/// # Future Phases
-///
-/// - Phase 3: Add telemetry streaming
-/// - Phase 4: Add command handlers
-/// - Phase 5: Add mission protocol
 pub async fn mavlink_task_placeholder<F: FlashInterface>(config: MavlinkConfig, flash: &mut F) {
-    let _context = MavlinkContext::new(config, flash);
+    let _context = MavlinkContext::<GroundRover>::new(config, flash);
 
     // Placeholder task loop
     // Actual implementation will:
     // 1. Read messages from UART using parser
-    // 2. Route messages using router
+    // 2. Route messages using dispatcher
     // 3. Send telemetry using writer
     // 4. Update system state
 
@@ -277,29 +273,29 @@ mod tests {
     fn test_context_creation() {
         let config = MavlinkConfig::default();
         let mut flash = MockFlash::new();
-        let context = MavlinkContext::new(config, &mut flash);
+        let context = MavlinkContext::<GroundRover>::new(config, &mut flash);
 
         assert!(!context.state().is_armed());
         assert_eq!(context.parser_stats().messages_received, 0);
         assert_eq!(context.writer_stats().messages_sent, 0);
-        assert_eq!(context.router_stats().messages_processed, 0);
+        assert_eq!(context.dispatcher_stats().messages_processed, 0);
     }
 
     #[test]
     fn test_context_with_parameters() {
         let config = MavlinkConfig::default();
         let mut flash = MockFlash::new();
-        let context = MavlinkContext::new(config, &mut flash);
+        let context = MavlinkContext::<GroundRover>::new(config, &mut flash);
 
-        // Verify parameter handler is initialized with default parameters
-        assert_eq!(context.router_stats().messages_processed, 0);
+        // Verify dispatcher is initialized
+        assert_eq!(context.dispatcher_stats().messages_processed, 0);
     }
 
     #[test]
     fn test_state_access() {
         let config = MavlinkConfig::default();
         let mut flash = MockFlash::new();
-        let mut context = MavlinkContext::new(config, &mut flash);
+        let mut context = MavlinkContext::<GroundRover>::new(config, &mut flash);
 
         // Modify state through mutable reference
         context.state_mut().battery.voltage = 11.5;

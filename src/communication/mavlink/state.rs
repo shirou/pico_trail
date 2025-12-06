@@ -187,6 +187,24 @@ impl FlightMode {
     }
 }
 
+impl super::vehicle::FlightModeOps for FlightMode {
+    fn from_custom_mode(mode: u32) -> Option<Self> {
+        Self::from_custom_mode(mode)
+    }
+
+    fn to_custom_mode(&self) -> u32 {
+        Self::to_custom_mode(*self)
+    }
+
+    fn to_base_mode_flags(&self) -> u8 {
+        Self::to_base_mode_flags(*self)
+    }
+
+    fn as_str(&self) -> &'static str {
+        Self::as_str(*self)
+    }
+}
+
 /// Home position for RTL and mission planning
 ///
 /// Stores the home location that the vehicle will return to in RTL mode.

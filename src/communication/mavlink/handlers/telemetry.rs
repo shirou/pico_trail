@@ -19,12 +19,14 @@
 //! - BATTERY_STATUS: Hardcoded at 2Hz (future: configurable via SR0_EXTRA1)
 
 use crate::communication::mavlink::state::SystemState;
+use crate::communication::mavlink::vehicle::VehicleType;
 use crate::devices::gps::GpsFixType as DeviceGpsFixType;
+use core::marker::PhantomData;
 use mavlink::common::{
-    GpsFixType, MavAutopilot, MavBatteryChargeState, MavBatteryFault, MavBatteryFunction,
-    MavBatteryMode, MavBatteryType, MavMessage, MavModeFlag, MavState, MavSysStatusSensor,
-    MavSysStatusSensorExtended, MavType, ATTITUDE_DATA, BATTERY_STATUS_DATA,
-    GLOBAL_POSITION_INT_DATA, GPS_RAW_INT_DATA, HEARTBEAT_DATA, SYS_STATUS_DATA,
+    GpsFixType, MavBatteryChargeState, MavBatteryFault, MavBatteryFunction, MavBatteryMode,
+    MavBatteryType, MavMessage, MavModeFlag, MavState, MavSysStatusSensor,
+    MavSysStatusSensorExtended, ATTITUDE_DATA, BATTERY_STATUS_DATA, GLOBAL_POSITION_INT_DATA,
+    GPS_RAW_INT_DATA, HEARTBEAT_DATA, SYS_STATUS_DATA,
 };
 #[allow(unused_imports)]
 use micromath::F32Ext;
@@ -114,57 +116,32 @@ impl StreamConfig {
     }
 }
 
-/// Telemetry streamer for periodic message transmission
-///
-/// Manages stream rates and generates telemetry messages based on system state.
-pub struct TelemetryStreamer {
-    /// System ID for MAVLink messages
+pub struct TelemetryStreamer<V: VehicleType> {
     #[allow(dead_code)]
     system_id: u8,
-    /// Component ID for MAVLink messages
     #[allow(dead_code)]
     component_id: u8,
-    /// HEARTBEAT stream config (always 1Hz)
     heartbeat: StreamConfig,
-    /// ATTITUDE stream config (SR_EXTRA1)
     attitude: StreamConfig,
-    /// GPS_RAW_INT stream config (SR_POSITION)
     gps: StreamConfig,
-    /// GLOBAL_POSITION_INT stream config (SR_POSITION)
     global_position: StreamConfig,
-    /// SYS_STATUS stream config (SR_EXTRA1)
     sys_status: StreamConfig,
-    /// BATTERY_STATUS stream config (hardcoded 2Hz)
     battery_status: StreamConfig,
+    _vehicle: PhantomData<V>,
 }
 
-impl TelemetryStreamer {
-    /// Create a new telemetry streamer with default rates
-    ///
-    /// # Arguments
-    ///
-    /// * `system_id` - MAVLink system ID (default: 1)
-    /// * `component_id` - MAVLink component ID (default: 1)
-    ///
-    /// # Returns
-    ///
-    /// Returns a telemetry streamer with default stream rates:
-    /// - HEARTBEAT: 1Hz
-    /// - ATTITUDE: 2Hz
-    /// - GPS_RAW_INT: 2Hz
-    /// - GLOBAL_POSITION_INT: 2Hz
-    /// - SYS_STATUS: 1Hz
-    /// - BATTERY_STATUS: 2Hz
+impl<V: VehicleType> TelemetryStreamer<V> {
     pub fn new(system_id: u8, component_id: u8) -> Self {
         Self {
             system_id,
             component_id,
-            heartbeat: StreamConfig::new(1),       // Always 1Hz
-            attitude: StreamConfig::new(2),        // SR_EXTRA1 default
-            gps: StreamConfig::new(2),             // SR_POSITION default
-            global_position: StreamConfig::new(2), // SR_POSITION default
-            sys_status: StreamConfig::new(1), // SR_EXTRA1 default (lower priority than attitude)
-            battery_status: StreamConfig::new(2), // Hardcoded 2Hz
+            heartbeat: StreamConfig::new(1),
+            attitude: StreamConfig::new(2),
+            gps: StreamConfig::new(2),
+            global_position: StreamConfig::new(2),
+            sys_status: StreamConfig::new(1),
+            battery_status: StreamConfig::new(2),
+            _vehicle: PhantomData,
         }
     }
 
@@ -262,8 +239,8 @@ impl TelemetryStreamer {
 
         Some(MavMessage::HEARTBEAT(HEARTBEAT_DATA {
             custom_mode: state.mode.to_custom_mode(),
-            mavtype: MavType::MAV_TYPE_GROUND_ROVER, // Rover/boat autopilot
-            autopilot: MavAutopilot::MAV_AUTOPILOT_GENERIC,
+            mavtype: V::mav_type(),
+            autopilot: V::autopilot_type(),
             base_mode,
             system_status: MavState::MAV_STATE_ACTIVE,
             mavlink_version: 3,
@@ -467,7 +444,7 @@ impl TelemetryStreamer {
     /// This is sent once in response to MAV_CMD_REQUEST_MESSAGE with param1=300.
     pub fn build_protocol_version() -> MavMessage {
         use crate::communication::mavlink::handlers::command::CommandHandler;
-        MavMessage::PROTOCOL_VERSION(CommandHandler::create_protocol_version_message())
+        MavMessage::PROTOCOL_VERSION(CommandHandler::<V>::create_protocol_version_message())
     }
 
     /// Build AUTOPILOT_VERSION message
@@ -477,13 +454,15 @@ impl TelemetryStreamer {
     /// - MAV_CMD_REQUEST_MESSAGE with param1=148
     pub fn build_autopilot_version() -> MavMessage {
         use crate::communication::mavlink::handlers::command::CommandHandler;
-        MavMessage::AUTOPILOT_VERSION(CommandHandler::create_autopilot_version_message())
+        MavMessage::AUTOPILOT_VERSION(CommandHandler::<V>::create_autopilot_version_message())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::communication::mavlink::vehicle::GroundRover;
+    use mavlink::common::MavAutopilot;
 
     #[test]
     fn test_stream_config_should_send() {
@@ -524,7 +503,7 @@ mod tests {
 
     #[test]
     fn test_telemetry_streamer_creation() {
-        let streamer = TelemetryStreamer::new(1, 1);
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let (hb, att, gps, sys, bat) = streamer.get_rates();
 
         assert_eq!(hb, 1); // HEARTBEAT always 1Hz
@@ -536,7 +515,7 @@ mod tests {
 
     #[test]
     fn test_update_rates() {
-        let mut streamer = TelemetryStreamer::new(1, 1);
+        let mut streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
 
         streamer.update_rates(20, 10);
         let (hb, att, gps, sys, bat) = streamer.get_rates();
@@ -550,13 +529,13 @@ mod tests {
 
     #[test]
     fn test_build_heartbeat() {
-        let streamer = TelemetryStreamer::new(1, 1);
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let mut state = SystemState::new();
 
         // Test unarmed
         let msg = streamer.build_heartbeat(&state).unwrap();
         if let MavMessage::HEARTBEAT(data) = msg {
-            assert_eq!(data.mavtype, MavType::MAV_TYPE_GROUND_ROVER);
+            assert_eq!(data.mavtype, GroundRover::mav_type());
             assert_eq!(data.autopilot, MavAutopilot::MAV_AUTOPILOT_GENERIC);
             assert!(!data
                 .base_mode
@@ -579,7 +558,7 @@ mod tests {
 
     #[test]
     fn test_build_attitude() {
-        let streamer = TelemetryStreamer::new(1, 1);
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let mut state = SystemState::new();
         state.uptime_us = 5_000_000; // 5 seconds
 
@@ -597,7 +576,7 @@ mod tests {
 
     #[test]
     fn test_build_sys_status() {
-        let streamer = TelemetryStreamer::new(1, 1);
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let mut state = SystemState::new();
         state.battery.voltage = 12.5;
         state.battery.current = 2.3;
@@ -615,7 +594,7 @@ mod tests {
 
     #[test]
     fn test_build_battery_status() {
-        let streamer = TelemetryStreamer::new(1, 1);
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let mut state = SystemState::new();
         state.battery.voltage = 12.5;
         state.battery.remaining_percent = 97; // 12.5V is ~97% for 3S LiPo
@@ -639,7 +618,7 @@ mod tests {
 
     #[test]
     fn test_update_single_message() {
-        let mut streamer = TelemetryStreamer::new(1, 1);
+        let mut streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let state = SystemState::new();
 
         // At t=0, all messages should send (first time for all streams)
@@ -659,7 +638,7 @@ mod tests {
 
     #[test]
     fn test_update_multiple_messages() {
-        let mut streamer = TelemetryStreamer::new(1, 1);
+        let mut streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let state = SystemState::new();
 
         // At t=1s, HEARTBEAT, ATTITUDE, GPS, SYS_STATUS should all send
@@ -674,7 +653,7 @@ mod tests {
 
     #[test]
     fn test_stream_rate_control() {
-        let mut streamer = TelemetryStreamer::new(1, 1);
+        let mut streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         streamer.update_rates(10, 5); // 10Hz attitude, 5Hz GPS
         let state = SystemState::new();
 
@@ -860,7 +839,7 @@ mod tests {
 
     #[test]
     fn test_build_gps_with_no_fix() {
-        let streamer = TelemetryStreamer::new(1, 1);
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let state = SystemState::new(); // No GPS data
 
         let msg = streamer.build_gps(&state).unwrap();
@@ -878,7 +857,7 @@ mod tests {
     fn test_build_gps_with_valid_position() {
         use crate::devices::gps::{GpsFixType as DeviceGpsFixType, GpsPosition};
 
-        let streamer = TelemetryStreamer::new(1, 1);
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let mut state = SystemState::new();
 
         // Set GPS position
@@ -912,7 +891,7 @@ mod tests {
     fn test_build_gps_with_no_cog() {
         use crate::devices::gps::{GpsFixType as DeviceGpsFixType, GpsPosition};
 
-        let streamer = TelemetryStreamer::new(1, 1);
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let mut state = SystemState::new();
 
         // Set GPS position without COG (low speed)
@@ -938,7 +917,7 @@ mod tests {
 
     #[test]
     fn test_build_global_position_int_no_gps() {
-        let streamer = TelemetryStreamer::new(1, 1);
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let state = SystemState::new(); // No GPS data
 
         let msg = streamer.build_global_position_int(&state).unwrap();
@@ -959,7 +938,7 @@ mod tests {
     fn test_build_global_position_int_with_velocity() {
         use crate::devices::gps::{GpsFixType as DeviceGpsFixType, GpsPosition};
 
-        let streamer = TelemetryStreamer::new(1, 1);
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let mut state = SystemState::new();
 
         // Set GPS position with velocity heading east (90 degrees)
@@ -995,7 +974,7 @@ mod tests {
     fn test_build_global_position_int_heading_north() {
         use crate::devices::gps::{GpsFixType as DeviceGpsFixType, GpsPosition};
 
-        let streamer = TelemetryStreamer::new(1, 1);
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let mut state = SystemState::new();
 
         // Set GPS position with velocity heading north (0 degrees)
@@ -1025,7 +1004,7 @@ mod tests {
     fn test_build_global_position_int_no_cog() {
         use crate::devices::gps::{GpsFixType as DeviceGpsFixType, GpsPosition};
 
-        let streamer = TelemetryStreamer::new(1, 1);
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let mut state = SystemState::new();
 
         // Set GPS position without COG

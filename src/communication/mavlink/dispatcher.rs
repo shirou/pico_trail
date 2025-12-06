@@ -25,46 +25,59 @@ use super::{
         TelemetryStreamer,
     },
     state::SystemState,
+    vehicle::VehicleType,
 };
+use core::marker::PhantomData;
 use heapless::Vec;
 use mavlink::common::MavMessage;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ConnectionState {
+    pub connected: bool,
+    pub last_heartbeat_us: u64,
+    pub heartbeat_count: u32,
+}
+
+impl ConnectionState {
+    pub fn is_active(&self, current_time_us: u64, timeout_us: u64) -> bool {
+        self.connected && (current_time_us - self.last_heartbeat_us) < timeout_us
+    }
+
+    pub fn update_heartbeat(&mut self, timestamp_us: u64) {
+        self.connected = true;
+        self.last_heartbeat_us = timestamp_us;
+        self.heartbeat_count += 1;
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DispatcherStats {
+    pub messages_processed: u32,
+    pub unhandled_messages: u32,
+    pub handler_errors: u32,
+}
 
 /// Maximum number of response messages per incoming message
 /// Most messages produce 1 response, PARAM_REQUEST_LIST can produce many
 const MAX_RESPONSES: usize = 64;
 
-/// MAVLink message dispatcher
-///
-/// Routes messages to appropriate handlers and manages handler lifecycle.
-pub struct MessageDispatcher {
-    /// Parameter protocol handler
+pub struct MessageDispatcher<V: VehicleType> {
     param_handler: ParamHandler,
-    /// Command protocol handler
-    command_handler: CommandHandler,
-    /// Telemetry streaming handler
-    telemetry_streamer: TelemetryStreamer,
-    /// Mission protocol handler
+    command_handler: CommandHandler<V>,
+    telemetry_streamer: TelemetryStreamer<V>,
     mission_handler: MissionHandler,
-    /// RC input handler
     rc_input_handler: RcInputHandler,
-    /// Navigation handler
     navigation_handler: NavigationHandler,
+    connection: ConnectionState,
+    stats: DispatcherStats,
+    _vehicle: PhantomData<V>,
 }
 
-impl MessageDispatcher {
-    /// Create a new message dispatcher with initialized handlers
-    ///
-    /// # Arguments
-    ///
-    /// * `param_handler` - Handler for parameter protocol
-    /// * `command_handler` - Handler for command protocol
-    /// * `telemetry_streamer` - Handler for telemetry streaming
-    /// * `mission_handler` - Handler for mission protocol
-    /// * `rc_input_handler` - Handler for RC input messages
+impl<V: VehicleType> MessageDispatcher<V> {
     pub fn new(
         param_handler: ParamHandler,
-        command_handler: CommandHandler,
-        telemetry_streamer: TelemetryStreamer,
+        command_handler: CommandHandler<V>,
+        telemetry_streamer: TelemetryStreamer<V>,
         mission_handler: MissionHandler,
         rc_input_handler: RcInputHandler,
     ) -> Self {
@@ -75,6 +88,9 @@ impl MessageDispatcher {
             mission_handler,
             rc_input_handler,
             navigation_handler: NavigationHandler::new(),
+            connection: ConnectionState::default(),
+            stats: DispatcherStats::default(),
+            _vehicle: PhantomData,
         }
     }
 
@@ -96,9 +112,11 @@ impl MessageDispatcher {
         &mut self,
         _header: &mavlink::MavHeader,
         message: &MavMessage,
-        _timestamp_us: u64,
+        timestamp_us: u64,
     ) -> Vec<MavMessage, MAX_RESPONSES> {
         use mavlink::common::MavMessage::*;
+
+        self.stats.messages_processed += 1;
 
         match message {
             // Parameter protocol
@@ -150,44 +168,46 @@ impl MessageDispatcher {
 
                     match message_id {
                         MAVLINK_MSG_ID_PROTOCOL_VERSION => {
-                            let _ = responses.push(TelemetryStreamer::build_protocol_version());
+                            let _ =
+                                responses.push(TelemetryStreamer::<V>::build_protocol_version());
                         }
                         MAVLINK_MSG_ID_AUTOPILOT_VERSION => {
-                            let _ = responses.push(TelemetryStreamer::build_autopilot_version());
+                            let _ =
+                                responses.push(TelemetryStreamer::<V>::build_autopilot_version());
                         }
                         _ => {}
                     }
                 }
 
-                // Handle MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES (command 520)
-                // Note: mavlink-rust marks this as deprecated but it is still a valid MAVLink command
                 #[allow(deprecated)]
                 if data.command == MavCmd::MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES {
-                    let _ = responses.push(TelemetryStreamer::build_autopilot_version());
+                    let _ = responses.push(TelemetryStreamer::<V>::build_autopilot_version());
                 }
 
                 responses
             }
 
             COMMAND_INT(data) => {
-                let ack = self.command_handler.handle_command_int(data);
+                let (ack, extra_messages) = self.command_handler.handle_command_int(data);
                 let mut responses = Vec::new();
                 let _ = responses.push(COMMAND_ACK(ack));
+                // Add extra messages (e.g., HOME_POSITION)
+                for msg in extra_messages {
+                    let _ = responses.push(msg);
+                }
                 responses
             }
 
             // Mission protocol
             MISSION_REQUEST_LIST(data) => {
-                let msg = self
-                    .mission_handler
-                    .handle_request_list(data, _timestamp_us);
+                let msg = self.mission_handler.handle_request_list(data, timestamp_us);
                 let mut responses = Vec::new();
                 let _ = responses.push(MISSION_COUNT(msg));
                 responses
             }
 
             MISSION_REQUEST_INT(data) => {
-                match self.mission_handler.handle_request_int(data, _timestamp_us) {
+                match self.mission_handler.handle_request_int(data, timestamp_us) {
                     Ok(item_data) => {
                         let mut responses = Vec::new();
                         let _ = responses.push(MISSION_ITEM_INT(item_data));
@@ -204,14 +224,14 @@ impl MessageDispatcher {
             }
 
             MISSION_COUNT(data) => {
-                let req = self.mission_handler.handle_count(data, _timestamp_us);
+                let req = self.mission_handler.handle_count(data, timestamp_us);
                 let mut responses = Vec::new();
                 let _ = responses.push(MISSION_REQUEST_INT(req));
                 responses
             }
 
             MISSION_ITEM_INT(data) => {
-                match self.mission_handler.handle_item_int(data, _timestamp_us) {
+                match self.mission_handler.handle_item_int(data, timestamp_us) {
                     Ok(Some(req)) => {
                         let mut responses = Vec::new();
                         let _ = responses.push(MISSION_REQUEST_INT(req));
@@ -242,11 +262,17 @@ impl MessageDispatcher {
                 Vec::new()
             }
 
-            // Messages that don't produce responses
-            HEARTBEAT(_) => Vec::new(),
+            // Handle HEARTBEAT from GCS - update connection state
+            HEARTBEAT(_) => {
+                self.connection.update_heartbeat(timestamp_us);
+                Vec::new()
+            }
 
             // Unhandled messages
-            _ => Vec::new(),
+            _ => {
+                self.stats.unhandled_messages += 1;
+                Vec::new()
+            }
         }
     }
 
@@ -313,12 +339,12 @@ impl MessageDispatcher {
     }
 
     /// Get reference to command handler (for accessing system state)
-    pub fn command_handler(&self) -> &CommandHandler {
+    pub fn command_handler(&self) -> &CommandHandler<V> {
         &self.command_handler
     }
 
     /// Get mutable reference to command handler (for updating system state)
-    pub fn command_handler_mut(&mut self) -> &mut CommandHandler {
+    pub fn command_handler_mut(&mut self) -> &mut CommandHandler<V> {
         &mut self.command_handler
     }
 
@@ -332,13 +358,11 @@ impl MessageDispatcher {
         &mut self.param_handler
     }
 
-    /// Get reference to telemetry streamer
-    pub fn telemetry_streamer(&self) -> &TelemetryStreamer {
+    pub fn telemetry_streamer(&self) -> &TelemetryStreamer<V> {
         &self.telemetry_streamer
     }
 
-    /// Get mutable reference to telemetry streamer
-    pub fn telemetry_streamer_mut(&mut self) -> &mut TelemetryStreamer {
+    pub fn telemetry_streamer_mut(&mut self) -> &mut TelemetryStreamer<V> {
         &mut self.telemetry_streamer
     }
 
@@ -424,6 +448,34 @@ impl MessageDispatcher {
     /// Get reference to navigation handler
     pub fn navigation_handler(&self) -> &NavigationHandler {
         &self.navigation_handler
+    }
+
+    pub fn connection(&self) -> &ConnectionState {
+        &self.connection
+    }
+
+    pub fn connection_mut(&mut self) -> &mut ConnectionState {
+        &mut self.connection
+    }
+
+    pub fn stats(&self) -> DispatcherStats {
+        self.stats
+    }
+
+    pub fn reset_stats(&mut self) {
+        self.stats = DispatcherStats::default();
+    }
+
+    pub fn update_heartbeat(&mut self, timestamp_us: u64) {
+        self.connection.update_heartbeat(timestamp_us);
+    }
+
+    pub fn increment_messages_processed(&mut self) {
+        self.stats.messages_processed += 1;
+    }
+
+    pub fn increment_unhandled(&mut self) {
+        self.stats.unhandled_messages += 1;
     }
 }
 
