@@ -131,6 +131,9 @@ impl MessageDispatcher {
 
             // Command protocol
             COMMAND_LONG(data) => {
+                use super::handlers::telemetry::TelemetryStreamer;
+                use mavlink::common::MavCmd;
+
                 let (ack, additional_messages) = self.command_handler.handle_command_long(data);
                 let mut responses = Vec::new();
                 let _ = responses.push(COMMAND_ACK(ack));
@@ -138,6 +141,31 @@ impl MessageDispatcher {
                 for msg in additional_messages {
                     let _ = responses.push(msg);
                 }
+
+                // Handle MAV_CMD_REQUEST_MESSAGE - queue requested message
+                if data.command == MavCmd::MAV_CMD_REQUEST_MESSAGE {
+                    const MAVLINK_MSG_ID_AUTOPILOT_VERSION: u32 = 148;
+                    const MAVLINK_MSG_ID_PROTOCOL_VERSION: u32 = 300;
+                    let message_id = data.param1 as u32;
+
+                    match message_id {
+                        MAVLINK_MSG_ID_PROTOCOL_VERSION => {
+                            let _ = responses.push(TelemetryStreamer::build_protocol_version());
+                        }
+                        MAVLINK_MSG_ID_AUTOPILOT_VERSION => {
+                            let _ = responses.push(TelemetryStreamer::build_autopilot_version());
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Handle MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES (command 520)
+                // Note: mavlink-rust marks this as deprecated but it is still a valid MAVLink command
+                #[allow(deprecated)]
+                if data.command == MavCmd::MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES {
+                    let _ = responses.push(TelemetryStreamer::build_autopilot_version());
+                }
+
                 responses
             }
 

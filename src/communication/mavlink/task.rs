@@ -137,6 +137,14 @@ async fn mavlink_task_impl<R, W, F>(
                         crate::log_warn!("Handler error: {:?}", e);
                     }
                 }
+
+                // Send any pending response messages (COMMAND_ACK, AUTOPILOT_VERSION, etc.)
+                let pending = context.router.take_pending_messages();
+                for pending_msg in &pending {
+                    if let Err(e) = context.writer.write_message(&mut uart_tx, pending_msg).await {
+                        crate::log_warn!("TX pending error: {:?}", e);
+                    }
+                }
             }
             embassy_futures::select::Either::Second(Err(e)) => {
                 crate::log_warn!("Parse error: {:?}", e);

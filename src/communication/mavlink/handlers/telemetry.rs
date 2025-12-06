@@ -469,6 +469,16 @@ impl TelemetryStreamer {
         use crate::communication::mavlink::handlers::command::CommandHandler;
         MavMessage::PROTOCOL_VERSION(CommandHandler::create_protocol_version_message())
     }
+
+    /// Build AUTOPILOT_VERSION message
+    ///
+    /// This is sent once in response to:
+    /// - MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES (command 520)
+    /// - MAV_CMD_REQUEST_MESSAGE with param1=148
+    pub fn build_autopilot_version() -> MavMessage {
+        use crate::communication::mavlink::handlers::command::CommandHandler;
+        MavMessage::AUTOPILOT_VERSION(CommandHandler::create_autopilot_version_message())
+    }
 }
 
 #[cfg(test)]

@@ -389,20 +389,41 @@ impl<F: FlashInterface> MavlinkRouter<F> {
             defmt::debug!("Additional message queued after command");
         }
 
-        // Special handling for MAV_CMD_REQUEST_MESSAGE
-        // Queue requested message to be sent to GCS
+        // Special handling for commands that require additional messages
+        use crate::communication::mavlink::handlers::telemetry::TelemetryStreamer;
         use mavlink::common::MavCmd;
+
+        // Handle MAV_CMD_REQUEST_MESSAGE - queue requested message to be sent to GCS
         if data.command == MavCmd::MAV_CMD_REQUEST_MESSAGE {
+            const MAVLINK_MSG_ID_AUTOPILOT_VERSION: u32 = 148;
             const MAVLINK_MSG_ID_PROTOCOL_VERSION: u32 = 300;
             let message_id = data.param1 as u32;
 
-            if message_id == MAVLINK_MSG_ID_PROTOCOL_VERSION {
-                use crate::communication::mavlink::handlers::telemetry::TelemetryStreamer;
-                let protocol_version_msg = TelemetryStreamer::build_protocol_version();
-                let _ = self.pending_messages.push(protocol_version_msg);
-                #[cfg(feature = "defmt")]
-                defmt::debug!("PROTOCOL_VERSION message queued for sending");
+            match message_id {
+                MAVLINK_MSG_ID_PROTOCOL_VERSION => {
+                    let msg = TelemetryStreamer::build_protocol_version();
+                    let _ = self.pending_messages.push(msg);
+                    #[cfg(feature = "defmt")]
+                    defmt::debug!("PROTOCOL_VERSION message queued for sending");
+                }
+                MAVLINK_MSG_ID_AUTOPILOT_VERSION => {
+                    let msg = TelemetryStreamer::build_autopilot_version();
+                    let _ = self.pending_messages.push(msg);
+                    #[cfg(feature = "defmt")]
+                    defmt::debug!("AUTOPILOT_VERSION message queued for sending");
+                }
+                _ => {}
             }
+        }
+
+        // Handle MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES (command 520)
+        // Note: mavlink-rust marks this as deprecated but it is still a valid MAVLink command
+        #[allow(deprecated)]
+        if data.command == MavCmd::MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES {
+            let msg = TelemetryStreamer::build_autopilot_version();
+            let _ = self.pending_messages.push(msg);
+            #[cfg(feature = "defmt")]
+            defmt::debug!("AUTOPILOT_VERSION message queued (via REQUEST_AUTOPILOT_CAPABILITIES)");
         }
     }
 

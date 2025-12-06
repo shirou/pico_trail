@@ -35,8 +35,8 @@ use crate::communication::mavlink::status_notifier;
 use core::fmt::Write;
 use heapless::{String, Vec};
 use mavlink::common::{
-    MavCmd, MavMessage, MavResult, COMMAND_ACK_DATA, COMMAND_INT_DATA, COMMAND_LONG_DATA,
-    PROTOCOL_VERSION_DATA,
+    MavCmd, MavMessage, MavProtocolCapability, MavResult, AUTOPILOT_VERSION_DATA,
+    COMMAND_ACK_DATA, COMMAND_INT_DATA, COMMAND_LONG_DATA, PROTOCOL_VERSION_DATA,
 };
 
 /// MAVLink protocol version (MAVLink 2.0)
@@ -505,6 +505,40 @@ impl CommandHandler {
             max_version: MAVLINK_MAX_VERSION,
             spec_version_hash: [0u8; 8], // TODO: Populate with actual MAVLink XML spec hash
             library_version_hash: [0u8; 8], // TODO: Populate with mavlink-rust version hash
+        }
+    }
+
+    /// Create AUTOPILOT_VERSION message
+    ///
+    /// Returns an AUTOPILOT_VERSION message containing autopilot capabilities and version info.
+    /// This should be sent in response to:
+    /// - MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES (command 520)
+    /// - MAV_CMD_REQUEST_MESSAGE with param1=148
+    pub fn create_autopilot_version_message() -> AUTOPILOT_VERSION_DATA {
+        // Define capabilities we support
+        let capabilities = MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MISSION_INT
+            | MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_COMMAND_INT
+            | MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_PARAM_ENCODE_BYTEWISE
+            | MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MAVLINK2
+            | MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_SET_POSITION_TARGET_GLOBAL_INT;
+
+        // Firmware version: major.minor.patch.type encoded as 4 bytes
+        // Version 0.1.0 with FIRMWARE_VERSION_TYPE_DEV (0)
+        let flight_sw_version: u32 = (0 << 24) | (1 << 16) | (0 << 8) | 0;
+
+        AUTOPILOT_VERSION_DATA {
+            capabilities,
+            uid: 0, // No hardware UID available
+            flight_sw_version,
+            middleware_sw_version: 0,
+            os_sw_version: 0,
+            board_version: 0,
+            vendor_id: 0,
+            product_id: 0,
+            flight_custom_version: [0u8; 8], // TODO: Populate with git hash
+            middleware_custom_version: [0u8; 8],
+            os_custom_version: [0u8; 8],
+            uid2: [0u8; 18],
         }
     }
 
