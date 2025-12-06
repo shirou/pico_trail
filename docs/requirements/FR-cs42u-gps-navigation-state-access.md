@@ -15,6 +15,7 @@
   - [FR-333ym-gps-waypoint-navigation](../requirements/FR-333ym-gps-waypoint-navigation.md)
   - [FR-erpze-guided-mode-navigation](../requirements/FR-erpze-guided-mode-navigation.md)
   - [FR-jm7mj-auto-mode-mission-execution](../requirements/FR-jm7mj-auto-mode-mission-execution.md)
+  - [FR-m2c9z-mission-waypoint-navigation](../requirements/FR-m2c9z-mission-waypoint-navigation.md)
   - [FR-obwjs-position-target-command-handler](../requirements/FR-obwjs-position-target-command-handler.md)
   - [FR-tmibt-position-target-state](../requirements/FR-tmibt-position-target-state.md)
   - [NFR-wwke9-gps-state-thread-safety](../requirements/NFR-wwke9-gps-state-thread-safety.md)

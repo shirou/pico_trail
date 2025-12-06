@@ -7,6 +7,7 @@
 //! - **MAV_CMD_COMPONENT_ARM_DISARM**: Arm or disarm vehicle
 //! - **MAV_CMD_DO_SET_MODE**: Change flight mode
 //! - **MAV_CMD_DO_REPOSITION**: Navigate to position (Fly Here)
+//! - **MAV_CMD_MISSION_START**: Start AUTO mode mission from waypoint 0
 //! - **MAV_CMD_PREFLIGHT_CALIBRATION**: Sensor calibration (placeholder)
 //! - **MAV_CMD_REQUEST_MESSAGE**: Request specific message (e.g., PROTOCOL_VERSION)
 //! - **MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES** (520): Request AUTOPILOT_VERSION
@@ -107,6 +108,7 @@ impl<V: VehicleType> CommandHandler<V> {
                 (self.handle_request_message(cmd), false, Vec::new())
             }
             MavCmd::MAV_CMD_DO_REPOSITION => (self.handle_do_reposition(cmd), false, Vec::new()),
+            MavCmd::MAV_CMD_MISSION_START => (self.handle_mission_start(), false, Vec::new()),
             // These commands are marked deprecated in mavlink crate but still used by Mission Planner
             #[allow(deprecated)]
             MavCmd::MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES => (
@@ -147,25 +149,44 @@ impl<V: VehicleType> CommandHandler<V> {
     /// param1: 1.0 to arm, 0.0 to disarm
     /// param2: 21196 (magic number) to force arm/disarm (bypass checks)
     ///
+    /// In GUIDED mode: automatically starts mission if waypoint exists on ARM.
+    /// On DISARM: stops any active mission.
+    ///
     /// Returns (result, should_send_heartbeat, additional_messages)
     fn handle_arm_disarm(
         &mut self,
         cmd: &COMMAND_LONG_DATA,
     ) -> (MavResult, bool, Vec<MavMessage, 4>) {
+        #[cfg(feature = "embassy")]
+        use crate::communication::mavlink::state::FlightMode;
         use crate::communication::mavlink::state::SYSTEM_STATE;
+        #[cfg(feature = "embassy")]
+        use crate::core::mission::{start_mission_sync, stop_mission_sync};
 
         let should_arm = cmd.param1 > 0.5;
         let force = (cmd.param2 as i32) == 21196; // ArduPilot force-arm magic number
 
         if should_arm {
             // Arm vehicle
-            let result = critical_section::with(|cs| {
+            #[cfg(feature = "embassy")]
+            let (result, mode) = critical_section::with(|cs| {
                 let mut state = SYSTEM_STATE.borrow_ref_mut(cs);
-                if force {
+                let current_mode = state.mode;
+                let arm_result = if force {
                     // Force-arm: bypass pre-arm checks
                     state.arm_forced()
                 } else {
                     // Normal arm: run pre-arm checks
+                    state.arm()
+                };
+                (arm_result, current_mode)
+            });
+            #[cfg(not(feature = "embassy"))]
+            let result = critical_section::with(|cs| {
+                let mut state = SYSTEM_STATE.borrow_ref_mut(cs);
+                if force {
+                    state.arm_forced()
+                } else {
                     state.arm()
                 }
             });
@@ -179,6 +200,17 @@ impl<V: VehicleType> CommandHandler<V> {
                         crate::log_info!("Vehicle armed");
                         status_notifier::send_info("Armed");
                     }
+
+                    // In GUIDED mode, start mission if waypoint exists
+                    #[cfg(feature = "embassy")]
+                    if mode == FlightMode::Guided {
+                        if start_mission_sync() {
+                            crate::log_info!("GUIDED: Mission started on ARM");
+                        } else {
+                            crate::log_debug!("GUIDED: No waypoint, waiting for target");
+                        }
+                    }
+
                     (MavResult::MAV_RESULT_ACCEPTED, true, Vec::new())
                 }
                 Err(reason) => {
@@ -232,6 +264,11 @@ impl<V: VehicleType> CommandHandler<V> {
                         crate::log_info!("Vehicle disarmed");
                         status_notifier::send_info("Disarmed");
                     }
+
+                    // Stop any active mission on disarm
+                    #[cfg(feature = "embassy")]
+                    stop_mission_sync();
+
                     (MavResult::MAV_RESULT_ACCEPTED, true, Vec::new())
                 }
                 Err(reason) => {
@@ -265,6 +302,8 @@ impl<V: VehicleType> CommandHandler<V> {
     /// param2: custom mode (flight mode number)
     fn handle_set_mode(&mut self, cmd: &COMMAND_LONG_DATA) -> MavResult {
         use crate::communication::mavlink::state::SYSTEM_STATE;
+        #[cfg(feature = "embassy")]
+        use crate::core::mission::stop_mission_sync;
 
         let custom_mode = cmd.param2 as u32;
 
@@ -277,6 +316,12 @@ impl<V: VehicleType> CommandHandler<V> {
                 match result {
                     Ok(()) => {
                         crate::log_info!("Mode changed to {}", mode.as_str());
+
+                        // Reset mission state on mode change
+                        // This stops any active navigation when switching modes
+                        #[cfg(feature = "embassy")]
+                        stop_mission_sync();
+
                         // Send STATUSTEXT to GCS
                         let mut msg: String<32> = String::new();
                         let _ = write!(msg, "Mode: {}", mode.as_str());
@@ -415,6 +460,43 @@ impl<V: VehicleType> CommandHandler<V> {
         status_notifier::send_info("Fly to target set");
 
         MavResult::MAV_RESULT_ACCEPTED
+    }
+
+    /// Handle MAV_CMD_MISSION_START command
+    ///
+    /// Starts mission execution from waypoint 0 in AUTO mode.
+    ///
+    /// # Behavior
+    ///
+    /// - Verifies mission is not empty
+    /// - Resets current waypoint index to 0
+    /// - Sets MissionState to Running
+    ///
+    /// # Returns
+    ///
+    /// - MAV_RESULT_ACCEPTED if mission started successfully
+    /// - MAV_RESULT_FAILED if mission is empty
+    fn handle_mission_start(&mut self) -> MavResult {
+        #[cfg(feature = "embassy")]
+        use crate::core::mission::start_mission_from_beginning_sync;
+
+        #[cfg(feature = "embassy")]
+        {
+            if start_mission_from_beginning_sync() {
+                crate::log_info!("AUTO: Mission started from waypoint 0");
+                status_notifier::send_info("Mission started");
+                MavResult::MAV_RESULT_ACCEPTED
+            } else {
+                crate::log_warn!("MISSION_START failed: mission empty");
+                status_notifier::send_error("Mission empty");
+                MavResult::MAV_RESULT_FAILED
+            }
+        }
+        #[cfg(not(feature = "embassy"))]
+        {
+            crate::log_warn!("MISSION_START not supported without embassy");
+            MavResult::MAV_RESULT_UNSUPPORTED
+        }
     }
 
     /// Handle COMMAND_INT message from GCS

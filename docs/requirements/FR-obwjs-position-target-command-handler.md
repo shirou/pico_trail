@@ -15,6 +15,7 @@
   - [FR-tmibt-position-target-state](FR-tmibt-position-target-state.md)
 - Dependent Requirements:
   - [FR-erpze-guided-mode-navigation](FR-erpze-guided-mode-navigation.md)
+  - [FR-evl5k-position-target-mission-integration](FR-evl5k-position-target-mission-integration.md)
 - Related Tasks: N/A - Tasks will be created after ADRs
 
 ## Requirement Statement

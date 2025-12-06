@@ -73,9 +73,20 @@ impl Default for MissionState {
 /// Mission protocol handler
 ///
 /// Manages mission upload/download and state machine.
+///
+/// # Storage Architecture
+///
+/// - `transfer_buffer`: Temporary storage for protocol operations (upload/download)
+/// - Global `MISSION_STORAGE`: Authoritative storage for navigation
+///
+/// When upload completes, waypoints are copied from `transfer_buffer` to
+/// the global `MISSION_STORAGE` for use by the navigation system.
 pub struct MissionHandler {
-    /// Mission storage
-    storage: MissionStorage,
+    /// Temporary buffer for mission transfer operations
+    ///
+    /// Used during upload/download protocol. On upload completion,
+    /// contents are copied to global MISSION_STORAGE.
+    transfer_buffer: MissionStorage,
     /// Current transfer state
     state: MissionState,
     /// System ID (for message generation)
@@ -95,7 +106,7 @@ impl MissionHandler {
     /// * `component_id` - MAVLink component ID
     pub fn new(system_id: u8, component_id: u8) -> Self {
         Self {
-            storage: MissionStorage::new(),
+            transfer_buffer: MissionStorage::new(),
             state: MissionState::Idle,
             system_id,
             component_id,
@@ -104,12 +115,12 @@ impl MissionHandler {
 
     /// Get mission storage reference
     pub fn storage(&self) -> &MissionStorage {
-        &self.storage
+        &self.transfer_buffer
     }
 
     /// Get mutable mission storage reference
     pub fn storage_mut(&mut self) -> &mut MissionStorage {
-        &mut self.storage
+        &mut self.transfer_buffer
     }
 
     /// Get current mission state
@@ -156,7 +167,7 @@ impl MissionHandler {
         match self.state {
             MissionState::UploadInProgress { .. } => {
                 // Discard partial mission
-                self.storage.clear();
+                self.transfer_buffer.clear();
             }
             MissionState::DownloadInProgress { .. } => {
                 // Download abort doesn't affect stored mission
@@ -193,7 +204,7 @@ impl MissionHandler {
         MISSION_COUNT_DATA {
             target_system: sender_system_id,       // Reply to sender
             target_component: sender_component_id, // Reply to sender
-            count: self.storage.count(),
+            count: self.transfer_buffer.count(),
             mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION, // MAVLink v2 extension
             opaque_id: 0,                                           // MAVLink v2 extension
         }
@@ -222,7 +233,7 @@ impl MissionHandler {
         }
 
         let seq = data.seq;
-        match self.storage.get_waypoint(seq) {
+        match self.transfer_buffer.get_waypoint(seq) {
             Some(wp) => {
                 crate::log_debug!("Sending waypoint {}", seq);
                 Ok(self.waypoint_to_mission_item(wp, data.target_system, data.target_component))
@@ -255,7 +266,7 @@ impl MissionHandler {
         crate::log_info!("Mission upload started: {} waypoints", count);
 
         // Clear existing mission and prepare for upload
-        self.storage.reserve(count);
+        self.transfer_buffer.reserve(count);
 
         self.state = MissionState::UploadInProgress {
             count,
@@ -303,7 +314,7 @@ impl MissionHandler {
 
                 // Convert and store waypoint
                 let wp = self.mission_item_to_waypoint(data);
-                if let Err(_e) = self.storage.add_waypoint(wp) {
+                if let Err(_e) = self.transfer_buffer.add_waypoint(wp) {
                     crate::log_warn!("Failed to add waypoint");
                     self.abort_transfer();
                     return Err(MavMissionResult::MAV_MISSION_ERROR);
@@ -324,6 +335,29 @@ impl MissionHandler {
                 // Check if upload complete
                 if new_next_seq >= count {
                     crate::log_info!("Mission upload complete: {} waypoints", count);
+
+                    // Copy waypoints from transfer_buffer to global MISSION_STORAGE
+                    #[cfg(feature = "embassy")]
+                    {
+                        use crate::core::mission::{add_waypoint_sync, clear_waypoints_sync};
+
+                        clear_waypoints_sync();
+                        for i in 0..self.transfer_buffer.count() {
+                            if let Some(wp) = self.transfer_buffer.get_waypoint(i) {
+                                if !add_waypoint_sync(*wp) {
+                                    crate::log_warn!(
+                                        "Failed to copy waypoint {} to global storage",
+                                        i
+                                    );
+                                }
+                            }
+                        }
+                        crate::log_info!(
+                            "Copied {} waypoints to global storage",
+                            self.transfer_buffer.count()
+                        );
+                    }
+
                     self.state = MissionState::Idle;
                     Ok(None) // No more requests, upload complete
                 } else {
@@ -342,13 +376,41 @@ impl MissionHandler {
                 if data.seq == 0 {
                     crate::log_info!("Fly Here: single waypoint received");
                     // Clear existing mission and store the single waypoint
-                    self.storage.clear();
-                    self.storage.reserve(1);
+                    self.transfer_buffer.clear();
+                    self.transfer_buffer.reserve(1);
                     let wp = self.mission_item_to_waypoint(data);
-                    if let Err(_e) = self.storage.add_waypoint(wp) {
+                    if let Err(_e) = self.transfer_buffer.add_waypoint(wp) {
                         crate::log_warn!("Failed to add waypoint");
                         return Err(MavMissionResult::MAV_MISSION_ERROR);
                     }
+
+                    // Also update global MISSION_STORAGE for navigation
+                    #[cfg(feature = "embassy")]
+                    {
+                        use crate::communication::mavlink::state::{FlightMode, SYSTEM_STATE};
+                        use crate::core::mission::{
+                            add_waypoint_sync, clear_waypoints_sync, start_mission_sync,
+                        };
+
+                        // Update global mission storage
+                        clear_waypoints_sync();
+                        if !add_waypoint_sync(wp) {
+                            crate::log_warn!("Failed to add waypoint to global storage");
+                        }
+
+                        // If in GUIDED mode, start mission automatically
+                        let is_guided = critical_section::with(|cs| {
+                            let state = SYSTEM_STATE.borrow_ref(cs);
+                            state.mode == FlightMode::Guided
+                        });
+
+                        if is_guided {
+                            if start_mission_sync() {
+                                crate::log_info!("GUIDED: Mission started from Fly Here");
+                            }
+                        }
+                    }
+
                     // Return None to signal completion (sends MISSION_ACK with ACCEPTED)
                     Ok(None)
                 } else {

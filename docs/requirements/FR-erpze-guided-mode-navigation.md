@@ -15,7 +15,8 @@
   - [FR-tmibt-position-target-state](FR-tmibt-position-target-state.md)
   - [FR-q2sjt-control-mode-framework](FR-q2sjt-control-mode-framework.md)
   - [FR-cs42u-gps-navigation-state-access](FR-cs42u-gps-navigation-state-access.md)
-- Dependent Requirements: N/A
+- Dependent Requirements:
+  - [FR-pbuh7-guided-mode-arm-start](FR-pbuh7-guided-mode-arm-start.md)
 - Related Tasks: N/A - Tasks will be created after ADRs
 
 ## Requirement Statement

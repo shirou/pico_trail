@@ -58,6 +58,11 @@ use embassy_sync::mutex::Mutex;
 
 /// Global navigation target (protected by Mutex)
 ///
+/// **DEPRECATED**: Use `MISSION_STORAGE` from `crate::core::mission` instead.
+/// This global is being replaced by the unified MissionStorage approach
+/// where all waypoints (from MISSION_ITEM protocol or SET_POSITION_TARGET)
+/// are stored in a single source of truth.
+///
 /// Set by MAVLink handler when receiving SET_POSITION_TARGET_GLOBAL_INT.
 /// Read by navigation_task to compute steering/throttle commands.
 #[cfg(feature = "embassy")]

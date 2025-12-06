@@ -6,8 +6,16 @@
 //!
 //! 1. GCS sends SET_POSITION_TARGET_GLOBAL_INT with target position
 //! 2. Handler extracts latitude/longitude from message
-//! 3. Handler updates global NAV_TARGET state
-//! 4. navigation_task reads NAV_TARGET and computes steering/throttle
+//! 3. Handler clears MISSION_STORAGE and adds waypoint from position data
+//! 4. If in GUIDED mode, handler sets MissionState::Running
+//! 5. navigation_task reads MISSION_STORAGE and computes steering/throttle
+//!
+//! # Integration with Unified Waypoint Navigation
+//!
+//! This handler integrates with MissionStorage as the single source of truth
+//! for navigation targets (see ADR-2hs12). When SET_POSITION_TARGET is received,
+//! it is converted to a Waypoint and stored in MISSION_STORAGE, enabling
+//! consistent behavior across GUIDED mode and MISSION_ITEM uploads.
 //!
 //! # Coordinate Format
 //!
@@ -77,7 +85,13 @@ impl NavigationHandler {
         })
     }
 
-    /// Update global NAV_TARGET with new position (async)
+    /// Update MissionStorage with new position target (async)
+    ///
+    /// This method integrates with the unified waypoint navigation system by:
+    /// 1. Clearing existing mission storage
+    /// 2. Creating a waypoint from the position data
+    /// 3. Adding the waypoint to MissionStorage
+    /// 4. Setting MissionState::Running if in GUIDED mode
     ///
     /// # Arguments
     ///
@@ -91,7 +105,8 @@ impl NavigationHandler {
         &self,
         data: &SET_POSITION_TARGET_GLOBAL_INT_DATA,
     ) -> bool {
-        use crate::subsystems::navigation::NAV_TARGET;
+        use crate::communication::mavlink::state::{FlightMode, SYSTEM_STATE};
+        use crate::core::mission::{set_mission_state, MissionState, Waypoint, MISSION_STORAGE};
 
         if let Some(target) = self.extract_target(data) {
             crate::log_info!(
@@ -100,9 +115,40 @@ impl NavigationHandler {
                 target.longitude
             );
 
-            // Update global NAV_TARGET
-            let mut nav_target = NAV_TARGET.lock().await;
-            *nav_target = Some(target);
+            // Create waypoint from position target
+            let waypoint = Waypoint {
+                seq: 0,
+                frame: 0,    // MAV_FRAME_GLOBAL
+                command: 16, // MAV_CMD_NAV_WAYPOINT
+                current: 1,
+                autocontinue: 0,
+                param1: 0.0,
+                param2: 2.0, // WP_RADIUS default
+                param3: 0.0,
+                param4: 0.0,
+                x: data.lat_int,
+                y: data.lon_int,
+                z: target.altitude.unwrap_or(0.0),
+            };
+
+            // Update MISSION_STORAGE (clear and add single waypoint)
+            {
+                let mut storage = MISSION_STORAGE.lock().await;
+                storage.clear();
+                let _ = storage.add_waypoint(waypoint);
+            }
+
+            // If in GUIDED mode, set MissionState::Running
+            let is_guided = critical_section::with(|cs| {
+                let state = SYSTEM_STATE.borrow_ref(cs);
+                state.mode == FlightMode::Guided
+            });
+
+            if is_guided {
+                set_mission_state(MissionState::Running).await;
+                crate::log_info!("GUIDED mode: Starting navigation to target");
+            }
+
             true
         } else {
             false

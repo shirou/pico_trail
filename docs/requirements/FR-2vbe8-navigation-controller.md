@@ -16,6 +16,8 @@
 - Dependent Requirements:
   - [FR-erpze-guided-mode-navigation](FR-erpze-guided-mode-navigation.md)
   - [FR-jm7mj-auto-mode-mission-execution](FR-jm7mj-auto-mode-mission-execution.md)
+  - [FR-m2c9z-mission-waypoint-navigation](FR-m2c9z-mission-waypoint-navigation.md)
+  - [NFR-iuk5h-navigation-update-rate](NFR-iuk5h-navigation-update-rate.md)
   - [NFR-wtdig-navigation-controller-performance](NFR-wtdig-navigation-controller-performance.md)
 - Related ADRs:
   - [ADR-wrcuk-navigation-controller-architecture](../adr/ADR-wrcuk-navigation-controller-architecture.md)

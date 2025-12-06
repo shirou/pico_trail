@@ -16,7 +16,10 @@
   - [FR-333ym-gps-waypoint-navigation](FR-333ym-gps-waypoint-navigation.md)
   - [FR-q2sjt-control-mode-framework](FR-q2sjt-control-mode-framework.md)
   - [FR-cs42u-gps-navigation-state-access](FR-cs42u-gps-navigation-state-access.md)
-- Dependent Requirements: N/A
+  - [FR-m2c9z-mission-waypoint-navigation](FR-m2c9z-mission-waypoint-navigation.md)
+  - [FR-v6571-mission-execution-state](FR-v6571-mission-execution-state.md)
+- Dependent Requirements:
+  - [FR-w893v-mission-start-command](FR-w893v-mission-start-command.md)
 - Related Tasks: N/A - Tasks will be created after ADRs
 
 ## Requirement Statement

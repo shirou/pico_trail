@@ -119,9 +119,7 @@ use pico_trail::{
     libraries::{kinematics::DifferentialDrive, motor_driver::MotorGroup, RC_INPUT},
     parameters::wifi::WifiParams,
     platform::rp2350::{network::WifiConfig, Rp2350Flash},
-    subsystems::navigation::{
-        NavigationController, SimpleNavigationController, NAV_OUTPUT, NAV_TARGET,
-    },
+    subsystems::navigation::{NavigationController, SimpleNavigationController, NAV_OUTPUT},
 };
 
 #[embassy_executor::main]
@@ -571,7 +569,7 @@ async fn rover_mavlink_task(
                             // Process RC input messages (async, updates global state)
                             dispatcher.process_rc_input(&msg, timestamp_us).await;
 
-                            // Process navigation input messages (async, updates NAV_TARGET)
+                            // Process navigation input messages (updates MISSION_STORAGE)
                             dispatcher.process_navigation_input(&msg).await;
 
                             // Dispatch message to appropriate handler
@@ -773,11 +771,13 @@ async fn motor_control_task(
             );
         }
 
-        if let Err(e) = motor_group.set_group_speed(&speeds, is_armed) {
-            // NotArmed is expected when system is disarmed - don't log as warning
-            if !matches!(e, pico_trail::libraries::motor_driver::MotorError::NotArmed) {
-                pico_trail::log_warn!("Motor control error: {:?}", e);
+        if !is_armed {
+            // Stop all motors when disarmed (critical safety behavior)
+            if motor_group.stop_all().is_err() {
+                pico_trail::log_warn!("Failed to stop motors on disarm");
             }
+        } else if let Err(e) = motor_group.set_group_speed(&speeds, is_armed) {
+            pico_trail::log_warn!("Motor control error: {:?}", e);
         }
 
         // Check RC timeout (only in modes that use RC)
@@ -829,13 +829,20 @@ async fn gps_task(uart: embassy_rp::uart::BufferedUart) {
 
 /// Navigation task
 ///
-/// Reads GPS position from SYSTEM_STATE and navigation target from NAV_TARGET,
+/// Reads GPS position from SYSTEM_STATE and navigation target from MISSION_STORAGE,
 /// computes steering/throttle using SimpleNavigationController, and updates NAV_OUTPUT.
 /// Runs at 50Hz (20ms interval).
+///
+/// Navigation is only active when MissionState is Running and mode is Guided or Auto.
+/// Uses MISSION_STORAGE as the single source of truth for waypoint navigation.
 #[cfg(feature = "pico2_w")]
 #[embassy_executor::task]
 async fn navigation_task() {
     use pico_trail::communication::mavlink::state::{FlightMode, SYSTEM_STATE};
+    use pico_trail::core::mission::{
+        advance_waypoint, complete_mission_sync, get_current_target, get_mission_state_sync,
+        set_mission_state, MissionState, Waypoint, MISSION_STORAGE,
+    };
     use pico_trail::subsystems::navigation::take_reposition_target;
 
     pico_trail::log_info!("Navigation task started");
@@ -844,16 +851,47 @@ async fn navigation_task() {
 
     loop {
         // Check for reposition command (from MAV_CMD_DO_REPOSITION / Fly Here)
-        // This takes priority and updates NAV_TARGET
         if let Some(reposition) = take_reposition_target() {
             pico_trail::log_info!(
                 "Reposition target received: lat={}, lon={}",
                 reposition.latitude,
                 reposition.longitude
             );
-            // Update NAV_TARGET with reposition target
-            let mut nav_target = NAV_TARGET.lock().await;
-            *nav_target = Some(reposition);
+
+            // Create waypoint from reposition target
+            let waypoint = Waypoint {
+                seq: 0,
+                frame: 0,    // MAV_FRAME_GLOBAL
+                command: 16, // MAV_CMD_NAV_WAYPOINT
+                current: 1,
+                autocontinue: 0,
+                param1: 0.0,
+                param2: 2.0, // WP_RADIUS default
+                param3: 0.0,
+                param4: 0.0,
+                x: (reposition.latitude * 1e7) as i32,
+                y: (reposition.longitude * 1e7) as i32,
+                z: reposition.altitude.unwrap_or(0.0),
+            };
+
+            // Update MISSION_STORAGE (clear and add single waypoint)
+            {
+                let mut storage = MISSION_STORAGE.lock().await;
+                storage.clear();
+                let _ = storage.add_waypoint(waypoint);
+            }
+
+            // Get current mode to check if we should start navigation
+            let mode = critical_section::with(|cs| {
+                let state = SYSTEM_STATE.borrow_ref(cs);
+                state.mode
+            });
+
+            // If in GUIDED mode, set MissionState::Running
+            if mode == FlightMode::Guided {
+                set_mission_state(MissionState::Running).await;
+                pico_trail::log_info!("GUIDED mode: Starting navigation to reposition target");
+            }
         }
 
         // Get current mode and GPS from SYSTEM_STATE
@@ -862,13 +900,16 @@ async fn navigation_task() {
             (state.mode, state.gps_position)
         });
 
-        // Only run navigation in Guided mode (for now)
-        if mode == FlightMode::Guided {
-            // Get navigation target
-            let target = {
-                let nav_target = NAV_TARGET.lock().await;
-                *nav_target
-            };
+        // Get mission state (sync access for consistency with command handler)
+        let mission_state = get_mission_state_sync();
+
+        // Only run navigation when mission is running and in Guided or Auto mode
+        let should_navigate = mission_state == MissionState::Running
+            && (mode == FlightMode::Guided || mode == FlightMode::Auto);
+
+        if should_navigate {
+            // Get navigation target from MISSION_STORAGE (unified source)
+            let target = get_current_target().await;
 
             if let (Some(current), Some(target)) = (gps_position, target) {
                 // Compute navigation output
@@ -878,6 +919,24 @@ async fn navigation_task() {
                 {
                     let mut nav_output = NAV_OUTPUT.lock().await;
                     *nav_output = output;
+                }
+
+                // Handle waypoint arrival
+                if output.at_target {
+                    if mode == FlightMode::Guided {
+                        // GUIDED mode: single waypoint, mission complete
+                        complete_mission_sync();
+                        pico_trail::log_info!("GUIDED: Waypoint reached, mission completed");
+                    } else if mode == FlightMode::Auto {
+                        // AUTO mode: advance to next waypoint or complete mission
+                        if advance_waypoint().await {
+                            pico_trail::log_info!("AUTO: Waypoint reached, advancing to next");
+                        } else {
+                            // Last waypoint reached - mission complete
+                            complete_mission_sync();
+                            pico_trail::log_info!("AUTO: Mission completed, all waypoints reached");
+                        }
+                    }
                 }
 
                 // Log navigation status periodically (every ~1s = 50 iterations)
@@ -901,6 +960,10 @@ async fn navigation_task() {
                 let mut nav_output = NAV_OUTPUT.lock().await;
                 *nav_output = pico_trail::subsystems::navigation::NavigationOutput::default();
             }
+        } else if mode == FlightMode::Guided || mode == FlightMode::Auto {
+            // Mode is Guided/Auto but mission not running - zero output
+            let mut nav_output = NAV_OUTPUT.lock().await;
+            *nav_output = pico_trail::subsystems::navigation::NavigationOutput::default();
         }
 
         // 50 Hz update rate (20ms)

@@ -23,6 +23,23 @@
 //! - Parameter task (mission count query)
 //!
 //! Use appropriate synchronization primitives when accessing from multiple tasks.
+//!
+//! # Global State
+//!
+//! The `state` module provides global mission state and storage accessible
+//! from navigation and handlers. See [`state`] module for details.
+
+mod state;
+
+pub use state::MissionState;
+#[cfg(feature = "embassy")]
+pub use state::{
+    add_waypoint_sync, advance_waypoint, clear_mission, clear_waypoints_sync,
+    complete_mission_sync, get_current_target, get_mission_state, get_mission_state_sync,
+    has_waypoints, has_waypoints_sync, set_mission_state, set_mission_state_sync,
+    set_single_waypoint, start_mission, start_mission_from_beginning_sync, start_mission_sync,
+    stop_mission_sync, MISSION_STATE, MISSION_STATE_SYNC, MISSION_STORAGE,
+};
 
 use heapless::Vec;
 
@@ -143,6 +160,16 @@ impl Default for MissionStorage {
 impl MissionStorage {
     /// Create a new empty mission storage
     pub fn new() -> Self {
+        Self {
+            waypoints: Vec::new(),
+            current_index: 0,
+        }
+    }
+
+    /// Create a new empty mission storage (const fn for static initialization)
+    ///
+    /// This is required for static MISSION_STORAGE initialization.
+    pub const fn new_const() -> Self {
         Self {
             waypoints: Vec::new(),
             current_index: 0,
