@@ -141,6 +141,13 @@ impl MessageDispatcher {
                 responses
             }
 
+            COMMAND_INT(data) => {
+                let ack = self.command_handler.handle_command_int(data);
+                let mut responses = Vec::new();
+                let _ = responses.push(COMMAND_ACK(ack));
+                responses
+            }
+
             // Mission protocol
             MISSION_REQUEST_LIST(data) => {
                 let msg = self

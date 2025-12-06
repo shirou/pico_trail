@@ -187,6 +187,54 @@ impl FlightMode {
     }
 }
 
+/// Home position for RTL and mission planning
+///
+/// Stores the home location that the vehicle will return to in RTL mode.
+/// Can be set manually via MAV_CMD_DO_SET_HOME or automatically on first GPS fix.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HomePosition {
+    /// Latitude in degrees (-90 to +90)
+    pub latitude: f32,
+    /// Longitude in degrees (-180 to +180)
+    pub longitude: f32,
+    /// Altitude in meters above sea level
+    pub altitude: f32,
+}
+
+impl HomePosition {
+    /// Create a new home position
+    pub const fn new(latitude: f32, longitude: f32, altitude: f32) -> Self {
+        Self {
+            latitude,
+            longitude,
+            altitude,
+        }
+    }
+
+    /// Create home position from COMMAND_INT parameters
+    ///
+    /// COMMAND_INT uses scaled integers for lat/lon:
+    /// - x: latitude in degrees * 10^7
+    /// - y: longitude in degrees * 10^7
+    /// - z: altitude in meters
+    pub fn from_command_int(x: i32, y: i32, z: f32) -> Self {
+        Self {
+            latitude: x as f32 / 1e7,
+            longitude: y as f32 / 1e7,
+            altitude: z,
+        }
+    }
+
+    /// Create home position from current GPS position
+    pub fn from_gps(gps: &GpsPosition) -> Self {
+        Self {
+            latitude: gps.latitude,
+            longitude: gps.longitude,
+            altitude: gps.altitude,
+        }
+    }
+}
+
 /// Battery state
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BatteryState {
@@ -338,6 +386,8 @@ pub struct SystemState {
     pub gps_position: Option<GpsPosition>,
     /// GPS timestamp (microseconds since boot when position was updated)
     pub gps_timestamp_us: u64,
+    /// Home position for RTL (None if not set)
+    pub home_position: Option<HomePosition>,
     /// System uptime (microseconds since boot)
     pub uptime_us: u64,
     /// CPU load (percentage, 0.0-100.0)
@@ -361,6 +411,7 @@ impl Default for SystemState {
             battery: BatteryState::placeholder(),
             gps_position: None,
             gps_timestamp_us: 0,
+            home_position: None,
             uptime_us: 0,
             cpu_load: 0.0,
             arming_checks: 0xFFFF, // All checks enabled by default
@@ -379,6 +430,7 @@ impl SystemState {
             battery: BatteryState::placeholder(),
             gps_position: None,
             gps_timestamp_us: 0,
+            home_position: None,
             uptime_us: 0,
             cpu_load: 0.0,
             arming_checks: 0xFFFF, // All checks enabled by default
@@ -426,6 +478,7 @@ impl SystemState {
             battery: BatteryState::placeholder(),
             gps_position: None,
             gps_timestamp_us: 0,
+            home_position: None,
             uptime_us: 0,
             cpu_load: 0.0,
             arming_checks: arming_params.check_bitmask as u16,
@@ -695,6 +748,34 @@ impl SystemState {
             return false;
         }
         current_time_us.saturating_sub(self.gps_timestamp_us) < threshold_us
+    }
+
+    /// Set home position directly
+    ///
+    /// Used when MAV_CMD_DO_SET_HOME specifies a location (param1 = 0).
+    pub fn set_home(&mut self, home: HomePosition) {
+        self.home_position = Some(home);
+    }
+
+    /// Set home position to current GPS location
+    ///
+    /// Used when MAV_CMD_DO_SET_HOME requests current location (param1 = 1).
+    ///
+    /// # Returns
+    ///
+    /// Ok(()) if GPS position is available, Err if no GPS fix
+    pub fn set_home_to_current(&mut self) -> Result<(), &'static str> {
+        if let Some(gps) = self.gps_position {
+            self.home_position = Some(HomePosition::from_gps(&gps));
+            Ok(())
+        } else {
+            Err("No GPS fix available")
+        }
+    }
+
+    /// Check if home position is set
+    pub fn has_home(&self) -> bool {
+        self.home_position.is_some()
     }
 }
 

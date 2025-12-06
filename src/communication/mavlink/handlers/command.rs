@@ -1,8 +1,8 @@
 //! Command Protocol Handler
 //!
-//! Handles COMMAND_LONG messages from ground control station for vehicle control.
+//! Handles COMMAND_LONG and COMMAND_INT messages from ground control station for vehicle control.
 //!
-//! # Supported Commands
+//! # Supported Commands (COMMAND_LONG)
 //!
 //! - **MAV_CMD_COMPONENT_ARM_DISARM**: Arm or disarm vehicle
 //! - **MAV_CMD_DO_SET_MODE**: Change flight mode
@@ -12,9 +12,13 @@
 //! - **MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES** (520): Request AUTOPILOT_VERSION
 //! - **MAV_CMD_REQUEST_CAMERA_INFORMATION** (521): Not supported (no camera)
 //!
+//! # Supported Commands (COMMAND_INT)
+//!
+//! - **MAV_CMD_DO_SET_HOME** (179): Set home position for RTL
+//!
 //! # Command Flow
 //!
-//! 1. GCS sends COMMAND_LONG message
+//! 1. GCS sends COMMAND_LONG or COMMAND_INT message
 //! 2. CommandHandler validates command and parameters
 //! 3. Handler executes command or applies safety checks
 //! 4. Handler sends COMMAND_ACK with result (ACCEPTED/DENIED/UNSUPPORTED)
@@ -31,7 +35,8 @@ use crate::communication::mavlink::status_notifier;
 use core::fmt::Write;
 use heapless::{String, Vec};
 use mavlink::common::{
-    MavCmd, MavMessage, MavResult, COMMAND_ACK_DATA, COMMAND_LONG_DATA, PROTOCOL_VERSION_DATA,
+    MavCmd, MavMessage, MavResult, COMMAND_ACK_DATA, COMMAND_INT_DATA, COMMAND_LONG_DATA,
+    PROTOCOL_VERSION_DATA,
 };
 
 /// MAVLink protocol version (MAVLink 2.0)
@@ -299,11 +304,13 @@ impl CommandHandler {
         // Common MAVLink message IDs
         const MAVLINK_MSG_ID_AUTOPILOT_VERSION: u32 = 148;
         const MAVLINK_MSG_ID_PROTOCOL_VERSION: u32 = 300;
-        // Camera-related message IDs (not supported on this rover)
+        // Camera/Video-related message IDs (not supported on this rover)
         const MAVLINK_MSG_ID_CAMERA_INFORMATION: u32 = 259;
         const MAVLINK_MSG_ID_CAMERA_SETTINGS: u32 = 260;
         const MAVLINK_MSG_ID_STORAGE_INFORMATION: u32 = 261;
         const MAVLINK_MSG_ID_CAMERA_CAPTURE_STATUS: u32 = 262;
+        const MAVLINK_MSG_ID_VIDEO_STREAM_INFORMATION: u32 = 269;
+        const MAVLINK_MSG_ID_VIDEO_STREAM_STATUS: u32 = 270;
 
         match message_id {
             MAVLINK_MSG_ID_PROTOCOL_VERSION => {
@@ -314,12 +321,14 @@ impl CommandHandler {
                 crate::log_debug!("Autopilot version requested via MAV_CMD_REQUEST_MESSAGE");
                 MavResult::MAV_RESULT_ACCEPTED
             }
-            // Camera-related messages: gracefully decline without warning (no camera on this rover)
+            // Camera/Video-related messages: gracefully decline without warning (no camera on this rover)
             MAVLINK_MSG_ID_CAMERA_INFORMATION
             | MAVLINK_MSG_ID_CAMERA_SETTINGS
             | MAVLINK_MSG_ID_STORAGE_INFORMATION
-            | MAVLINK_MSG_ID_CAMERA_CAPTURE_STATUS => {
-                crate::log_debug!("Camera message {} requested (not supported)", message_id);
+            | MAVLINK_MSG_ID_CAMERA_CAPTURE_STATUS
+            | MAVLINK_MSG_ID_VIDEO_STREAM_INFORMATION
+            | MAVLINK_MSG_ID_VIDEO_STREAM_STATUS => {
+                crate::log_debug!("Camera/Video message {} requested (not supported)", message_id);
                 MavResult::MAV_RESULT_UNSUPPORTED
             }
             _ => {
@@ -385,6 +394,104 @@ impl CommandHandler {
         status_notifier::send_info("Fly to target set");
 
         MavResult::MAV_RESULT_ACCEPTED
+    }
+
+    /// Handle COMMAND_INT message from GCS
+    ///
+    /// COMMAND_INT is preferred over COMMAND_LONG for commands with position data
+    /// because it uses integer lat/lon (degrees * 10^7) for higher precision.
+    ///
+    /// # Supported Commands
+    ///
+    /// - MAV_CMD_DO_SET_HOME (179): Set home position
+    pub fn handle_command_int(&mut self, cmd: &COMMAND_INT_DATA) -> COMMAND_ACK_DATA {
+        crate::log_debug!("Received COMMAND_INT: command={}", cmd.command as u32);
+
+        let result = match cmd.command {
+            MavCmd::MAV_CMD_DO_SET_HOME => self.handle_set_home(cmd),
+            _ => {
+                crate::log_warn!("Unsupported COMMAND_INT: {}", cmd.command as u32);
+                MavResult::MAV_RESULT_UNSUPPORTED
+            }
+        };
+
+        COMMAND_ACK_DATA {
+            command: cmd.command,
+            result,
+            progress: 0,
+            result_param2: 0,
+            target_system: 0,
+            target_component: 0,
+        }
+    }
+
+    /// Handle MAV_CMD_DO_SET_HOME command
+    ///
+    /// Sets the home position for RTL mode.
+    ///
+    /// # Parameters (COMMAND_INT)
+    /// - param1: 1=use current location, 0=use specified location
+    /// - x: Latitude in degrees * 10^7
+    /// - y: Longitude in degrees * 10^7
+    /// - z: Altitude in meters
+    fn handle_set_home(&mut self, cmd: &COMMAND_INT_DATA) -> MavResult {
+        use crate::communication::mavlink::state::{HomePosition, SYSTEM_STATE};
+
+        let use_current = cmd.param1 > 0.5;
+
+        if use_current {
+            // Set home to current GPS position
+            let result = critical_section::with(|cs| {
+                let mut state = SYSTEM_STATE.borrow_ref_mut(cs);
+                state.set_home_to_current()
+            });
+
+            match result {
+                Ok(()) => {
+                    crate::log_info!("Home set to current location");
+                    status_notifier::send_info("Home set to current");
+                    MavResult::MAV_RESULT_ACCEPTED
+                }
+                Err(_reason) => {
+                    crate::log_warn!("Failed to set home: no GPS fix");
+                    status_notifier::send_error("No GPS fix for home");
+                    MavResult::MAV_RESULT_DENIED
+                }
+            }
+        } else {
+            // Set home to specified location
+            let home = HomePosition::from_command_int(cmd.x, cmd.y, cmd.z);
+
+            // Validate coordinates
+            if !(-90.0..=90.0).contains(&home.latitude)
+                || !(-180.0..=180.0).contains(&home.longitude)
+            {
+                crate::log_warn!(
+                    "Invalid home position: lat={}, lon={}",
+                    home.latitude,
+                    home.longitude
+                );
+                status_notifier::send_error("Invalid home position");
+                return MavResult::MAV_RESULT_DENIED;
+            }
+
+            critical_section::with(|cs| {
+                let mut state = SYSTEM_STATE.borrow_ref_mut(cs);
+                state.set_home(home);
+            });
+
+            crate::log_info!(
+                "Home set to lat={}, lon={}, alt={}",
+                home.latitude,
+                home.longitude,
+                home.altitude
+            );
+            let mut msg: String<48> = String::new();
+            let _ = write!(msg, "Home: {:.5},{:.5}", home.latitude, home.longitude);
+            status_notifier::send_info(&msg);
+
+            MavResult::MAV_RESULT_ACCEPTED
+        }
     }
 
     /// Create PROTOCOL_VERSION message
@@ -759,5 +866,191 @@ mod tests {
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_DO_REPOSITION);
         assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+    }
+
+    // Helper function for creating COMMAND_INT messages
+    fn create_command_int_set_home(
+        use_current: bool,
+        lat_e7: i32,
+        lon_e7: i32,
+        alt: f32,
+    ) -> COMMAND_INT_DATA {
+        COMMAND_INT_DATA {
+            target_system: 1,
+            target_component: 1,
+            frame: mavlink::common::MavFrame::MAV_FRAME_GLOBAL,
+            command: MavCmd::MAV_CMD_DO_SET_HOME,
+            current: 0,
+            autocontinue: 0,
+            param1: if use_current { 1.0 } else { 0.0 },
+            param2: 0.0,
+            param3: 0.0,
+            param4: 0.0,
+            x: lat_e7,
+            y: lon_e7,
+            z: alt,
+        }
+    }
+
+    #[test]
+    fn test_set_home_specified_location() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = CommandHandler::new();
+
+        // Set home to Tokyo (35.6762, 139.6503) - scaled by 10^7
+        let lat_e7 = (35.6762 * 1e7) as i32;
+        let lon_e7 = (139.6503 * 1e7) as i32;
+        let cmd = create_command_int_set_home(false, lat_e7, lon_e7, 100.0);
+        let ack = handler.handle_command_int(&cmd);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_DO_SET_HOME);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+
+        // Verify home was set
+        let home = critical_section::with(|cs| {
+            crate::communication::mavlink::state::SYSTEM_STATE
+                .borrow_ref(cs)
+                .home_position
+        });
+        assert!(home.is_some());
+        let home = home.unwrap();
+        assert!((home.latitude - 35.6762).abs() < 0.0001);
+        assert!((home.longitude - 139.6503).abs() < 0.0001);
+        assert!((home.altitude - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_set_home_current_location_no_gps() {
+        let state = SystemState::new(); // No GPS fix
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = CommandHandler::new();
+
+        // Try to set home to current location (no GPS)
+        let cmd = create_command_int_set_home(true, 0, 0, 0.0);
+        let ack = handler.handle_command_int(&cmd);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_DO_SET_HOME);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
+    }
+
+    #[test]
+    fn test_set_home_current_location_with_gps() {
+        use crate::devices::gps::{GpsFixType, GpsPosition};
+
+        let mut state = SystemState::new();
+        state.gps_position = Some(GpsPosition {
+            latitude: 35.6762,
+            longitude: 139.6503,
+            altitude: 50.0,
+            speed: 0.0,
+            course_over_ground: None,
+            fix_type: GpsFixType::Fix3D,
+            satellites: 10,
+        });
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = CommandHandler::new();
+
+        // Set home to current location
+        let cmd = create_command_int_set_home(true, 0, 0, 0.0);
+        let ack = handler.handle_command_int(&cmd);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_DO_SET_HOME);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+
+        // Verify home was set to GPS position
+        let home = critical_section::with(|cs| {
+            crate::communication::mavlink::state::SYSTEM_STATE
+                .borrow_ref(cs)
+                .home_position
+        });
+        assert!(home.is_some());
+        let home = home.unwrap();
+        assert!((home.latitude - 35.6762).abs() < 0.0001);
+        assert!((home.longitude - 139.6503).abs() < 0.0001);
+        assert!((home.altitude - 50.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_set_home_invalid_coordinates() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = CommandHandler::new();
+
+        // Invalid latitude (> 90 degrees)
+        let lat_e7 = (91.0 * 1e7) as i32;
+        let lon_e7 = (139.0 * 1e7) as i32;
+        let cmd = create_command_int_set_home(false, lat_e7, lon_e7, 100.0);
+        let ack = handler.handle_command_int(&cmd);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_DO_SET_HOME);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
+    }
+
+    #[test]
+    fn test_set_home_negative_coordinates() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = CommandHandler::new();
+
+        // Negative coordinates (Buenos Aires: -34.6037, -58.3816)
+        let lat_e7 = (-34.6037 * 1e7) as i32;
+        let lon_e7 = (-58.3816 * 1e7) as i32;
+        let cmd = create_command_int_set_home(false, lat_e7, lon_e7, 25.0);
+        let ack = handler.handle_command_int(&cmd);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_DO_SET_HOME);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+
+        // Verify home was set
+        let home = critical_section::with(|cs| {
+            crate::communication::mavlink::state::SYSTEM_STATE
+                .borrow_ref(cs)
+                .home_position
+        });
+        assert!(home.is_some());
+        let home = home.unwrap();
+        assert!((home.latitude - (-34.6037)).abs() < 0.0001);
+        assert!((home.longitude - (-58.3816)).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_command_int_unsupported() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = CommandHandler::new();
+
+        // Unsupported COMMAND_INT command
+        let cmd = COMMAND_INT_DATA {
+            target_system: 1,
+            target_component: 1,
+            frame: mavlink::common::MavFrame::MAV_FRAME_GLOBAL,
+            command: MavCmd::MAV_CMD_NAV_WAYPOINT,
+            current: 0,
+            autocontinue: 0,
+            param1: 0.0,
+            param2: 0.0,
+            param3: 0.0,
+            param4: 0.0,
+            x: 0,
+            y: 0,
+            z: 0.0,
+        };
+        let ack = handler.handle_command_int(&cmd);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_NAV_WAYPOINT);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_UNSUPPORTED);
     }
 }
