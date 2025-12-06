@@ -556,13 +556,10 @@ async fn rover_mavlink_task(
                 loop {
                     match parser.read_message(&mut reader).await {
                         Ok((header, msg)) => {
-                            pico_trail::log_debug!(
-                                "RX MAVLink message: sys={}, comp={}, seq={}, msgid={}",
-                                header.system_id,
-                                header.component_id,
-                                header.sequence,
-                                msg.message_id()
-                            );
+                            // Only log non-heartbeat messages
+                            if msg.message_id() != 0 {
+                                pico_trail::log_debug!("RX msgid={}", msg.message_id());
+                            }
 
                             let timestamp_us = Instant::now().as_micros();
 
@@ -595,7 +592,6 @@ async fn rover_mavlink_task(
                                 {
                                     let len = 280 - msg_cursor.len();
                                     if router.send_bytes(&msg_buf[..len]).await.is_ok() {
-                                        //                                        pico_trail::log_trace!("TX {} bytes", len);
                                         sequence = sequence.wrapping_add(1);
                                     }
                                 }
@@ -604,6 +600,7 @@ async fn rover_mavlink_task(
                                 if matches!(
                                     response_msg,
                                     mavlink::common::MavMessage::PARAM_VALUE(_)
+                                        | mavlink::common::MavMessage::MISSION_REQUEST_INT(_)
                                 ) {
                                     Timer::after_millis(5).await;
                                 }
@@ -652,6 +649,7 @@ async fn rover_mavlink_task(
 
         // Check for mission timeouts
         if let Some(mission_ack) = dispatcher.check_mission_timeout(timestamp_us) {
+            pico_trail::log_warn!("SENDING MISSION_ACK due to timeout!");
             let header = mavlink::MavHeader {
                 system_id: 1,
                 component_id: 1,

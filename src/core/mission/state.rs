@@ -88,13 +88,20 @@ pub async fn get_current_target() -> Option<PositionTarget> {
 
 /// Advance to next waypoint in AUTO mode
 ///
-/// Increments current_index if more waypoints exist.
-/// Returns true if advanced, false if at last waypoint (mission complete).
+/// Increments current_index if more waypoints exist and autocontinue is enabled.
+/// Returns true if advanced, false if at last waypoint (mission complete) or autocontinue is disabled.
 #[cfg(feature = "embassy")]
 pub async fn advance_waypoint() -> bool {
     let mut storage = MISSION_STORAGE.lock().await;
     let current = storage.current_index();
     let count = storage.count();
+
+    // Check autocontinue of current waypoint
+    if let Some(wp) = storage.get_waypoint(current) {
+        if wp.autocontinue == 0 {
+            return false; // Don't advance if autocontinue is disabled
+        }
+    }
 
     if current + 1 < count {
         let _ = storage.set_current_index(current + 1);

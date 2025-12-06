@@ -281,6 +281,16 @@ Telemetry is broadcast to all active transports (UART and UDP).
 - [ADRs](docs/adr/) - Architecture Decision Records
 - [Tasks](docs/tasks/) - Implementation tasks with design and plans
 
+## Known Bugs
+
+### Mission Upload with Mission Planner
+
+Standard "Write" mission upload does not work correctly with Mission Planner. The GCS repeatedly requests the same waypoint (seq=0) despite receiving valid MISSION_REQUEST_INT responses with correct target addressing.
+
+**Workaround**: Use **"Write Fast"** instead of "Write" in Mission Planner. Write Fast works correctly.
+
+**Status**: Under investigation. The issue may be related to timing or protocol differences between Write and Write Fast modes.
+
 ## Contributing
 
 Contributions are welcome! Please ensure:

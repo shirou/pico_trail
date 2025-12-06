@@ -195,6 +195,29 @@ impl MissionHandler {
         sender_component_id: u8,
     ) -> MISSION_COUNT_DATA {
         crate::log_info!("Mission download requested");
+
+        // Copy from global MISSION_STORAGE to transfer_buffer for download
+        // This ensures we return the authoritative mission data, not stale transfer_buffer
+        #[cfg(feature = "embassy")]
+        {
+            use crate::core::mission::MISSION_STORAGE;
+
+            self.transfer_buffer.clear();
+            if let Ok(storage) = MISSION_STORAGE.try_lock() {
+                for i in 0..storage.count() {
+                    if let Some(wp) = storage.get_waypoint(i) {
+                        let _ = self.transfer_buffer.add_waypoint(*wp);
+                    }
+                }
+                crate::log_info!(
+                    "Download: loaded {} waypoints from global storage",
+                    self.transfer_buffer.count()
+                );
+            } else {
+                crate::log_warn!("Download: failed to lock MISSION_STORAGE");
+            }
+        }
+
         self.state = MissionState::DownloadInProgress {
             last_activity_us: current_time_us,
             sender_system_id,
@@ -218,25 +241,26 @@ impl MissionHandler {
         data: &MISSION_REQUEST_INT_DATA,
         current_time_us: u64,
     ) -> Result<MISSION_ITEM_INT_DATA, MavMissionResult> {
-        // Update activity timestamp while preserving sender IDs
-        if let MissionState::DownloadInProgress {
+        // Get sender IDs (GCS) from download state and update activity timestamp
+        let (gcs_system_id, gcs_component_id) = if let MissionState::DownloadInProgress {
             last_activity_us,
             sender_system_id,
             sender_component_id,
         } = &mut self.state
         {
             *last_activity_us = current_time_us;
-            let _ = (*sender_system_id, *sender_component_id); // keep sender IDs
+            (*sender_system_id, *sender_component_id)
         } else {
             crate::log_warn!("Received MISSION_REQUEST_INT while not downloading");
             return Err(MavMissionResult::MAV_MISSION_ERROR);
-        }
+        };
 
         let seq = data.seq;
         match self.transfer_buffer.get_waypoint(seq) {
             Some(wp) => {
                 crate::log_debug!("Sending waypoint {}", seq);
-                Ok(self.waypoint_to_mission_item(wp, data.target_system, data.target_component))
+                // Use GCS system/component IDs as target (not the autopilot IDs from request)
+                Ok(self.waypoint_to_mission_item(wp, gcs_system_id, gcs_component_id))
             }
             None => {
                 crate::log_warn!("Waypoint {} not found", seq);
@@ -301,15 +325,40 @@ impl MissionHandler {
                 sender_system_id,
                 sender_component_id,
             } => {
-                // Verify sequence number
+                // Handle sequence number
                 if data.seq != next_seq {
-                    crate::log_warn!(
-                        "Waypoint sequence mismatch: expected {}, got {}",
-                        next_seq,
-                        data.seq
-                    );
-                    self.abort_transfer();
-                    return Err(MavMissionResult::MAV_MISSION_INVALID_SEQUENCE);
+                    if data.seq < next_seq {
+                        // Retransmission of already received waypoint - just re-request next_seq
+                        crate::log_debug!(
+                            "Waypoint retransmission: got seq={}, already expecting seq={}, re-requesting",
+                            data.seq,
+                            next_seq
+                        );
+                        // Update activity timestamp
+                        self.state = MissionState::UploadInProgress {
+                            count,
+                            next_seq,
+                            last_activity_us: current_time_us,
+                            sender_system_id,
+                            sender_component_id,
+                        };
+                        // Re-send request for the waypoint we're actually waiting for
+                        return Ok(Some(MISSION_REQUEST_INT_DATA {
+                            target_system: sender_system_id,
+                            target_component: sender_component_id,
+                            seq: next_seq,
+                            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
+                        }));
+                    } else {
+                        // Sequence jumped forward - this is an error
+                        crate::log_warn!(
+                            "Waypoint sequence mismatch: expected {}, got {} (skipped)",
+                            next_seq,
+                            data.seq
+                        );
+                        self.abort_transfer();
+                        return Err(MavMissionResult::MAV_MISSION_INVALID_SEQUENCE);
+                    }
                 }
 
                 // Convert and store waypoint

@@ -208,25 +208,41 @@ impl<V: VehicleType> MessageDispatcher<V> {
 
             // Mission protocol
             MISSION_REQUEST_LIST(data) => {
+                crate::log_info!("RX MISSION_REQUEST_LIST: type={}", data.mission_type as u8);
                 let msg = self.mission_handler.handle_request_list(
                     data,
                     timestamp_us,
                     header.system_id,
                     header.component_id,
                 );
+                crate::log_info!("TX MISSION_COUNT: count={}", msg.count);
                 let mut responses = Vec::new();
                 let _ = responses.push(MISSION_COUNT(msg));
                 responses
             }
 
             MISSION_REQUEST_INT(data) => {
+                crate::log_info!("RX MISSION_REQUEST_INT: seq={}", data.seq);
                 match self.mission_handler.handle_request_int(data, timestamp_us) {
                     Ok(item_data) => {
+                        crate::log_info!(
+                            "TX MISSION_ITEM_INT: seq={} cmd={} lat={} lon={} alt={}",
+                            item_data.seq,
+                            item_data.command as u16,
+                            item_data.x,
+                            item_data.y,
+                            item_data.z
+                        );
                         let mut responses = Vec::new();
                         let _ = responses.push(MISSION_ITEM_INT(item_data));
                         responses
                     }
                     Err(result) => {
+                        crate::log_warn!(
+                            "TX MISSION_ACK: ERROR seq={} result={}",
+                            data.seq,
+                            result as u8
+                        );
                         // Send MISSION_ACK with error - reply to sender
                         let ack = self.mission_handler.create_ack(
                             result,
@@ -241,26 +257,41 @@ impl<V: VehicleType> MessageDispatcher<V> {
             }
 
             MISSION_COUNT(data) => {
+                crate::log_info!(
+                    "RX MISSION_COUNT: count={} type={}",
+                    data.count,
+                    data.mission_type as u8
+                );
                 let req = self.mission_handler.handle_count(
                     data,
                     timestamp_us,
                     header.system_id,
                     header.component_id,
                 );
+                crate::log_info!("TX MISSION_REQUEST_INT: seq={}", req.seq);
                 let mut responses = Vec::new();
                 let _ = responses.push(MISSION_REQUEST_INT(req));
                 responses
             }
 
             MISSION_ITEM_INT(data) => {
+                use crate::communication::mavlink::handlers::mission::MissionState;
+                let _next_seq = match self.mission_handler.state() {
+                    MissionState::Idle => 0,
+                    MissionState::UploadInProgress { next_seq, .. } => next_seq,
+                    MissionState::DownloadInProgress { .. } => 0,
+                };
+                crate::log_info!("RX ITEM_INT: seq={} expect={}", data.seq, _next_seq);
                 match self.mission_handler.handle_item_int(data, timestamp_us) {
                     Ok(Some(req)) => {
+                        crate::log_info!("TX MISSION_REQUEST_INT: seq={}", req.seq);
                         let mut responses = Vec::new();
                         let _ = responses.push(MISSION_REQUEST_INT(req));
                         responses
                     }
                     Ok(None) => {
                         // Upload complete, send ACK - reply to sender
+                        crate::log_info!("TX MISSION_ACK: ACCEPTED (upload complete)");
                         let ack = self.mission_handler.create_ack(
                             mavlink::common::MavMissionResult::MAV_MISSION_ACCEPTED,
                             header.system_id,
@@ -271,6 +302,7 @@ impl<V: VehicleType> MessageDispatcher<V> {
                         responses
                     }
                     Err(result) => {
+                        crate::log_warn!("TX MISSION_ACK: ERROR result={}", result as u8);
                         let ack = self.mission_handler.create_ack(
                             result,
                             header.system_id,
@@ -285,9 +317,24 @@ impl<V: VehicleType> MessageDispatcher<V> {
 
             // MISSION_ITEM (deprecated since 2020-06) - convert to MISSION_ITEM_INT format
             // Mission Planner uses this for "Fly Here" command
+            // NOTE: During upload, Mission Planner may send BOTH MISSION_ITEM and MISSION_ITEM_INT
+            // for the same waypoint. We only accept MISSION_ITEM when idle (for "Fly Here").
             #[allow(deprecated)]
             MISSION_ITEM(data) => {
+                use crate::communication::mavlink::handlers::mission::MissionState;
                 use mavlink::common::MISSION_ITEM_INT_DATA;
+
+                // Ignore MISSION_ITEM during upload - only accept MISSION_ITEM_INT
+                if matches!(
+                    self.mission_handler.state(),
+                    MissionState::UploadInProgress { .. }
+                ) {
+                    crate::log_debug!(
+                        "MISSION_ITEM ignored during upload (using MISSION_ITEM_INT): seq={}",
+                        data.seq
+                    );
+                    return Vec::new();
+                }
 
                 // Debug: log incoming MISSION_ITEM details
                 crate::log_debug!(
@@ -368,7 +415,20 @@ impl<V: VehicleType> MessageDispatcher<V> {
             }
 
             MISSION_ACK(data) => {
+                crate::log_info!("RX MISSION_ACK: result={}", data.mavtype as u8);
                 self.mission_handler.handle_ack(data);
+                Vec::new()
+            }
+
+            // MISSION_WRITE_PARTIAL_LIST - partial mission update (not fully implemented)
+            // Log for debugging, but don't handle yet
+            #[allow(unused_variables)]
+            MISSION_WRITE_PARTIAL_LIST(data) => {
+                crate::log_warn!(
+                    "MISSION_WRITE_PARTIAL_LIST received: start={}, end={} (NOT IMPLEMENTED)",
+                    data.start_index,
+                    data.end_index
+                );
                 Vec::new()
             }
 
