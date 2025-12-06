@@ -237,17 +237,25 @@ impl CommandHandler {
                 });
                 match result {
                     Ok(()) => {
-                        crate::log_info!("Mode changed to {:?}", mode);
+                        crate::log_info!("Mode changed to {}", mode.as_str());
+                        // Send STATUSTEXT to GCS
+                        let mut msg: String<32> = String::new();
+                        let _ = write!(msg, "Mode: {}", mode.as_str());
+                        status_notifier::send_info(&msg);
                         MavResult::MAV_RESULT_ACCEPTED
                     }
                     Err(_reason) => {
                         crate::log_warn!("Mode change rejected");
+                        status_notifier::send_error("Mode change rejected");
                         MavResult::MAV_RESULT_DENIED
                     }
                 }
             }
             None => {
                 crate::log_warn!("Invalid mode number: {}", custom_mode);
+                let mut msg: String<32> = String::new();
+                let _ = write!(msg, "Invalid mode: {}", custom_mode);
+                status_notifier::send_error(&msg);
                 MavResult::MAV_RESULT_DENIED
             }
         }
@@ -272,13 +280,31 @@ impl CommandHandler {
     fn handle_request_message(&mut self, cmd: &COMMAND_LONG_DATA) -> MavResult {
         let message_id = cmd.param1 as u32;
 
-        // PROTOCOL_VERSION message ID is 300
+        // Common MAVLink message IDs
+        const MAVLINK_MSG_ID_AUTOPILOT_VERSION: u32 = 148;
         const MAVLINK_MSG_ID_PROTOCOL_VERSION: u32 = 300;
+        // Camera-related message IDs (not supported on this rover)
+        const MAVLINK_MSG_ID_CAMERA_INFORMATION: u32 = 259;
+        const MAVLINK_MSG_ID_CAMERA_SETTINGS: u32 = 260;
+        const MAVLINK_MSG_ID_STORAGE_INFORMATION: u32 = 261;
+        const MAVLINK_MSG_ID_CAMERA_CAPTURE_STATUS: u32 = 262;
 
         match message_id {
             MAVLINK_MSG_ID_PROTOCOL_VERSION => {
                 crate::log_debug!("Protocol version requested via MAV_CMD_REQUEST_MESSAGE");
                 MavResult::MAV_RESULT_ACCEPTED
+            }
+            MAVLINK_MSG_ID_AUTOPILOT_VERSION => {
+                crate::log_debug!("Autopilot version requested via MAV_CMD_REQUEST_MESSAGE");
+                MavResult::MAV_RESULT_ACCEPTED
+            }
+            // Camera-related messages: gracefully decline without warning (no camera on this rover)
+            MAVLINK_MSG_ID_CAMERA_INFORMATION
+            | MAVLINK_MSG_ID_CAMERA_SETTINGS
+            | MAVLINK_MSG_ID_STORAGE_INFORMATION
+            | MAVLINK_MSG_ID_CAMERA_CAPTURE_STATUS => {
+                crate::log_debug!("Camera message {} requested (not supported)", message_id);
+                MavResult::MAV_RESULT_UNSUPPORTED
             }
             _ => {
                 crate::log_warn!("Unsupported message ID in REQUEST_MESSAGE: {}", message_id);
@@ -540,5 +566,38 @@ mod tests {
         // Hash arrays should be initialized (currently zeros)
         assert_eq!(msg.spec_version_hash.len(), 8);
         assert_eq!(msg.library_version_hash.len(), 8);
+    }
+
+    #[test]
+    fn test_request_autopilot_version() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = CommandHandler::new();
+
+        // MAV_CMD_REQUEST_MESSAGE with param1=148 (AUTOPILOT_VERSION message ID)
+        let cmd = create_command_long(MavCmd::MAV_CMD_REQUEST_MESSAGE, 148.0, 0.0);
+        let (ack, _) = handler.handle_command_long(&cmd);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_REQUEST_MESSAGE);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+    }
+
+    #[test]
+    fn test_request_camera_info_unsupported() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = CommandHandler::new();
+
+        // MAV_CMD_REQUEST_MESSAGE with param1=259 (CAMERA_INFORMATION message ID)
+        let cmd = create_command_long(MavCmd::MAV_CMD_REQUEST_MESSAGE, 259.0, 0.0);
+        let (ack, _) = handler.handle_command_long(&cmd);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_REQUEST_MESSAGE);
+        // Camera is not supported, but should return UNSUPPORTED gracefully
+        assert_eq!(ack.result, MavResult::MAV_RESULT_UNSUPPORTED);
     }
 }

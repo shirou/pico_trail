@@ -95,6 +95,20 @@ impl Default for FlightMode {
 }
 
 impl FlightMode {
+    /// Get human-readable name for the flight mode
+    ///
+    /// Returns a short uppercase name suitable for STATUSTEXT messages.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FlightMode::Manual => "MANUAL",
+            FlightMode::Stabilize => "STABILIZE",
+            FlightMode::Loiter => "LOITER",
+            FlightMode::Auto => "AUTO",
+            FlightMode::Guided => "GUIDED",
+            FlightMode::Rtl => "RTL",
+        }
+    }
+
     /// Convert to MAVLink custom mode number
     ///
     /// This mapping follows ArduPilot's mode numbering for rovers.
