@@ -57,19 +57,11 @@ impl BatteryParams {
     ///
     /// Ok if all parameters registered successfully
     pub fn register_defaults(store: &mut ParameterStore) -> Result<()> {
-        // BATT_ARM_VOLT - Default to 10.5V (3S LiPo minimum)
-        store.register(
-            "BATT_ARM_VOLT",
-            ParamValue::Float(10.5),
-            ParamFlags::empty(),
-        )?;
+        // BATT_ARM_VOLT - Default to 5.0V (minimum voltage to arm)
+        store.register("BATT_ARM_VOLT", ParamValue::Float(5.0), ParamFlags::empty())?;
 
-        // BATT_CRT_VOLT - Default to 10.0V (3S LiPo critical)
-        store.register(
-            "BATT_CRT_VOLT",
-            ParamValue::Float(10.0),
-            ParamFlags::empty(),
-        )?;
+        // BATT_CRT_VOLT - Default to 3.0V (critical voltage for failsafe)
+        store.register("BATT_CRT_VOLT", ParamValue::Float(3.0), ParamFlags::empty())?;
 
         // BATT_FS_CRT_ACT - Default to Land (1)
         store.register(
@@ -101,13 +93,13 @@ impl BatteryParams {
         let arm_voltage = match store.get("BATT_ARM_VOLT") {
             Some(ParamValue::Float(v)) => *v,
             Some(ParamValue::Int(v)) => *v as f32,
-            _ => 10.5,
+            _ => 5.0,
         };
 
         let critical_voltage = match store.get("BATT_CRT_VOLT") {
             Some(ParamValue::Float(v)) => *v,
             Some(ParamValue::Int(v)) => *v as f32,
-            _ => 10.0,
+            _ => 3.0,
         };
 
         let critical_action = match store.get("BATT_FS_CRT_ACT") {
@@ -143,8 +135,8 @@ mod tests {
     #[test]
     fn test_battery_params_defaults() {
         let params = BatteryParams {
-            arm_voltage: 10.5,
-            critical_voltage: 10.0,
+            arm_voltage: 5.0,
+            critical_voltage: 3.0,
             critical_action: BatteryFailsafeAction::Land as u8,
             volt_mult: 3.95,
         };

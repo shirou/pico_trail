@@ -835,12 +835,26 @@ async fn gps_task(uart: embassy_rp::uart::BufferedUart) {
 #[embassy_executor::task]
 async fn navigation_task() {
     use pico_trail::communication::mavlink::state::{FlightMode, SYSTEM_STATE};
+    use pico_trail::subsystems::navigation::take_reposition_target;
 
     pico_trail::log_info!("Navigation task started");
 
     let mut controller = SimpleNavigationController::new();
 
     loop {
+        // Check for reposition command (from MAV_CMD_DO_REPOSITION / Fly Here)
+        // This takes priority and updates NAV_TARGET
+        if let Some(reposition) = take_reposition_target() {
+            pico_trail::log_info!(
+                "Reposition target received: lat={}, lon={}",
+                reposition.latitude,
+                reposition.longitude
+            );
+            // Update NAV_TARGET with reposition target
+            let mut nav_target = NAV_TARGET.lock().await;
+            *nav_target = Some(reposition);
+        }
+
         // Get current mode and GPS from SYSTEM_STATE
         let (mode, gps_position) = critical_section::with(|cs| {
             let state = SYSTEM_STATE.borrow_ref(cs);

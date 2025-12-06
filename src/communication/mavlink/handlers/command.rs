@@ -6,8 +6,11 @@
 //!
 //! - **MAV_CMD_COMPONENT_ARM_DISARM**: Arm or disarm vehicle
 //! - **MAV_CMD_DO_SET_MODE**: Change flight mode
+//! - **MAV_CMD_DO_REPOSITION**: Navigate to position (Fly Here)
 //! - **MAV_CMD_PREFLIGHT_CALIBRATION**: Sensor calibration (placeholder)
 //! - **MAV_CMD_REQUEST_MESSAGE**: Request specific message (e.g., PROTOCOL_VERSION)
+//! - **MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES** (520): Request AUTOPILOT_VERSION
+//! - **MAV_CMD_REQUEST_CAMERA_INFORMATION** (521): Not supported (no camera)
 //!
 //! # Command Flow
 //!
@@ -79,6 +82,17 @@ impl CommandHandler {
             }
             MavCmd::MAV_CMD_REQUEST_MESSAGE => {
                 (self.handle_request_message(cmd), false, Vec::new())
+            }
+            MavCmd::MAV_CMD_DO_REPOSITION => (self.handle_do_reposition(cmd), false, Vec::new()),
+            // These commands are marked deprecated in mavlink crate but still used by Mission Planner
+            #[allow(deprecated)]
+            MavCmd::MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES => {
+                (self.handle_request_autopilot_capabilities(), false, Vec::new())
+            }
+            #[allow(deprecated)]
+            MavCmd::MAV_CMD_REQUEST_CAMERA_INFORMATION => {
+                // Camera not supported - silently return unsupported to avoid log spam
+                (MavResult::MAV_RESULT_UNSUPPORTED, false, Vec::new())
             }
             _ => {
                 crate::log_warn!("Unsupported command: {}", cmd.command as u32);
@@ -311,6 +325,64 @@ impl CommandHandler {
                 MavResult::MAV_RESULT_UNSUPPORTED
             }
         }
+    }
+
+    /// Handle MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES (command 520)
+    ///
+    /// Requests AUTOPILOT_VERSION message to be sent.
+    /// The actual AUTOPILOT_VERSION message will be sent by the telemetry handler.
+    fn handle_request_autopilot_capabilities(&mut self) -> MavResult {
+        crate::log_debug!("Autopilot capabilities requested (command 520)");
+        // The actual AUTOPILOT_VERSION message will be sent by the telemetry handler
+        MavResult::MAV_RESULT_ACCEPTED
+    }
+
+    /// Handle MAV_CMD_DO_REPOSITION command (Fly Here)
+    ///
+    /// Sets navigation target for guided navigation.
+    /// Mission Planner sends this when user clicks "Fly to here".
+    ///
+    /// # Parameters
+    /// - param1: Ground speed (m/s), -1 for default (ignored for now)
+    /// - param4: Yaw heading (degrees), NaN for unchanged (ignored for now)
+    /// - param5: Latitude (degrees)
+    /// - param6: Longitude (degrees)
+    /// - param7: Altitude (meters)
+    fn handle_do_reposition(&mut self, cmd: &COMMAND_LONG_DATA) -> MavResult {
+        use crate::subsystems::navigation::{set_reposition_target, PositionTarget};
+
+        let latitude = cmd.param5;
+        let longitude = cmd.param6;
+        let altitude = if cmd.param7.is_finite() && cmd.param7 != 0.0 {
+            Some(cmd.param7)
+        } else {
+            None
+        };
+
+        // Validate coordinates
+        if !(-90.0..=90.0).contains(&latitude) || !(-180.0..=180.0).contains(&longitude) {
+            crate::log_warn!(
+                "Invalid reposition target: lat={}, lon={}",
+                latitude,
+                longitude
+            );
+            status_notifier::send_error("Invalid position");
+            return MavResult::MAV_RESULT_DENIED;
+        }
+
+        let target = PositionTarget {
+            latitude,
+            longitude,
+            altitude,
+        };
+
+        // Set reposition target (will be picked up by navigation_task)
+        set_reposition_target(target);
+
+        crate::log_info!("Reposition target set: lat={}, lon={}", latitude, longitude);
+        status_notifier::send_info("Fly to target set");
+
+        MavResult::MAV_RESULT_ACCEPTED
     }
 
     /// Create PROTOCOL_VERSION message
@@ -599,5 +671,85 @@ mod tests {
         assert_eq!(ack.command, MavCmd::MAV_CMD_REQUEST_MESSAGE);
         // Camera is not supported, but should return UNSUPPORTED gracefully
         assert_eq!(ack.result, MavResult::MAV_RESULT_UNSUPPORTED);
+    }
+
+    fn create_do_reposition_cmd(lat: f32, lon: f32, alt: f32) -> COMMAND_LONG_DATA {
+        COMMAND_LONG_DATA {
+            target_system: 1,
+            target_component: 1,
+            command: MavCmd::MAV_CMD_DO_REPOSITION,
+            confirmation: 0,
+            param1: -1.0,     // Ground speed (-1 for default)
+            param2: 0.0,      // Reserved
+            param3: 0.0,      // Reserved
+            param4: f32::NAN, // Yaw (NaN for unchanged)
+            param5: lat,      // Latitude
+            param6: lon,      // Longitude
+            param7: alt,      // Altitude
+        }
+    }
+
+    #[test]
+    fn test_do_reposition_accepted() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = CommandHandler::new();
+
+        // Valid coordinates (Tokyo)
+        let cmd = create_do_reposition_cmd(35.6762, 139.6503, 100.0);
+        let (ack, _) = handler.handle_command_long(&cmd);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_DO_REPOSITION);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+    }
+
+    #[test]
+    fn test_do_reposition_invalid_latitude() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = CommandHandler::new();
+
+        // Invalid latitude (> 90)
+        let cmd = create_do_reposition_cmd(91.0, 139.6503, 100.0);
+        let (ack, _) = handler.handle_command_long(&cmd);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_DO_REPOSITION);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
+    }
+
+    #[test]
+    fn test_do_reposition_invalid_longitude() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = CommandHandler::new();
+
+        // Invalid longitude (> 180)
+        let cmd = create_do_reposition_cmd(35.6762, 181.0, 100.0);
+        let (ack, _) = handler.handle_command_long(&cmd);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_DO_REPOSITION);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
+    }
+
+    #[test]
+    fn test_do_reposition_negative_coords() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = CommandHandler::new();
+
+        // Valid negative coordinates (New York area)
+        let cmd = create_do_reposition_cmd(40.7128, -74.0060, 50.0);
+        let (ack, _) = handler.handle_command_long(&cmd);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_DO_REPOSITION);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
     }
 }

@@ -16,7 +16,12 @@
 //!
 //! - [DRV8837 Datasheet](https://www.ti.com/product/DRV8837)
 
+use core::sync::atomic::{AtomicU32, Ordering};
+
 use super::{Motor, MotorError};
+
+/// Counter for sampling motor speed logs (every 10th call)
+static SET_SPEED_LOG_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// PWM pin abstraction for motor control
 ///
@@ -102,7 +107,11 @@ where
             return Err(MotorError::InvalidSpeed);
         }
 
-        crate::log_info!("Motor set_speed: {}", speed);
+        // Sample logging: only log every 10th call to reduce noise
+        let count = SET_SPEED_LOG_COUNTER.fetch_add(1, Ordering::Relaxed);
+        if count.is_multiple_of(100) {
+            crate::log_debug!("Motor set_speed: {}", speed);
+        }
 
         // DRV8837 truth table implementation
         if speed > 0.0 {

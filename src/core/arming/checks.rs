@@ -182,19 +182,19 @@ impl PreArmCheck for BatteryVoltageCheck {
     fn check(&self, state: &SystemState) -> CheckResult {
         // If BATT_ARM_VOLT is 0, skip the battery voltage check
         if state.battery_arm_volt == 0.0 {
-            crate::log_debug!("Battery voltage check disabled (BATT_ARM_VOLT=0)");
+            crate::log_debug!("voltage check disabled (BATT_ARM_VOLT=0)");
             return Ok(());
         }
 
         // Check if battery voltage is below the arming threshold
         if state.battery.voltage < state.battery_arm_volt {
             crate::log_warn!(
-                "Battery voltage {}V below minimum {}V",
+                "voltage {}V below minimum {}V",
                 state.battery.voltage,
                 state.battery_arm_volt
             );
             Err(ArmingError::CheckFailed {
-                reason: "Battery voltage below BATT_ARM_VOLT",
+                reason: "voltage below BATT_ARM_VOLT",
                 category: CheckCategory::Battery,
             })
         } else {
@@ -277,8 +277,8 @@ mod tests {
     #[test]
     fn test_battery_check_fails_low_voltage() {
         let mut state = SystemState::new();
-        state.battery.voltage = 9.0; // Below BATT_ARM_VOLT threshold
-        state.battery_arm_volt = 10.5;
+        state.battery.voltage = 4.0; // Below BATT_ARM_VOLT threshold
+        state.battery_arm_volt = 5.0;
 
         let check = BatteryVoltageCheck;
         let result = check.check(&state);
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn test_battery_check_disabled_when_zero() {
         let mut state = SystemState::new();
-        state.battery.voltage = 5.0; // Very low voltage
+        state.battery.voltage = 2.0; // Very low voltage
         state.battery_arm_volt = 0.0; // Disabled
 
         let check = BatteryVoltageCheck;

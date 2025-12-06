@@ -77,3 +77,43 @@ pub static NAV_OUTPUT: Mutex<CriticalSectionRawMutex, NavigationOutput> =
         heading_error_deg: 0.0,
         at_target: false,
     });
+
+/// Reposition target from MAV_CMD_DO_REPOSITION command (synchronous access)
+///
+/// Set by CommandHandler when receiving MAV_CMD_DO_REPOSITION.
+/// Read and cleared by navigation_task to update NAV_TARGET.
+/// Uses critical_section::Mutex for synchronous access from command handler.
+#[cfg(feature = "embassy")]
+pub static REPOSITION_TARGET: critical_section::Mutex<core::cell::RefCell<Option<PositionTarget>>> =
+    critical_section::Mutex::new(core::cell::RefCell::new(None));
+
+/// Set reposition target from command handler (synchronous)
+///
+/// Called by CommandHandler when receiving MAV_CMD_DO_REPOSITION.
+/// The navigation_task will pick this up and update NAV_TARGET.
+#[cfg(feature = "embassy")]
+pub fn set_reposition_target(target: PositionTarget) {
+    critical_section::with(|cs| {
+        *REPOSITION_TARGET.borrow_ref_mut(cs) = Some(target);
+    });
+}
+
+/// Take reposition target if available (synchronous)
+///
+/// Called by navigation_task to check for reposition commands.
+/// Returns and clears the target.
+#[cfg(feature = "embassy")]
+pub fn take_reposition_target() -> Option<PositionTarget> {
+    critical_section::with(|cs| REPOSITION_TARGET.borrow_ref_mut(cs).take())
+}
+
+// Host test stubs (no-op implementations for non-embassy builds)
+#[cfg(not(feature = "embassy"))]
+pub fn set_reposition_target(_target: PositionTarget) {
+    // No-op for host tests
+}
+
+#[cfg(not(feature = "embassy"))]
+pub fn take_reposition_target() -> Option<PositionTarget> {
+    None
+}
