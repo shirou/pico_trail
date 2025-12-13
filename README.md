@@ -155,7 +155,7 @@ See [docs/architecture.md](docs/architecture.md) for detailed architecture docum
 
 ### Development Workflow
 
-This project follows the Traceable Development Lifecycle (TDL). See [docs/tdl.md](docs/tdl.md) for the complete workflow.
+This project follows the Traceable Development Lifecycle (TDL), inspired by [kopi](https://github.com/kopi-vm/kopi). See [docs/tdl.md](docs/tdl.md) for the complete workflow.
 
 #### Code Quality Checks
 
@@ -317,3 +317,4 @@ See [LICENSE](LICENSE) for the non-commercial license terms.
 - Built with [Embassy](https://embassy.dev/) async framework
 - Hardware abstraction based on [embedded-hal](https://github.com/rust-embedded/embedded-hal)
 - Initial template from [knurling-rs/app-template](https://github.com/knurling-rs/app-template)
+- Traceable Development Lifecycle (TDL) inspired by [kopi](https://github.com/kopi-vm/kopi)
