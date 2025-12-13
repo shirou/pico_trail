@@ -813,7 +813,7 @@ async fn usb_task(
 #[cfg(feature = "pico2_w")]
 #[embassy_executor::task]
 async fn gps_task(uart: embassy_rp::uart::BufferedUart) {
-    use pico_trail::devices::gps::GpsDriver;
+    use pico_trail::devices::gps::{init::ublox, GpsDriver};
     use pico_trail::devices::gps_operation::GpsOperation;
 
     pico_trail::log_info!("GPS task started");
@@ -824,7 +824,7 @@ async fn gps_task(uart: embassy_rp::uart::BufferedUart) {
 
     // Initialize u-blox NEO-M8N to enable GGA/RMC/VTG NMEA messages
     // This is required if the module's factory defaults don't output GGA
-    if gps.init_ublox().is_err() {
+    if ublox::initialize(gps.uart_mut()).is_err() {
         pico_trail::log_warn!("Failed to send UBX init commands");
     } else {
         pico_trail::log_info!("GPS UBX initialization sent (GGA/RMC/VTG enabled)");

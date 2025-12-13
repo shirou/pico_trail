@@ -156,11 +156,15 @@ pico2_w = [
     "embedded-hal", "embedded-hal-1", "embedded-hal-async", "embedded-hal-nb", "nb", "fugit",
     "embassy-executor", "embassy-rp", "embassy-usb", "embassy-net",
     "cyw43", "cyw43-pio", "embedded-alloc",
-    "embassy-rp/rp235xa", "embassy-rp/critical-section-impl", "embassy-rp/binary-info"
+    "embassy-rp/rp235xa", "embassy-rp/critical-section-impl", "embassy-rp/binary-info",
+    "gps-ublox"  # u-blox GPS initialization support
 ]
 
 usb_serial = ["pico2_w"]  # Enable USB Serial logging (requires pico2_w)
 mock = []
+
+# GPS vendor initialization features
+gps-ublox = []  # u-blox GPS initialization (NEO-M8N, etc.)
 
 [build-dependencies]
 tempfile = "3.23"
