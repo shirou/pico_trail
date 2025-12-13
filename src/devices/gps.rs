@@ -330,6 +330,96 @@ impl<U: UartInterface> GpsDriver<U> {
     pub fn current_position(&self) -> Option<GpsPosition> {
         self.state.to_position()
     }
+
+    /// Initialize u-blox NEO-M8N GPS module with UBX commands
+    ///
+    /// Sends UBX-CFG-MSG commands to enable required NMEA messages:
+    /// - GGA (position, altitude, satellites)
+    /// - RMC (speed, course over ground)
+    /// - VTG (speed, course over ground - backup)
+    ///
+    /// This should be called once after creating the GPS driver if the module
+    /// is not outputting expected NMEA sentences (e.g., GPGSV visible but no GPGGA).
+    ///
+    /// # UBX Protocol
+    ///
+    /// UBX-CFG-MSG format:
+    /// - Sync: 0xB5, 0x62
+    /// - Class: 0x06 (CFG)
+    /// - ID: 0x01 (MSG)
+    /// - Length: 3 bytes
+    /// - Payload: [msgClass, msgID, rate]
+    /// - Checksum: 2 bytes (CK_A, CK_B)
+    ///
+    /// NMEA message class is 0xF0 with IDs:
+    /// - GGA: 0x00
+    /// - RMC: 0x04
+    /// - VTG: 0x05
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if UART write fails.
+    pub fn init_ublox(&mut self) -> Result<()> {
+        // UBX-CFG-MSG to enable GGA at rate 1 (every navigation solution)
+        // Format: sync(2) + class(1) + id(1) + len(2) + payload(3) + checksum(2)
+        let enable_gga = Self::build_cfg_msg(0xF0, 0x00, 1); // NMEA-GGA
+        let enable_rmc = Self::build_cfg_msg(0xF0, 0x04, 1); // NMEA-RMC
+        let enable_vtg = Self::build_cfg_msg(0xF0, 0x05, 1); // NMEA-VTG
+
+        self.uart.write(&enable_gga)?;
+        self.uart.write(&enable_rmc)?;
+        self.uart.write(&enable_vtg)?;
+
+        Ok(())
+    }
+
+    /// Build UBX-CFG-MSG command to set NMEA message rate
+    ///
+    /// # Arguments
+    ///
+    /// * `msg_class` - NMEA message class (0xF0 for standard NMEA)
+    /// * `msg_id` - NMEA message ID (0x00=GGA, 0x04=RMC, 0x05=VTG)
+    /// * `rate` - Output rate (0=disabled, 1=every solution, 2=every 2nd, etc.)
+    fn build_cfg_msg(msg_class: u8, msg_id: u8, rate: u8) -> [u8; 11] {
+        let mut cmd = [0u8; 11];
+
+        // Sync chars
+        cmd[0] = 0xB5;
+        cmd[1] = 0x62;
+
+        // Message class and ID for CFG-MSG
+        cmd[2] = 0x06; // CFG class
+        cmd[3] = 0x01; // MSG id
+
+        // Payload length (little endian)
+        cmd[4] = 3;
+        cmd[5] = 0;
+
+        // Payload: msgClass, msgID, rate
+        cmd[6] = msg_class;
+        cmd[7] = msg_id;
+        cmd[8] = rate;
+
+        // Calculate checksum (CK_A, CK_B) over class, id, length, and payload
+        let (ck_a, ck_b) = Self::ubx_checksum(&cmd[2..9]);
+        cmd[9] = ck_a;
+        cmd[10] = ck_b;
+
+        cmd
+    }
+
+    /// Calculate UBX checksum (8-bit Fletcher algorithm)
+    fn ubx_checksum(data: &[u8]) -> (u8, u8) {
+        let mut ck_a: u8 = 0;
+        let mut ck_b: u8 = 0;
+
+        for &byte in data {
+            ck_a = ck_a.wrapping_add(byte);
+            ck_b = ck_b.wrapping_add(ck_a);
+        }
+
+        (ck_a, ck_b)
+    }
 }
 
 #[cfg(test)]

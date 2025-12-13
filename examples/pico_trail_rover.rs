@@ -808,6 +808,8 @@ async fn usb_task(
 ///
 /// Reads NMEA data from UART0 (GPS module) and updates global SYSTEM_STATE.
 /// Uses BufferedUart wrapped in EmbassyBufferedUart adapter.
+///
+/// Initializes NEO-M8N with UBX commands to enable GGA/RMC/VTG output.
 #[cfg(feature = "pico2_w")]
 #[embassy_executor::task]
 async fn gps_task(uart: embassy_rp::uart::BufferedUart) {
@@ -818,7 +820,19 @@ async fn gps_task(uart: embassy_rp::uart::BufferedUart) {
 
     // Create GPS driver with Embassy BufferedUart adapter
     let gps_uart = EmbassyBufferedUart::new(uart);
-    let gps = GpsDriver::new(gps_uart);
+    let mut gps = GpsDriver::new(gps_uart);
+
+    // Initialize u-blox NEO-M8N to enable GGA/RMC/VTG NMEA messages
+    // This is required if the module's factory defaults don't output GGA
+    if gps.init_ublox().is_err() {
+        pico_trail::log_warn!("Failed to send UBX init commands");
+    } else {
+        pico_trail::log_info!("GPS UBX initialization sent (GGA/RMC/VTG enabled)");
+    }
+
+    // Short delay for module to process configuration
+    embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
+
     let mut operation = GpsOperation::new(gps);
 
     // Run the GPS polling loop
