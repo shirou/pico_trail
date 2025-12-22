@@ -98,7 +98,19 @@ unsafe extern "C" fn _defmt_write(_bytes: *const u8, _len: usize) {
     // No-op: we use crate::log_*! macros for all logging
 }
 
-/// Send log message to channel
+/// Convert USB serial LogLevel to log_buffer LogLevel
+#[cfg(all(feature = "pico2_w", feature = "usb_serial"))]
+fn to_buffer_level(level: LogLevel) -> crate::core::log_buffer::LogLevel {
+    match level {
+        LogLevel::Trace => crate::core::log_buffer::LogLevel::Trace,
+        LogLevel::Debug => crate::core::log_buffer::LogLevel::Debug,
+        LogLevel::Info => crate::core::log_buffer::LogLevel::Info,
+        LogLevel::Warn => crate::core::log_buffer::LogLevel::Warn,
+        LogLevel::Error => crate::core::log_buffer::LogLevel::Error,
+    }
+}
+
+/// Send log message to channel and route to buffer
 #[cfg(all(feature = "pico2_w", feature = "usb_serial"))]
 pub fn send_log(level: LogLevel, msg: &str) {
     use heapless::String;
@@ -106,9 +118,14 @@ pub fn send_log(level: LogLevel, msg: &str) {
     let mut message = String::new();
     let _ = core::fmt::write(&mut message, format_args!("{}", msg));
 
+    // Route to log buffer for retention and STATUSTEXT
+    let buffer_msg =
+        crate::core::log_buffer::LogMessage::new(to_buffer_level(level), message.clone());
+    crate::core::log_router::route_log(buffer_msg);
+
     let log_msg = LogMessage { level, message };
 
-    // Try to send, drop if channel is full (non-blocking)
+    // Try to send to USB channel, drop if channel is full (non-blocking)
     let _ = LOG_CHANNEL.try_send(log_msg);
 }
 
@@ -185,7 +202,17 @@ macro_rules! log_info {
         ::defmt::info!($($arg)*);
 
         #[cfg(all(not(feature = "pico2_w"), test))]
-        println!("[INFO] {}", format!($($arg)*));
+        {
+            let formatted = format!($($arg)*);
+            let mut message = heapless::String::<256>::new();
+            let _ = message.push_str(&formatted);
+            let msg = $crate::core::log_buffer::LogMessage::new(
+                $crate::core::log_buffer::LogLevel::Info,
+                message,
+            );
+            $crate::core::log_router::route_log(msg);
+            println!("[INFO] {}", formatted);
+        }
     }};
 }
 
@@ -207,7 +234,17 @@ macro_rules! log_warn {
         ::defmt::warn!($($arg)*);
 
         #[cfg(all(not(feature = "pico2_w"), test))]
-        println!("[WARN] {}", format!($($arg)*));
+        {
+            let formatted = format!($($arg)*);
+            let mut message = heapless::String::<256>::new();
+            let _ = message.push_str(&formatted);
+            let msg = $crate::core::log_buffer::LogMessage::new(
+                $crate::core::log_buffer::LogLevel::Warn,
+                message,
+            );
+            $crate::core::log_router::route_log(msg);
+            println!("[WARN] {}", formatted);
+        }
     }};
 }
 
@@ -229,7 +266,17 @@ macro_rules! log_error {
         ::defmt::error!($($arg)*);
 
         #[cfg(all(not(feature = "pico2_w"), test))]
-        eprintln!("[ERROR] {}", format!($($arg)*));
+        {
+            let formatted = format!($($arg)*);
+            let mut message = heapless::String::<256>::new();
+            let _ = message.push_str(&formatted);
+            let msg = $crate::core::log_buffer::LogMessage::new(
+                $crate::core::log_buffer::LogLevel::Error,
+                message,
+            );
+            $crate::core::log_router::route_log(msg);
+            eprintln!("[ERROR] {}", formatted);
+        }
     }};
 }
 
@@ -251,7 +298,17 @@ macro_rules! log_debug {
         ::defmt::debug!($($arg)*);
 
         #[cfg(all(not(feature = "pico2_w"), test))]
-        println!("[DEBUG] {}", format!($($arg)*));
+        {
+            let formatted = format!($($arg)*);
+            let mut message = heapless::String::<256>::new();
+            let _ = message.push_str(&formatted);
+            let msg = $crate::core::log_buffer::LogMessage::new(
+                $crate::core::log_buffer::LogLevel::Debug,
+                message,
+            );
+            $crate::core::log_router::route_log(msg);
+            println!("[DEBUG] {}", formatted);
+        }
     }};
 }
 
@@ -273,6 +330,16 @@ macro_rules! log_trace {
         ::defmt::trace!($($arg)*);
 
         #[cfg(all(not(feature = "pico2_w"), test))]
-        println!("[TRACE] {}", format!($($arg)*));
+        {
+            let formatted = format!($($arg)*);
+            let mut message = heapless::String::<256>::new();
+            let _ = message.push_str(&formatted);
+            let msg = $crate::core::log_buffer::LogMessage::new(
+                $crate::core::log_buffer::LogLevel::Trace,
+                message,
+            );
+            $crate::core::log_router::route_log(msg);
+            println!("[TRACE] {}", formatted);
+        }
     }};
 }

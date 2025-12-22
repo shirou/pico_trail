@@ -12,6 +12,7 @@
 - Prerequisite Requirements: None
 - Dependent Requirements:
   - [FR-7qki7-statustext-chunking](../requirements/FR-7qki7-statustext-chunking.md)
+  - [FR-c6zp6-log-statustext-routing](../requirements/FR-c6zp6-log-statustext-routing.md)
   - [FR-e9yu9-statustext-message-queue](../requirements/FR-e9yu9-statustext-message-queue.md)
   - [FR-dbjjx-statustext-ardupilot-conventions](../requirements/FR-dbjjx-statustext-ardupilot-conventions.md)
   - [NFR-ssp9q-statustext-performance-memory](../requirements/NFR-ssp9q-statustext-performance-memory.md)
