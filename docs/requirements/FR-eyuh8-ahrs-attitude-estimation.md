@@ -14,10 +14,14 @@
 - Dependent Requirements:
   - [FR-333ym-gps-waypoint-navigation](FR-333ym-gps-waypoint-navigation.md)
   - [FR-ap18p-ekf-health-validation](FR-ap18p-ekf-health-validation.md)
+  - [FR-3f2cn-quaternion-ekf-ahrs](FR-3f2cn-quaternion-ekf-ahrs.md)
+  - [FR-0azz0-attitude-state-interface](FR-0azz0-attitude-state-interface.md)
 
 - Related Tasks:
   - [T-49k7n-ahrs-dcm-implementation](../tasks/T-49k7n-ahrs-dcm-implementation/README.md)
-  - [T-qwvco-bmi088-imu-driver-implementation](../tasks/T-qwvco-bmi088-imu-driver-implementation/README.md)
+  - ~~[T-qwvco-bmi088-imu-driver-implementation](../tasks/T-qwvco-bmi088-imu-driver-implementation/README.md)~~ (Deprecated)
+  - [T-kx79g-mpu9250-driver-implementation](../tasks/T-kx79g-mpu9250-driver-implementation/README.md)
+  - [T-p8w8f-ekf-ahrs-implementation](../tasks/T-p8w8f-ekf-ahrs-implementation/README.md)
 
 ## Requirement Statement
 

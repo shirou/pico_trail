@@ -15,6 +15,7 @@
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
   - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)
   - [FR-cs42u-gps-navigation-state-access](FR-cs42u-gps-navigation-state-access.md)
+  - [FR-0azz0-attitude-state-interface](FR-0azz0-attitude-state-interface.md)
 - Dependent Requirements:
   - [FR-jm7mj-auto-mode-mission-execution](FR-jm7mj-auto-mode-mission-execution.md)
   - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)

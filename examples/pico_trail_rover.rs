@@ -88,18 +88,20 @@ static HEAP: Heap = Heap::empty();
 #[cfg(feature = "pico2_w")]
 const HEAP_SIZE: usize = 16 * 1024;
 
-// IRQ bindings: USB + ADC + UART0 when usb_serial is enabled, ADC + UART0 only otherwise
+// IRQ bindings: USB + ADC + UART0 + I2C0 when usb_serial is enabled, ADC + UART0 + I2C0 only otherwise
 #[cfg(feature = "usb_serial")]
 hal::bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<hal::peripherals::USB>;
     ADC_IRQ_FIFO => embassy_rp::adc::InterruptHandler;
     UART0_IRQ => embassy_rp::uart::BufferedInterruptHandler<hal::peripherals::UART0>;
+    I2C0_IRQ => embassy_rp::i2c::InterruptHandler<hal::peripherals::I2C0>;
 });
 
 #[cfg(all(feature = "pico2_w", not(feature = "usb_serial")))]
 hal::bind_interrupts!(struct Irqs {
     ADC_IRQ_FIFO => embassy_rp::adc::InterruptHandler;
     UART0_IRQ => embassy_rp::uart::BufferedInterruptHandler<hal::peripherals::UART0>;
+    I2C0_IRQ => embassy_rp::i2c::InterruptHandler<hal::peripherals::I2C0>;
 });
 
 #[cfg(feature = "pico2_w")]
@@ -116,9 +118,11 @@ use pico_trail::{
         transport_router::TransportRouter,
         vehicle::GroundRover,
     },
+    devices::imu::mpu9250::{Mpu9250Config, Mpu9250Driver},
     libraries::{kinematics::DifferentialDrive, motor_driver::MotorGroup, RC_INPUT},
     parameters::wifi::WifiParams,
     platform::rp2350::{network::WifiConfig, Rp2350Flash},
+    subsystems::ahrs::{run_imu_task, ImuTaskConfig},
     subsystems::navigation::{NavigationController, SimpleNavigationController, NAV_OUTPUT},
 };
 
@@ -252,6 +256,33 @@ async fn main(spawner: Spawner) {
         // GPS task will be spawned after WiFi connects (to avoid blocking DHCP)
         // Keep uart0 for later use
 
+        // Initialize I2C0 for MPU-9250 IMU (GPIO 4 = SDA, GPIO 5 = SCL)
+        pico_trail::log_info!("Initializing I2C0 for MPU-9250...");
+        let i2c0 = embassy_rp::i2c::I2c::new_async(
+            p.I2C0,
+            p.PIN_5, // SCL
+            p.PIN_4, // SDA
+            Irqs,
+            {
+                let mut config = embassy_rp::i2c::Config::default();
+                config.frequency = 400_000; // 400kHz for MPU-9250
+                config
+            },
+        );
+
+        // Initialize MPU-9250 driver
+        let imu = match Mpu9250Driver::new(i2c0, Mpu9250Config::default()).await {
+            Ok(driver) => {
+                pico_trail::log_info!("MPU-9250 initialized successfully");
+                Some(driver)
+            }
+            Err(e) => {
+                pico_trail::log_warn!("MPU-9250 initialization failed: {:?}", e);
+                pico_trail::log_warn!("IMU features will be disabled");
+                None
+            }
+        };
+
         // Load WiFi configuration from parameters
         let wifi_config = WifiParams::from_store(param_handler.store());
         if wifi_config.is_configured() {
@@ -353,6 +384,12 @@ async fn main(spawner: Spawner) {
 
                     // Spawn navigation task
                     spawner.spawn(navigation_task().unwrap());
+
+                    // Spawn IMU task if MPU-9250 was initialized successfully
+                    if let Some(imu_driver) = imu {
+                        spawner.spawn(imu_task(imu_driver).unwrap());
+                        pico_trail::log_info!("IMU task spawned");
+                    }
                 }
                 Err(e) => {
                     pico_trail::log_warn!("WiFi initialization failed: {:?}", e);
@@ -1086,4 +1123,40 @@ impl pico_trail::platform::traits::UartInterface for EmbassyBufferedUart {
         // Cannot check without mutable reference, assume data may be available
         true
     }
+}
+
+/// IMU task for reading MPU-9250 sensor data at 400Hz
+///
+/// Reads accelerometer, gyroscope, and magnetometer data from the MPU-9250
+/// and provides it to the EKF AHRS system (to be implemented in T-p8w8f).
+///
+/// # Arguments
+///
+/// * `imu` - Initialized MPU-9250 driver
+#[cfg(feature = "pico2_w")]
+#[embassy_executor::task]
+async fn imu_task(imu: Mpu9250Driver<'static, hal::peripherals::I2C0>) {
+    pico_trail::log_info!("IMU task started (400Hz)");
+
+    let config = ImuTaskConfig::default();
+
+    // Simple counter for periodic logging
+    let mut sample_count: u32 = 0;
+
+    run_imu_task(config, imu, |data| {
+        sample_count += 1;
+        let count = sample_count;
+        async move {
+            // Log every 400 samples (1 second at 400Hz)
+            if count % 400 == 0 {
+                pico_trail::log_info!(
+                    "IMU: gx={} ax={} az={}",
+                    data.gyro.x,
+                    data.accel.x,
+                    data.accel.z
+                );
+            }
+        }
+    })
+    .await;
 }

@@ -3,7 +3,8 @@
 ## Metadata
 
 - Type: Analysis
-- Status: Complete
+- Status: Deprecated
+  <!-- Deprecated: Replaced by AN-t47be-mpu9250-imu-and-ekf-integration. Decision changed from BMI088 to MPU-9250. -->
 
 ## Links
 

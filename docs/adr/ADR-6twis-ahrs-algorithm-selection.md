@@ -3,7 +3,8 @@
 ## Metadata
 
 - Type: ADR
-- Status: Approved
+- Status: Superseded
+  <!-- Superseded by ADR-ymkzt-ekf-ahrs-implementation. Decision changed from DCM to EKF as primary AHRS algorithm. -->
 
 ## Links
 

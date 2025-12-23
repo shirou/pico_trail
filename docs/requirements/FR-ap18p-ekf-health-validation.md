@@ -13,9 +13,12 @@
 - Prerequisite Requirements:
   - [FR-a9rc3-mode-entry-sensor-validation](FR-a9rc3-mode-entry-sensor-validation.md)
   - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)
+  - [FR-0azz0-attitude-state-interface](FR-0azz0-attitude-state-interface.md)
 - Dependent Requirements: N/A – No dependent requirements
-- Related ADRs: TBD
-- Related Tasks: TBD
+- Related ADRs:
+  - [ADR-ymkzt-ekf-ahrs-implementation](../adr/ADR-ymkzt-ekf-ahrs-implementation.md)
+- Related Tasks:
+  - [T-p8w8f-ekf-ahrs-implementation](../tasks/T-p8w8f-ekf-ahrs-implementation/README.md)
 
 ## Requirement Statement
 

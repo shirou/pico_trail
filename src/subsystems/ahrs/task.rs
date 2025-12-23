@@ -4,6 +4,7 @@
 //! Publishes results to shared state for other subsystems.
 
 use super::{CalibrationData, Dcm, DcmConfig, SharedAttitudeState};
+use crate::devices::traits::ImuReading;
 use nalgebra::Vector3;
 
 /// IMU data from sensors
@@ -23,6 +24,17 @@ pub struct ImuData {
 
     /// Timestamp in milliseconds since startup
     pub timestamp_ms: u64,
+}
+
+impl From<ImuReading> for ImuData {
+    fn from(reading: ImuReading) -> Self {
+        Self {
+            gyro: reading.gyro,
+            accel: reading.accel,
+            mag: Some(reading.mag),
+            timestamp_ms: reading.timestamp_us / 1000,
+        }
+    }
 }
 
 /// AHRS task configuration
@@ -178,6 +190,112 @@ pub async fn run_ahrs_task<F, Fut>(
 
         // Note: In real implementation, timing would be controlled by
         // Embassy timer or task scheduler to maintain 100Hz rate
+    }
+}
+
+/// IMU task configuration for 400Hz sampling
+pub struct ImuTaskConfig {
+    /// Sampling rate in Hz (default: 400)
+    pub sample_rate_hz: u32,
+
+    /// Latency logging interval in samples (default: 400 = 1 second)
+    pub log_interval: u32,
+
+    /// Maximum acceptable jitter in microseconds (default: 500)
+    pub max_jitter_us: u32,
+}
+
+impl Default for ImuTaskConfig {
+    fn default() -> Self {
+        Self {
+            sample_rate_hz: 400,
+            log_interval: 400,
+            max_jitter_us: 500,
+        }
+    }
+}
+
+/// IMU task entry point for 400Hz sensor reading
+///
+/// This task reads from an `ImuSensor` implementation at 400Hz and
+/// provides data for the EKF AHRS system (to be implemented in T-p8w8f).
+///
+/// # Arguments
+///
+/// * `config` - IMU task configuration
+/// * `imu` - An implementation of the ImuSensor trait (e.g., Mpu9250Driver)
+/// * `callback` - Async callback to process each ImuData reading
+///
+/// # Example
+///
+/// ```ignore
+/// use pico_trail::devices::imu::Mpu9250Driver;
+/// use pico_trail::subsystems::ahrs::{run_imu_task, ImuTaskConfig};
+///
+/// #[embassy_executor::task]
+/// async fn imu_task(imu: Mpu9250Driver) {
+///     let config = ImuTaskConfig::default();
+///     run_imu_task(config, imu, |data| async move {
+///         // Pass to EKF or log data
+///     }).await;
+/// }
+/// ```
+#[cfg(feature = "embassy")]
+pub async fn run_imu_task<I, F, Fut>(config: ImuTaskConfig, mut imu: I, mut callback: F)
+where
+    I: crate::devices::traits::ImuSensor,
+    F: FnMut(ImuData) -> Fut,
+    Fut: core::future::Future<Output = ()>,
+{
+    use embassy_time::{Duration, Instant, Ticker};
+
+    let period_us = 1_000_000 / config.sample_rate_hz;
+    let mut ticker = Ticker::every(Duration::from_micros(period_us as u64));
+
+    let mut sample_count: u32 = 0;
+    let mut total_latency_us: u64 = 0;
+    let mut max_latency_us: u64 = 0;
+
+    loop {
+        ticker.next().await;
+        let start = Instant::now();
+
+        // Read from IMU sensor
+        match imu.read_all().await {
+            Ok(reading) => {
+                let imu_data = ImuData::from(reading);
+                callback(imu_data).await;
+
+                // Track latency
+                let latency = start.elapsed().as_micros();
+                total_latency_us += latency;
+                if latency > max_latency_us {
+                    max_latency_us = latency;
+                }
+
+                sample_count += 1;
+
+                // Log statistics periodically
+                if sample_count >= config.log_interval {
+                    let avg_latency = total_latency_us / sample_count as u64;
+                    crate::log_debug!(
+                        "IMU: {} samples, avg={}us, max={}us",
+                        sample_count,
+                        avg_latency,
+                        max_latency_us
+                    );
+
+                    // Reset counters
+                    sample_count = 0;
+                    total_latency_us = 0;
+                    max_latency_us = 0;
+                }
+            }
+            Err(e) => {
+                crate::log_warn!("IMU read error: {:?}", e);
+                // Continue running, sensor may recover
+            }
+        }
     }
 }
 

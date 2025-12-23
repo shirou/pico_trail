@@ -38,4 +38,7 @@ pub mod task;
 pub use calibration::{estimate_gyro_bias, CalibrationData};
 pub use dcm::{Dcm, DcmConfig};
 pub use state::{AttitudeQuality, AttitudeState, SharedAttitudeState};
-pub use task::{run_ahrs_task, AhrsTaskConfig, ImuData};
+pub use task::{run_ahrs_task, AhrsTaskConfig, ImuData, ImuTaskConfig};
+
+#[cfg(feature = "embassy")]
+pub use task::run_imu_task;

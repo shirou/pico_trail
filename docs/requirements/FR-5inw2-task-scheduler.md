@@ -14,6 +14,7 @@
   - [FR-4e922-data-logging](FR-4e922-data-logging.md)
   - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)
   - [FR-lusbw-rc-signal-loss-failsafe](FR-lusbw-rc-signal-loss-failsafe.md)
+  - [FR-oqxl8-mpu9250-i2c-driver](FR-oqxl8-mpu9250-i2c-driver.md)
   - [FR-q2sjt-control-mode-framework](FR-q2sjt-control-mode-framework.md)
   - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
   - [FR-sxsvw-failsafe-mechanisms](FR-sxsvw-failsafe-mechanisms.md)

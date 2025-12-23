@@ -3,7 +3,8 @@
 ## Metadata
 
 - Type: ADR
-- Status: Approved
+- Status: Deprecated
+  <!-- Deprecated: Replaced by new ADR for MPU-9250. Decision changed from BMI088/SPI to MPU-9250/I2C. See AN-t47be-mpu9250-imu-and-ekf-integration for rationale. -->
 
 ## Links
 

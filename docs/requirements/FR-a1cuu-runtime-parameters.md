@@ -12,3 +12,4 @@
 
 - Dependent Requirements:
   - [FR-88a46-failsafe-parameters](FR-88a46-failsafe-parameters.md)
+  - [FR-soukr-imu-calibration-interface](FR-soukr-imu-calibration-interface.md)

@@ -15,6 +15,7 @@
   - [FR-6jkia-transport-abstraction](FR-6jkia-transport-abstraction.md)
   - [FR-993xy-rc-channels-processing](FR-993xy-rc-channels-processing.md)
   - [FR-a1cuu-runtime-parameters](FR-a1cuu-runtime-parameters.md)
+  - [FR-e2urj-large-vehicle-magcal](FR-e2urj-large-vehicle-magcal.md)
   - [FR-eutkf-concurrent-transports](FR-eutkf-concurrent-transports.md)
   - [FR-obwjs-position-target-command-handler](FR-obwjs-position-target-command-handler.md)
   - [FR-ydttj-udp-network-transport](FR-ydttj-udp-network-transport.md)

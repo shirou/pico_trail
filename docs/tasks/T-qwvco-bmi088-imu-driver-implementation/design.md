@@ -3,7 +3,8 @@
 ## Metadata
 
 - Type: Design
-- Status: Draft
+- Status: Deprecated
+  <!-- Deprecated: BMI088 replaced by MPU-9250. See AN-t47be-mpu9250-imu-and-ekf-integration. -->
 
 ## Links
 

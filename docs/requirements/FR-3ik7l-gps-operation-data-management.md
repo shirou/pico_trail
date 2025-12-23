@@ -18,6 +18,7 @@
 - Dependent Requirements:
   - [FR-uyie8-gps-mavlink-telemetry](FR-uyie8-gps-mavlink-telemetry.md)
   - [FR-cs42u-gps-navigation-state-access](FR-cs42u-gps-navigation-state-access.md)
+  - [FR-e2urj-large-vehicle-magcal](FR-e2urj-large-vehicle-magcal.md)
 - Related Tasks:
   - [T-meox8-i2c0-gps-imu-integration](../tasks/T-meox8-i2c0-gps-imu-integration/README.md) (superseded)
   - [T-vxtxn-uart0-gps-integration](../tasks/T-vxtxn-uart0-gps-integration/README.md)
