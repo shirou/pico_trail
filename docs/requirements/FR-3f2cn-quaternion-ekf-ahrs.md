@@ -10,6 +10,7 @@
 - Prerequisite Requirements:
   - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)
   - [FR-z1fdo-imu-sensor-trait](FR-z1fdo-imu-sensor-trait.md)
+  - [FR-slm3x-icm20948-i2c-driver](FR-slm3x-icm20948-i2c-driver.md)
   - [FR-oqxl8-mpu9250-i2c-driver](FR-oqxl8-mpu9250-i2c-driver.md)
   - [FR-soukr-imu-calibration-interface](FR-soukr-imu-calibration-interface.md)
   - [NFR-3wlo1-imu-sampling-rate](NFR-3wlo1-imu-sampling-rate.md)

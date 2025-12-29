@@ -1,9 +1,13 @@
-# ADR-t5cq4 MPU-9250 I2C Driver Architecture
+# ADR-t5cq4 9-Axis IMU I2C Driver Architecture
 
 ## Metadata
 
 - Type: ADR
 - Status: Draft
+
+## Change History
+
+- **2025-01-XX**: Renamed from "MPU-9250" to "9-Axis IMU" to reflect multi-sensor support. Added ICM-20948 as primary sensor option.
 
 ## Links
 
@@ -20,17 +24,18 @@
 - Related Analyses:
   - [AN-t47be-mpu9250-imu-and-ekf-integration](../analysis/AN-t47be-mpu9250-imu-and-ekf-integration.md)
 - Related Tasks:
-  - [T-kx79g-mpu9250-driver-implementation](../tasks/T-kx79g-mpu9250-driver-implementation/README.md)
+  - [T-0kbo4-icm20948-driver-implementation](../tasks/T-0kbo4-icm20948-driver-implementation/README.md) (Primary)
+  - [T-kx79g-mpu9250-driver-implementation](../tasks/T-kx79g-mpu9250-driver-implementation/README.md) (Cancelled)
 
 ## Context
 
-The pico_trail autopilot requires IMU sensor data for attitude estimation via EKF. The previous ADR (ADR-wjcrn) specified BMI088 with SPI interface, but project constraints now favor MPU-9250 with I2C.
+The pico_trail autopilot requires IMU sensor data for attitude estimation via EKF. The previous ADR (ADR-wjcrn) specified BMI088 with SPI interface, but project constraints now favor 9-axis IMUs (ICM-20948 or MPU-9250) with I2C.
 
 **Problem Statement:**
 
 - Provide 9-axis sensor data (gyro, accel, mag) to EKF at 400Hz
 - Support both RP2040 (Pico W) and RP2350 (Pico 2 W) platforms
-- Enable future sensor upgrades through hardware abstraction
+- Support multiple IMU sensors (ICM-20948 primary, MPU-9250 backup) through hardware abstraction
 - Provide calibration data interface for offset/scale corrections
 
 **Constraints:**
@@ -39,18 +44,22 @@ The pico_trail autopilot requires IMU sensor data for attitude estimation via EK
 - I2C bus may be shared with other devices (GPS)
 - Embassy async runtime for task management
 - Must work without FPU on RP2040
+- ICM-20948 uses register bank switching (4 banks)
+- MPU-9250 is EOL but hardware may still be available
 
 **Assumptions:**
 
 - Single IMU instance sufficient (no redundancy for rover/boat)
 - Calibration data stored in parameter system
 - EKF handles sensor fusion (driver provides raw calibrated data)
+- Either ICM-20948 or MPU-9250 will be used (not both simultaneously)
 
 **Forces in Tension:**
 
 1. **I2C vs SPI**: I2C simpler wiring vs SPI lower latency
 2. **Abstraction vs Performance**: Trait overhead vs direct HAL access
-3. **Magnetometer**: Integrated (MPU-9250) vs external (better placement)
+3. **Magnetometer**: Integrated (ICM-20948: AK09916, MPU-9250: AK8963) vs external (better placement)
+4. **Code Reuse vs Complexity**: Shared trait interface vs sensor-specific optimizations
 
 ## Success Metrics
 
@@ -63,25 +72,27 @@ The pico_trail autopilot requires IMU sensor data for attitude estimation via EK
 
 ## Decision
 
-**We will implement an MPU-9250 driver using I2C communication with a trait-based abstraction layer to provide 9-axis sensor data to the EKF subsystem.**
+**We will implement 9-axis IMU drivers (ICM-20948 primary, MPU-9250 backup) using I2C communication with a trait-based abstraction layer to provide sensor data to the EKF subsystem.**
 
 ### Core Decisions
 
-1. **Sensor Selection**: MPU-9250 (9-axis IMU)
-   - Rationale: Integrated magnetometer simplifies hardware; widely available
+1. **Sensor Selection**: ICM-20948 (primary), MPU-9250 (backup)
+   - Rationale: ICM-20948 is actively produced; MPU-9250 is EOL but implementation retained
 
 2. **Communication Interface**: I2C at 400kHz
    - Rationale: Simpler wiring (4 wires), adequate for 400Hz, shared bus capability
 
 3. **Sampling Strategy**: Timer-based polling at 400Hz
-   - Rationale: Simpler than interrupt-driven; MPU-9250 DRDY pin optional
+   - Rationale: Simpler than interrupt-driven; DRDY pin optional on both sensors
 
-4. **Driver Architecture**: Trait-based with two layers
+4. **Driver Architecture**: Trait-based with sensor-specific implementations
    - `ImuSensor` trait: Device-independent interface for EKF
-   - `Mpu9250Driver`: MPU-9250-specific implementation
+   - `Icm20948Driver`: ICM-20948-specific implementation (primary)
+   - `Mpu9250Driver`: MPU-9250-specific implementation (backup)
 
-5. **Magnetometer Handling**: Use integrated AK8963 at 100Hz
-   - Rationale: Avoid external sensor complexity initially
+5. **Magnetometer Handling**: Use integrated magnetometers at 100Hz
+   - ICM-20948: AK09916 (via I2C master or bypass mode)
+   - MPU-9250: AK8963 (via I2C bypass mode)
    - Future: Can add external mag if interference issues arise
 
 6. **Calibration**: Load from parameters, apply in driver
@@ -89,46 +100,62 @@ The pico_trail autopilot requires IMU sensor data for attitude estimation via EK
 
 ### Decision Drivers
 
-1. **Hardware Availability**: MPU-9250 readily available on breakout boards
+1. **Hardware Availability**: ICM-20948 actively produced; MPU-9250 EOL
 2. **Wiring Simplicity**: I2C requires only 4 wires (VCC, GND, SDA, SCL)
 3. **9-axis Integration**: Avoids separate magnetometer module
 4. **Adequate Performance**: 400Hz achievable with I2C @ 400kHz
-5. **Maintainability**: Trait abstraction enables testing and future sensors
+5. **Maintainability**: Trait abstraction enables testing and sensor swapping
 
 ### Considered Options
 
-**Option A: MPU-9250 + I2C** (Selected)
+**Option A: ICM-20948 + I2C** (Selected as Primary)
 
-- Pros: Simple wiring, integrated mag, widely available
-- Cons: Higher latency than SPI, EOL product
+- Pros: Actively produced, better specs, simple wiring, integrated mag
+- Cons: Register bank switching adds driver complexity, VDDIO voltage considerations
 
-**Option B: MPU-9250 + SPI**
+**Option B: MPU-9250 + I2C** (Retained as Backup)
+
+- Pros: Simple wiring, integrated mag, simpler register map
+- Cons: EOL product, higher latency than SPI
+
+**Option C: MPU-9250 + SPI**
 
 - Pros: Lower latency (\~0.3ms), lower jitter
-- Cons: More wiring (6+ wires), more complex integration
-
-**Option C: ICM-20948 + I2C**
-
-- Pros: Current production, better specs than MPU-9250
-- Cons: Less common, different register map, higher cost
+- Cons: More wiring (6+ wires), more complex integration, EOL product
 
 ### Option Analysis
 
-- **Option A** — Best balance of simplicity and capability | Adequate for 400Hz requirements
-- **Option B** — Lower latency not needed for 400Hz | Added wiring complexity
-- **Option C** — Future upgrade path if MPU-9250 unavailable | Deferred
+- **Option A (ICM-20948)** — **Recommended**: Actively produced, future-proof | Register bank complexity manageable
+- **Option B (MPU-9250)** — Retained as backup for existing hardware | EOL limits long-term use
+- **Option C (SPI)** — Lower latency not needed for 400Hz | Added wiring complexity
 
 ## Rationale
 
-**Why MPU-9250 + I2C?**
+**Why ICM-20948 as Primary Sensor?**
+
+1. **Active Production**: ICM-20948 is the official TDK InvenSense successor to MPU-9250, actively manufactured.
+
+2. **Better Specifications**: Higher ODR capability (9000Hz gyro vs 8000Hz), same programmable ranges.
+
+3. **Same Architecture**: Similar I2C interface (different registers), same general approach.
+
+**Why Retain MPU-9250 Support?**
+
+1. **Existing Hardware**: Users may have MPU-9250 modules that still work.
+
+2. **Partial Implementation**: Code exists in `src/devices/imu/mpu9250/` that can be completed.
+
+3. **Simpler Registers**: No bank switching required, useful as reference implementation.
+
+**Why I2C for Both?**
 
 1. **Simplicity**: I2C requires 4 wires vs 6+ for SPI, reducing integration complexity and potential wiring errors.
 
 2. **Adequate Performance**: At 400kHz I2C, a full 14-byte read (gyro + accel + temp) completes in \~1ms, well within the 2.5ms sample period.
 
-3. **Integrated Magnetometer**: The AK8963 magnetometer eliminates need for a separate sensor, simplifying calibration and mounting.
+3. **Integrated Magnetometer**: AK09916 (ICM-20948) and AK8963 (MPU-9250) eliminate need for separate sensors.
 
-4. **Compatibility**: I2C is the default interface on most MPU-9250 breakout boards, matching available hardware.
+4. **Compatibility**: I2C is the default interface on most breakout boards (Adafruit, SparkFun).
 
 5. **Shared Bus**: I2C allows bus sharing with GPS or other sensors if needed, though dedicated bus is preferred.
 
@@ -136,35 +163,38 @@ The pico_trail autopilot requires IMU sensor data for attitude estimation via EK
 
 - SPI provides \~0.3ms read latency vs \~1.5ms for I2C, but this margin is not needed at 400Hz.
 - SPI requires more GPIO pins and wiring complexity.
-- Most MPU-9250 breakouts default to I2C configuration.
+- Most breakout boards default to I2C configuration.
 
 **Trade-offs Accepted:**
 
 - **Higher Latency**: 1.5ms I2C read vs 0.3ms SPI (acceptable for 400Hz)
-- **EOL Sensor**: MPU-9250 discontinued but widely available; ICM-20948 as backup
+- **Register Complexity**: ICM-20948 bank switching adds driver complexity
 - **Bus Contention Risk**: Mitigated by dedicated I2C bus or careful timing
 
 ## Consequences
 
 ### Positive
 
-- **Simple Integration**: 4-wire I2C connection to MPU-9250 breakout
+- **Simple Integration**: 4-wire I2C connection to breakout boards
 - **9-axis Data**: Gyro, accel, mag from single sensor
 - **Testable**: Mock `ImuSensor` implementation for unit tests
-- **Future-Proof**: Trait abstraction allows sensor upgrades
+- **Future-Proof**: Trait abstraction allows sensor upgrades; ICM-20948 is actively produced
 - **Calibration Support**: Offset/scale parameters for all axes
+- **Sensor Choice**: Users can use ICM-20948 (recommended) or MPU-9250 (backup)
 
 ### Negative
 
 - **Higher Latency**: \~1.5ms per read vs \~0.3ms with SPI
 - **Jitter Risk**: I2C clock stretching can cause timing variation
-- **EOL Sensor**: MPU-9250 discontinued (mitigated by stocking)
+- **Code Duplication**: Two separate driver implementations (ICM-20948, MPU-9250)
 - **Bus Contention**: Shared I2C may conflict with other devices
+- **ICM-20948 Complexity**: Register bank switching requires careful state management
 
 ### Neutral
 
-- **Magnetometer Quality**: AK8963 adequate for heading; external mag optional
-- **DMP Unused**: MPU-9250 DMP available but not used (EKF handles fusion)
+- **Magnetometer Quality**: AK09916/AK8963 adequate for heading; external mag optional
+- **DMP Unused**: DMP available on both sensors but not used (EKF handles fusion)
+- **MPU-9250 EOL**: Implementation retained for existing hardware users
 
 ## Implementation Notes
 
@@ -176,7 +206,12 @@ src/devices/
 │   └── imu.rs                  # ImuSensor trait
 └── imu/
     ├── mod.rs                  # Public exports
-    ├── mpu9250/
+    ├── icm20948/               # ICM-20948 (Primary)
+    │   ├── mod.rs              # Driver public API
+    │   ├── registers.rs        # Register definitions (4 banks)
+    │   ├── config.rs           # Configuration structs
+    │   └── driver.rs           # Core driver implementation
+    ├── mpu9250/                # MPU-9250 (Backup)
     │   ├── mod.rs              # Driver public API
     │   ├── registers.rs        # Register definitions
     │   ├── config.rs           # Configuration structs
@@ -247,13 +282,36 @@ impl Default for Mpu9250Config {
 ### I2C Communication
 
 ```rust
-// MPU-9250 I2C addresses
+// ICM-20948 I2C addresses (Primary)
+const ICM20948_ADDR: u8 = 0x69;     // AD0 pin low (default on most breakouts)
+const ICM20948_ADDR_ALT: u8 = 0x68; // AD0 pin high
+const AK09916_ADDR: u8 = 0x0C;      // Magnetometer (via bypass or I2C master)
+const ICM20948_WHO_AM_I: u8 = 0xEA;
+
+// MPU-9250 I2C addresses (Backup)
 const MPU9250_ADDR: u8 = 0x68;      // AD0 pin low
 const MPU9250_ADDR_ALT: u8 = 0x69;  // AD0 pin high
 const AK8963_ADDR: u8 = 0x0C;       // Magnetometer (via bypass)
+const MPU9250_WHO_AM_I: u8 = 0x71;
 
-// Read all sensor data in single transaction
-async fn read_sensors(&mut self) -> Result<RawData, ImuError> {
+// ICM-20948: Read with bank switching
+async fn read_sensors_icm20948(&mut self) -> Result<RawData, ImuError> {
+    // Select Bank 0 for sensor data
+    self.select_bank(0).await?;
+
+    // Read 14 bytes: accel (6) + gyro (6) + temp (2)
+    let mut buf = [0u8; 14];
+    self.i2c.write_read(ICM20948_ADDR, &[ACCEL_XOUT_H], &mut buf).await?;
+
+    // Read magnetometer via I2C master or bypass mode
+    let mut mag_buf = [0u8; 8];
+    self.i2c.write_read(AK09916_ADDR, &[AK09916_HXL], &mut mag_buf).await?;
+
+    Ok(RawData::from_bytes(&buf, &mag_buf))
+}
+
+// MPU-9250: Read without bank switching
+async fn read_sensors_mpu9250(&mut self) -> Result<RawData, ImuError> {
     // Read 14 bytes: accel (6) + temp (2) + gyro (6)
     let mut buf = [0u8; 14];
     self.i2c.write_read(MPU9250_ADDR, &[ACCEL_XOUT_H], &mut buf).await?;
@@ -347,15 +405,27 @@ log_trace!("I2C read: addr={:#x}, len={}", addr, len);
 ## Open Questions
 
 - [ ] Should we implement I2C DMA for lower CPU overhead? → Method: Benchmark CPU usage, add DMA if >20%
-- [ ] Is bypass mode or master mode better for AK8963 access? → Decision: Start with bypass (simpler)
-- [ ] Do we need MPU-9250 FIFO for data buffering? → Method: Test jitter without FIFO first
-- [ ] Should we support ICM-20948 as drop-in replacement? → Next step: Research register compatibility
+- [ ] Is bypass mode or master mode better for magnetometer access? → Decision: Start with bypass (simpler for both sensors)
+- [ ] Do we need FIFO for data buffering? → Method: Test jitter without FIFO first
+- [x] ~~Should we support ICM-20948 as drop-in replacement?~~ → **Decision: ICM-20948 is now primary sensor**
 
 ## External References
+
+**ICM-20948 (Primary):**
+
+- [ICM-20948 Datasheet](https://product.tdk.com/system/files/dam/doc/product/sensor/mortion-inertial/imu/data_sheet/ds-000189-icm-20948-v1.5.pdf)
+- [ICM-20948 Product Page](https://invensense.tdk.com/products/motion-tracking/9-axis/icm-20948/)
+- [Adafruit ICM-20948](https://www.adafruit.com/product/4554)
+- [SparkFun ICM-20948 Breakout](https://www.sparkfun.com/sparkfun-9dof-imu-breakout-icm-20948-qwiic.html)
+
+**MPU-9250 (Backup):**
 
 - [MPU-9250 Register Map](https://invensense.tdk.com/wp-content/uploads/2015/02/RM-MPU-9250A-00-v1.6.pdf)
 - [MPU-9250 Datasheet](https://invensense.tdk.com/wp-content/uploads/2015/02/PS-MPU-9250A-01-v1.1.pdf)
 - [AK8963 Datasheet](https://www.akm.com/content/dam/documents/products/electronic-compass/ak8963c/ak8963c-en-datasheet.pdf)
+
+**Embassy:**
+
 - [Embassy RP I2C](https://docs.embassy.dev/embassy-rp/git/rp2040/i2c/index.html)
 
 ---

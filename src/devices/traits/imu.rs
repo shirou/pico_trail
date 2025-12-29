@@ -40,6 +40,12 @@ pub enum ImuError {
 
     /// Magnetometer data not ready
     MagNotReady,
+
+    /// Magnetometer initialization failed
+    MagInitError,
+
+    /// Magnetometer sensor overflow
+    MagOverflow,
 }
 
 /// Combined IMU reading with calibration applied

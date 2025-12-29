@@ -10,6 +10,7 @@
 - Related Analyses:
   - [AN-t47be-mpu9250-imu-and-ekf-integration](../analysis/AN-t47be-mpu9250-imu-and-ekf-integration.md)
 - Prerequisite Requirements:
+  - [FR-slm3x-icm20948-i2c-driver](FR-slm3x-icm20948-i2c-driver.md)
   - [FR-oqxl8-mpu9250-i2c-driver](FR-oqxl8-mpu9250-i2c-driver.md)
   - [FR-soukr-imu-calibration-interface](FR-soukr-imu-calibration-interface.md)
   - [FR-3ik7l-gps-operation-data-management](FR-3ik7l-gps-operation-data-management.md)

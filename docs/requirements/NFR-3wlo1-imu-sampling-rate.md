@@ -11,6 +11,7 @@
   - [FR-5inw2-task-scheduler](FR-5inw2-task-scheduler.md)
 - Dependent Requirements:
   - [FR-eyuh8-ahrs-attitude-estimation](FR-eyuh8-ahrs-attitude-estimation.md)
+  - [FR-slm3x-icm20948-i2c-driver](FR-slm3x-icm20948-i2c-driver.md)
   - [FR-oqxl8-mpu9250-i2c-driver](FR-oqxl8-mpu9250-i2c-driver.md)
   - [FR-3f2cn-quaternion-ekf-ahrs](FR-3f2cn-quaternion-ekf-ahrs.md)
   - [NFR-ulsja-imu-i2c-read-latency](NFR-ulsja-imu-i2c-read-latency.md)

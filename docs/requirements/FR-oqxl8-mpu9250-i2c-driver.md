@@ -3,7 +3,11 @@
 ## Metadata
 
 - Type: Functional Requirement
-- Status: Draft
+- Status: Deferred
+
+## Change History
+
+- **2025-01-XX**: Status changed to Deferred. MPU-9250 hardware unavailable; ICM-20948 is now primary sensor. Implementation retained for users with existing MPU-9250 hardware.
 
 ## Links
 

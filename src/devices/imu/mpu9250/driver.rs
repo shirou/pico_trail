@@ -140,10 +140,26 @@ impl<'d, T: embassy_rp::i2c::Instance> Mpu9250Driver<'d, T> {
 
         // Step 7-8: Initialize magnetometer only if present (MPU-9250/MPU-9255)
         if has_magnetometer {
-            // Enable I2C bypass for AK8963 access
+            // CRITICAL: Disable I2C master mode before enabling bypass
+            // This allows direct I2C access to the AK8963 magnetometer
+            self.write_register(registers::USER_CTRL, registers::USER_CTRL_I2C_MST_DIS)
+                .await?;
+            embassy_time::Timer::after_millis(10).await;
+
+            // Enable I2C bypass mode for direct AK8963 access
+            // The AK8963 has a separate I2C address (0x0C) and becomes visible
+            // on the bus only when bypass mode is enabled
             self.write_register(registers::INT_PIN_CFG, registers::INT_PIN_CFG_BYPASS_EN)
                 .await?;
             embassy_time::Timer::after_millis(10).await;
+
+            // Verify bypass mode is enabled
+            let int_cfg = self.read_register(registers::INT_PIN_CFG).await?;
+            if (int_cfg & registers::INT_PIN_CFG_BYPASS_EN) == 0 {
+                crate::log_error!("Failed to enable I2C bypass mode");
+                return Err(ImuError::NotInitialized);
+            }
+            crate::log_debug!("I2C bypass mode enabled (INT_PIN_CFG: {:#x})", int_cfg);
 
             // Initialize AK8963 magnetometer
             self.init_ak8963().await?;

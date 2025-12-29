@@ -183,9 +183,12 @@ pub const PWR_MGMT_1_CLKSEL_AUTO: u8 = 0x01;
 
 /// INT_PIN_CFG bits
 pub const INT_PIN_CFG_BYPASS_EN: u8 = 0x02;
+pub const INT_PIN_CFG_LATCH_INT_EN: u8 = 0x20;
 
 /// USER_CTRL bits
 pub const USER_CTRL_I2C_MST_EN: u8 = 0x20;
+pub const USER_CTRL_I2C_MST_DIS: u8 = 0x00; // Disable I2C master mode (for bypass)
+pub const USER_CTRL_FIFO_EN: u8 = 0x40;
 pub const USER_CTRL_SIG_COND_RST: u8 = 0x01;
 
 // ============================================================================

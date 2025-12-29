@@ -5,9 +5,14 @@
 - Type: Functional Requirement
 - Status: Draft
 
+## Change History
+
+- **2025-01-XX**: Updated to support ICM-20948 (primary) and MPU-9250 (backup) sensors.
+
 ## Links
 
 - Prerequisite Requirements:
+  - [FR-slm3x-icm20948-i2c-driver](FR-slm3x-icm20948-i2c-driver.md)
   - [FR-oqxl8-mpu9250-i2c-driver](FR-oqxl8-mpu9250-i2c-driver.md)
 - Dependent Requirements:
   - [FR-3f2cn-quaternion-ekf-ahrs](FR-3f2cn-quaternion-ekf-ahrs.md)
@@ -15,6 +20,7 @@
 - Related ADRs:
   - [ADR-t5cq4-mpu9250-i2c-driver-architecture](../adr/ADR-t5cq4-mpu9250-i2c-driver-architecture.md)
 - Related Tasks:
+  - [T-0kbo4-icm20948-driver-implementation](../tasks/T-0kbo4-icm20948-driver-implementation/README.md)
   - [T-kx79g-mpu9250-driver-implementation](../tasks/T-kx79g-mpu9250-driver-implementation/README.md)
 
 ## Requirement Statement
@@ -26,8 +32,8 @@ The system shall provide a device-independent `ImuSensor` trait interface that a
 A trait-based abstraction layer provides:
 
 - **Testability**: Mock implementations for unit tests without hardware
-- **Sensor Independence**: EKF code unchanged when sensor hardware changes
-- **Future Flexibility**: Easy to add ICM-20948 or other sensors later
+- **Sensor Independence**: EKF code unchanged when sensor hardware changes (ICM-20948 or MPU-9250)
+- **Multiple Sensor Support**: ICM-20948 (primary) and MPU-9250 (backup) share same interface
 - **Separation of Concerns**: Driver handles hardware, EKF handles algorithm
 
 ## User Story (if applicable)
@@ -44,7 +50,8 @@ As a developer, I want the EKF to consume IMU data through a trait interface, so
 - [ ] `ImuReading` struct contains all 9-axis data with units specified
 - [ ] `ImuError` enum covers all possible failure modes
 - [ ] Mock implementation available for testing
-- [ ] MPU-9250 driver implements `ImuSensor` trait
+- [ ] ICM-20948 driver implements `ImuSensor` trait (primary)
+- [ ] MPU-9250 driver implements `ImuSensor` trait (backup)
 
 ## Technical Details (if applicable)
 
@@ -170,7 +177,8 @@ src/devices/
 │   └── imu.rs              # ImuSensor trait, ImuReading, ImuError
 └── imu/
     ├── mod.rs              # Re-exports
-    ├── mpu9250/            # MPU-9250 implementation
+    ├── icm20948/           # ICM-20948 implementation (primary)
+    ├── mpu9250/            # MPU-9250 implementation (backup)
     └── mock.rs             # Mock for testing
 ```
 
@@ -203,7 +211,11 @@ async fn run_ekf<I: ImuSensor>(mut imu: I, mut ekf: AhrsEkf) {
     }
 }
 
-// Production: MPU-9250
+// Production: ICM-20948 (primary)
+let imu = Icm20948Driver::new(i2c, config).await?;
+run_ekf(imu, ekf).await;
+
+// Production: MPU-9250 (backup)
 let imu = Mpu9250Driver::new(i2c, config).await?;
 run_ekf(imu, ekf).await;
 

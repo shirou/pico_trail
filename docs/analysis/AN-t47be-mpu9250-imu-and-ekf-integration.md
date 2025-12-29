@@ -1,15 +1,22 @@
-# AN-t47be MPU-9250 IMU and EKF Integration
+# AN-t47be 9-Axis IMU and EKF Integration
 
 ## Metadata
 
 - Type: Analysis
 - Status: Complete
 
+## Change History
+
+- **2025-01-XX**: Updated to include ICM-20948 as primary sensor option due to MPU-9250 unavailability. MPU-9250 implementation retained for reference.
+
 ## Links
 
 - Related Analyses:
   - ~~[AN-yhnjd-imu-sensor-selection](../analysis/AN-yhnjd-imu-sensor-selection.md)~~ (Deprecated - replaced by this analysis)
 - Related Requirements:
+  - [FR-slm3x-icm20948-i2c-driver](../requirements/FR-slm3x-icm20948-i2c-driver.md)
+  - [FR-oqxl8-mpu9250-i2c-driver](../requirements/FR-oqxl8-mpu9250-i2c-driver.md)
+  - [FR-z1fdo-imu-sensor-trait](../requirements/FR-z1fdo-imu-sensor-trait.md)
   - [NFR-3wlo1-imu-sampling-rate](../requirements/NFR-3wlo1-imu-sampling-rate.md)
   - [FR-eyuh8-ahrs-attitude-estimation](../requirements/FR-eyuh8-ahrs-attitude-estimation.md)
   - [FR-e2urj-large-vehicle-magcal](../requirements/FR-e2urj-large-vehicle-magcal.md)
@@ -19,16 +26,18 @@
   - ~~[ADR-6twis-ahrs-algorithm-selection](../adr/ADR-6twis-ahrs-algorithm-selection.md)~~ (Superseded)
   - ~~[ADR-wjcrn-imu-driver-architecture](../adr/ADR-wjcrn-imu-driver-architecture.md)~~ (Deprecated)
 - Related Tasks:
-  - [T-kx79g-mpu9250-driver-implementation](../tasks/T-kx79g-mpu9250-driver-implementation/README.md)
+  - [T-0kbo4-icm20948-driver-implementation](../tasks/T-0kbo4-icm20948-driver-implementation/README.md) (Primary)
+  - [T-kx79g-mpu9250-driver-implementation](../tasks/T-kx79g-mpu9250-driver-implementation/README.md) (Cancelled)
   - [T-p8w8f-ekf-ahrs-implementation](../tasks/T-p8w8f-ekf-ahrs-implementation/README.md)
 
 ## Executive Summary
 
-This analysis evaluates the integration of MPU-9250 9-axis IMU with an Extended Kalman Filter (EKF) for attitude estimation in the pico_trail autopilot. The MPU-9250 provides gyroscope, accelerometer, and magnetometer data that feeds into the EKF to produce accurate attitude (roll, pitch, yaw) estimates. The system architecture emphasizes hardware abstraction to support future sensor upgrades, global state management for sharing EKF outputs, MAVLink telemetry for GCS communication, and comprehensive sensor calibration procedures.
+This analysis evaluates the integration of 9-axis IMU sensors with an Extended Kalman Filter (EKF) for attitude estimation in the pico_trail autopilot. The supported sensors (ICM-20948, MPU-9250) provide gyroscope, accelerometer, and magnetometer data that feeds into the EKF to produce accurate attitude (roll, pitch, yaw) estimates. The system architecture emphasizes hardware abstraction to support multiple sensors, global state management for sharing EKF outputs, MAVLink telemetry for GCS communication, and comprehensive sensor calibration procedures.
 
 **Key Decisions:**
 
-- **Sensor**: MPU-9250 (9-axis IMU with integrated magnetometer)
+- **Primary Sensor**: ICM-20948 (9-axis IMU, MPU-9250 successor, actively produced)
+- **Backup Sensor**: MPU-9250 (9-axis IMU, EOL but implementation retained)
 - **Interface**: I2C (simpler wiring, adequate for 400Hz sampling)
 - **Algorithm**: EKF (7-state quaternion-based filter) replaces DCM
 - **State Management**: Global `ATTITUDE_STATE` accessible by navigation and control subsystems
@@ -47,11 +56,11 @@ The pico_trail autopilot has:
 - MAVLink communication infrastructure in place
 - No physical IMU driver implementation exists yet
 
-Previous sensor selection (AN-yhnjd) recommended BMI088 with SPI, but project constraints and hardware availability now favor MPU-9250 with I2C.
+Previous sensor selection (AN-yhnjd) recommended BMI088 with SPI, but project constraints and hardware availability now favor 9-axis IMU sensors with I2C. ICM-20948 is the primary choice as the actively-produced successor to MPU-9250. The MPU-9250 implementation is retained for cases where that hardware is available.
 
 ### Desired State
 
-- MPU-9250 driver providing 9-axis sensor data via abstracted `ImuSensor` trait
+- IMU drivers (ICM-20948, MPU-9250) providing 9-axis sensor data via abstracted `ImuSensor` trait
 - EKF-based attitude estimation providing accurate roll, pitch, yaw
 - Global `ATTITUDE_STATE` accessible by:
   - Navigation controller for heading-based steering
@@ -62,14 +71,14 @@ Previous sensor selection (AN-yhnjd) recommended BMI088 with SPI, but project co
 
 ### Gap Analysis
 
-| Component            | Current State      | Required State                       |
-| -------------------- | ------------------ | ------------------------------------ |
-| IMU Driver           | None               | MPU-9250 I2C driver with abstraction |
-| Attitude Algorithm   | DCM (implemented)  | EKF (7-state quaternion filter)      |
-| State Management     | None for attitude  | Global ATTITUDE_STATE with mutex     |
-| MAVLink Attitude     | Not implemented    | ATTITUDE message at 10Hz             |
-| Calibration          | Structures defined | Full calibration procedure           |
-| Hardware Abstraction | Partial            | Complete ImuSensor trait             |
+| Component            | Current State             | Required State                                    |
+| -------------------- | ------------------------- | ------------------------------------------------- |
+| IMU Driver           | MPU-9250 partial (Draft)  | ICM-20948 + MPU-9250 I2C drivers with abstraction |
+| Attitude Algorithm   | DCM (implemented)         | EKF (7-state quaternion filter)                   |
+| State Management     | None for attitude         | Global ATTITUDE_STATE with mutex                  |
+| MAVLink Attitude     | Not implemented           | ATTITUDE message at 10Hz                          |
+| Calibration          | Structures defined        | Full calibration procedure                        |
+| Hardware Abstraction | Partial (ImuSensor trait) | Complete ImuSensor trait with multiple impl       |
 
 ## Stakeholder Analysis
 
@@ -106,18 +115,49 @@ Previous sensor selection (AN-yhnjd) recommended BMI088 with SPI, but project co
 
 ### Technical Investigation
 
-**MPU-9250 Specifications:**
+**ICM-20948 Specifications (Primary Sensor):**
 
-| Parameter         | Value                       | Notes                            |
-| ----------------- | --------------------------- | -------------------------------- |
-| Gyroscope ODR     | Up to 8000Hz                | 1000Hz sufficient for 400Hz AHRS |
-| Accelerometer ODR | Up to 4000Hz                | 1000Hz sufficient                |
-| Magnetometer ODR  | Up to 100Hz                 | 10-50Hz adequate for heading     |
-| Interface         | I2C (400kHz) or SPI (1MHz)  | I2C simpler wiring               |
-| Gyro Range        | ±250, ±500, ±1000, ±2000°/s | ±2000°/s for fast maneuvers      |
-| Accel Range       | ±2, ±4, ±8, ±16g            | ±8g for rover/boat               |
-| Mag Range         | ±4800µT                     | Fixed range                      |
-| Supply Voltage    | 2.4V - 3.6V                 | 3.3V compatible                  |
+| Parameter         | Value                             | Notes                             |
+| ----------------- | --------------------------------- | --------------------------------- |
+| Gyroscope ODR     | Up to 9000Hz                      | 1000Hz sufficient for 400Hz AHRS  |
+| Accelerometer ODR | Up to 4500Hz                      | 1000Hz sufficient                 |
+| Magnetometer ODR  | Up to 100Hz                       | AK09916 integrated                |
+| Interface         | I2C (400kHz) or SPI (7MHz)        | I2C simpler wiring                |
+| Gyro Range        | ±250, ±500, ±1000, ±2000°/s       | ±2000°/s for fast maneuvers       |
+| Accel Range       | ±2, ±4, ±8, ±16g                  | ±8g for rover/boat                |
+| Mag Range         | ±4900µT                           | Fixed range (AK09916)             |
+| Supply Voltage    | VDD: 1.71-3.6V, VDDIO: 1.71-1.95V | Requires level shifter or 1.8V IO |
+| WHO_AM_I          | 0xEA                              | Different from MPU-9250 (0x71)    |
+| I2C Address       | 0x69 (default), 0x68              | AD0 jumper selectable             |
+| Status            | Active production                 | MPU-9250 successor                |
+
+**MPU-9250 Specifications (Backup Sensor, EOL):**
+
+| Parameter         | Value                       | Notes                              |
+| ----------------- | --------------------------- | ---------------------------------- |
+| Gyroscope ODR     | Up to 8000Hz                | 1000Hz sufficient for 400Hz AHRS   |
+| Accelerometer ODR | Up to 4000Hz                | 1000Hz sufficient                  |
+| Magnetometer ODR  | Up to 100Hz                 | AK8963 integrated                  |
+| Interface         | I2C (400kHz) or SPI (1MHz)  | I2C simpler wiring                 |
+| Gyro Range        | ±250, ±500, ±1000, ±2000°/s | ±2000°/s for fast maneuvers        |
+| Accel Range       | ±2, ±4, ±8, ±16g            | ±8g for rover/boat                 |
+| Mag Range         | ±4800µT                     | Fixed range (AK8963)               |
+| Supply Voltage    | 2.4V - 3.6V                 | 3.3V compatible                    |
+| WHO_AM_I          | 0x71                        | Different from ICM-20948 (0xEA)    |
+| I2C Address       | 0x68 (default), 0x69        | AD0 jumper selectable              |
+| Status            | End of Life (EOL)           | Still available on breakout boards |
+
+**ICM-20948 vs MPU-9250 Key Differences:**
+
+| Aspect              | ICM-20948                | MPU-9250              |
+| ------------------- | ------------------------ | --------------------- |
+| Production Status   | Active                   | EOL                   |
+| Register Banks      | 4 banks (bank switching) | Single register space |
+| Magnetometer        | AK09916                  | AK8963                |
+| Default I2C Address | 0x69                     | 0x68                  |
+| WHO_AM_I            | 0xEA                     | 0x71                  |
+| VDDIO               | 1.71-1.95V (separate)    | Same as VDD           |
+| Code Compatibility  | Different register map   | —                     |
 
 **I2C vs SPI Trade-offs:**
 
@@ -315,7 +355,35 @@ Note: EKF update runs at 100Hz (every 4th IMU sample), not 400Hz.
 
 **Effort:** Low (reuse existing DCM)
 
-#### Option 3: MPU-9250 + SPI + EKF
+#### Option 3: ICM-20948 + I2C + EKF (Recommended)
+
+**Description:** ICM-20948 driver using I2C, feeding a 7-state quaternion-based EKF for attitude estimation. This is the MPU-9250 successor and is actively produced.
+
+**Specifications:**
+
+- I2C @ 400kHz for sensor reading
+- 400Hz IMU sampling, 100Hz EKF update
+- 7-state EKF: quaternion (4) + gyro bias (3)
+- Magnetometer fusion at 10Hz (AK09916)
+- Global `ATTITUDE_STATE` for data sharing
+
+**Pros:**
+
+- Actively produced (not EOL like MPU-9250)
+- Integrated 9-axis sensor simplifies hardware
+- I2C simplifies wiring (4 wires vs 6+ for SPI)
+- Better specs than MPU-9250 (higher ODR capability)
+- Same EKF approach as MPU-9250 option
+
+**Cons:**
+
+- Different register map from MPU-9250 (not code-compatible)
+- VDDIO requires 1.8V or level shifter on some breakouts
+- Register bank switching adds complexity to driver
+
+**Effort:** Medium (similar to MPU-9250, different register handling)
+
+#### Option 4: MPU-9250 + SPI + EKF
 
 **Description:** Use SPI interface for lower latency, combined with EKF.
 
@@ -330,19 +398,27 @@ Note: EKF update runs at 100Hz (every 4th IMU sample), not 400Hz.
 - More complex wiring (6+ wires)
 - Requires dedicated SPI pins (conflict with other peripherals?)
 - Not significantly beneficial at 400Hz
+- MPU-9250 is EOL
 
 **Effort:** Medium-High (SPI driver + EKF)
+
+### Option Analysis
+
+- **Option 1 (MPU-9250 + I2C + EKF)** — Good balance of simplicity and capability, but sensor is EOL
+- **Option 2 (MPU-9250 + DCM)** — Simpler, but lower accuracy and still EOL sensor
+- **Option 3 (ICM-20948 + I2C + EKF)** — **Recommended**: Actively produced, better specs, same architecture
+- **Option 4 (MPU-9250 + SPI + EKF)** — Overkill for 400Hz, added complexity, EOL sensor
 
 ### Architecture Impact
 
 **ADR Required:**
 
-- **ADR-<id>-mpu9250-i2c-driver**: I2C communication, interrupt vs polling
+- **ADR-t5cq4-imu-i2c-driver-architecture**: I2C communication, multi-sensor support via ImuSensor trait
 - **ADR-<id>-ekf-ahrs-implementation**: EKF state, tuning, convergence
 
 **Decisions to Make:**
 
-1. ~~Sensor selection~~ → MPU-9250 (decided)
+1. ~~Sensor selection~~ → ICM-20948 primary, MPU-9250 backup (decided)
 2. ~~Communication interface~~ → I2C (decided)
 3. Algorithm: EKF or keep DCM?
 4. State sharing: Global static or message passing?
@@ -388,72 +464,87 @@ pub static ATTITUDE_STATE: Mutex<CriticalSectionRawMutex, AttitudeState> =
 
 ## Risk Assessment
 
-| Risk                                     | Probability | Impact | Mitigation Strategy                                  |
-| ---------------------------------------- | ----------- | ------ | ---------------------------------------------------- |
-| I2C jitter exceeds 1ms at 400Hz          | Medium      | Medium | Optimize I2C driver, consider timer-based sampling   |
-| MPU-9250 sourcing (EOL product)          | Medium      | Medium | Stock up, identify ICM-20948 as backup               |
-| EKF divergence during fast maneuvers     | Low         | High   | Tune process noise, implement divergence detection   |
-| Magnetometer interference from motors    | Medium      | Medium | Mount mag away from motors, calibration, GPS heading |
-| CPU insufficient for 100Hz EKF on RP2040 | Medium      | High   | Optimize matrix operations, reduce to 50Hz if needed |
-| I2C bus contention with GPS              | Medium      | Medium | Use separate I2C buses or careful timing             |
+| Risk                                     | Probability | Impact  | Mitigation Strategy                                         |
+| ---------------------------------------- | ----------- | ------- | ----------------------------------------------------------- |
+| I2C jitter exceeds 1ms at 400Hz          | Medium      | Medium  | Optimize I2C driver, consider timer-based sampling          |
+| ~~MPU-9250 sourcing (EOL product)~~      | ~~High~~    | ~~Med~~ | ~~Mitigated: ICM-20948 now primary sensor~~                 |
+| ICM-20948 VDDIO voltage mismatch         | Low         | Medium  | Use breakout boards with level shifter (Adafruit, SparkFun) |
+| EKF divergence during fast maneuvers     | Low         | High    | Tune process noise, implement divergence detection          |
+| Magnetometer interference from motors    | Medium      | Medium  | Mount mag away from motors, calibration, GPS heading        |
+| CPU insufficient for 100Hz EKF on RP2040 | Medium      | High    | Optimize matrix operations, reduce to 50Hz if needed        |
+| I2C bus contention with GPS              | Medium      | Medium  | Use separate I2C buses or careful timing                    |
+| ICM-20948 register bank complexity       | Low         | Low     | Well-documented bank switching, existing Rust crates        |
 
 ## Open Questions
 
 - [ ] Should EKF run at 100Hz or 50Hz on RP2040? → Method: Profile CPU usage on hardware
 - [ ] Do we need GPS velocity fusion for heading? → Decision: Defer to navigation integration
-- [ ] Can we use MPU-9250 DMP for preprocessing? → Method: Investigate DMP capabilities
+- [x] ~~Can we use MPU-9250 DMP for preprocessing?~~ → Decision: Not using DMP, EKF handles fusion
 - [ ] What is acceptable I2C jitter on RP2040? → Method: Measure with logic analyzer
 - [ ] Should calibration be interactive (user prompts) or automatic? → Decision: Start with interactive
-- [ ] Is ICM-20948 a suitable backup if MPU-9250 unavailable? → Next step: Research ICM-20948 compatibility
+- [x] ~~Is ICM-20948 a suitable backup if MPU-9250 unavailable?~~ → Decision: **ICM-20948 is now primary sensor**
 
 ## Recommendations
 
 ### Immediate Actions
 
-1. **Select MPU-9250 + I2C + EKF** as the implementation approach for the following reasons:
+1. **Select ICM-20948 + I2C + EKF** as the primary implementation approach:
+   - Actively produced (MPU-9250 successor, not EOL)
    - 9-axis integration eliminates need for separate magnetometer
    - I2C simplifies wiring and is adequate for 400Hz
    - EKF provides better accuracy and explicit uncertainty estimation
    - Quaternion representation avoids gimbal lock
 
-2. **Implement abstracted IMU trait** (`ImuSensor`) to allow future sensor upgrades:
-   - Abstract over MPU-9250, ICM-20948, or other sensors
+2. **Retain MPU-9250 implementation** as backup option:
+   - Existing partial implementation in `src/devices/imu/mpu9250/`
+   - Useful for users who have MPU-9250 hardware
+
+3. **Implement abstracted IMU trait** (`ImuSensor`) to support multiple sensors:
+   - Abstract over ICM-20948, MPU-9250, or other sensors
    - Enable mock implementation for testing
 
-3. **Adopt GPS state management pattern** for attitude:
+4. **Adopt GPS state management pattern** for attitude:
    - Global `ATTITUDE_STATE` with mutex protection
    - Consistent access from navigation, control, telemetry
 
 ### Next Steps
 
-1. [ ] Draft ADR: MPU-9250 I2C driver architecture
+1. [x] ~~Draft ADR: MPU-9250 I2C driver architecture~~ → ADR-t5cq4 (update for multi-sensor)
 2. [ ] Draft ADR: EKF AHRS implementation (supersedes ADR-6twis)
 3. [ ] Create requirements: FR/NFR for EKF and attitude state
-4. [ ] Create task: T-<id>-mpu9250-driver-implementation
-   - Phase 1: I2C communication, register access, raw data
+4. [x] ~~Create task: T-kx79g-mpu9250-driver-implementation~~ → Cancelled (MPU-9250 unavailable)
+5. [ ] Create task: T-<id>-icm20948-driver-implementation
+   - Phase 1: I2C communication, register bank access, raw data
    - Phase 2: Calibration, data conversion, ImuSensor trait
-5. [ ] Create task: T-<id>-ekf-ahrs-implementation
+6. [ ] Create task: T-<id>-ekf-ahrs-implementation
    - Phase 1: EKF state, prediction, update functions
    - Phase 2: Magnetometer fusion, covariance tuning
    - Phase 3: Embassy task, state sharing, MAVLink
-6. [ ] Source MPU-9250 modules:
-   - Option 1: GY-91 (MPU-9250 + BMP280) \~$8
-   - Option 2: SparkFun MPU-9250 breakout \~$15
-7. [ ] Plan calibration procedures and user interface
+7. [x] ~~Source MPU-9250 modules~~ → ICM-20948 obtained
+   - Primary: Adafruit ICM-20948 (STEMMA QT) \~$15
+   - Alternative: SparkFun 9DoF IMU Breakout (Qwiic) \~$18
+8. [ ] Plan calibration procedures and user interface
 
 ### Out of Scope
 
-- **BMI088 support**: Previous decision (AN-yhnjd) deprecated; focus on MPU-9250
+- **BMI088 support**: Previous decision (AN-yhnjd) deprecated; focus on ICM-20948/MPU-9250
 - **Multi-IMU redundancy**: Single IMU sufficient for rover/boat
 - **Full navigation EKF**: 24-state EKF with GPS/baro deferred; 7-state AHRS sufficient initially
 - **Temperature compensation**: Optional enhancement after basic EKF validated
-- **MPU-9250 DMP usage**: Investigate later; start with raw sensor data
+- **DMP usage**: Not using ICM-20948/MPU-9250 DMP; EKF handles sensor fusion
 
 ## Appendix
 
 ### References
 
-**MPU-9250 Resources:**
+**ICM-20948 Resources (Primary Sensor):**
+
+- [ICM-20948 Datasheet](https://product.tdk.com/system/files/dam/doc/product/sensor/mortion-inertial/imu/data_sheet/ds-000189-icm-20948-v1.5.pdf)
+- [ICM-20948 Product Page](https://invensense.tdk.com/products/motion-tracking/9-axis/icm-20948/)
+- [Adafruit ICM-20948 Guide](https://cdn-learn.adafruit.com/downloads/pdf/adafruit-tdk-invensense-icm-20948-9-dof-imu.pdf)
+- [SparkFun ICM-20948 Breakout](https://www.sparkfun.com/sparkfun-9dof-imu-breakout-icm-20948-qwiic.html)
+
+**MPU-9250 Resources (Backup Sensor, EOL):**
 
 - [MPU-9250 Datasheet](https://invensense.tdk.com/wp-content/uploads/2015/02/PS-MPU-9250A-01-v1.1.pdf)
 - [MPU-9250 Register Map](https://invensense.tdk.com/wp-content/uploads/2015/02/RM-MPU-9250A-00-v1.6.pdf)

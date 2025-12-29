@@ -1,20 +1,24 @@
-# T-kx79g MPU-9250 I2C Driver Implementation
+# T-0kbo4 ICM-20948 I2C Driver Implementation
 
 ## Metadata
 
 - Type: Task
 - Status: Cancelled
 
-## Change History
+## Cancellation Note
 
-- **2025-01-XX**: Status changed to Cancelled. MPU-9250 hardware unavailable; ICM-20948 selected as primary sensor. See [T-0kbo4-icm20948-driver-implementation](../T-0kbo4-icm20948-driver-implementation/README.md) for ICM-20948 implementation. Existing MPU-9250 code in `src/devices/imu/mpu9250/` retained for users with existing hardware.
+**Reason**: ICM-20948 chip was counterfeit - magnetometer (AK09916) not functional.
+
+The purchased ICM-20948 breakout board turned out to be counterfeit. While the gyroscope and accelerometer work, the integrated AK09916 magnetometer does not respond correctly, making the 9-axis functionality unusable.
+
+**Source code retained**: The driver implementation in `src/devices/imu/icm20948/` is kept as-is for potential future use with genuine ICM-20948 hardware.
 
 ## Links
 
 - Related Analyses:
   - [AN-t47be-mpu9250-imu-and-ekf-integration](../../analysis/AN-t47be-mpu9250-imu-and-ekf-integration.md)
 - Related Requirements:
-  - [FR-oqxl8-mpu9250-i2c-driver](../../requirements/FR-oqxl8-mpu9250-i2c-driver.md)
+  - [FR-slm3x-icm20948-i2c-driver](../../requirements/FR-slm3x-icm20948-i2c-driver.md)
   - [FR-z1fdo-imu-sensor-trait](../../requirements/FR-z1fdo-imu-sensor-trait.md)
   - [FR-soukr-imu-calibration-interface](../../requirements/FR-soukr-imu-calibration-interface.md)
   - [NFR-ulsja-imu-i2c-read-latency](../../requirements/NFR-ulsja-imu-i2c-read-latency.md)
@@ -22,36 +26,35 @@
 - Related ADRs:
   - [ADR-t5cq4-mpu9250-i2c-driver-architecture](../../adr/ADR-t5cq4-mpu9250-i2c-driver-architecture.md)
 - Associated Design Document:
-  - [T-kx79g-mpu9250-driver-implementation-design](./design.md)
+  - [T-0kbo4-icm20948-driver-implementation-design](./design.md)
 - Associated Plan Document:
-  - [T-kx79g-mpu9250-driver-implementation-plan](./plan.md)
+  - [T-0kbo4-icm20948-driver-implementation-plan](./plan.md)
+- Supersedes Task:
+  - [T-kx79g-mpu9250-driver-implementation](../T-kx79g-mpu9250-driver-implementation/README.md) (Cancelled)
 
 ## Summary
 
-Implement an MPU-9250 9-axis IMU driver using I2C communication, providing the `ImuSensor` trait interface for the EKF AHRS subsystem. The driver reads gyroscope, accelerometer, and magnetometer data at 400Hz, applies calibration corrections, and exposes sensor health status.
+Implement an ICM-20948 9-axis IMU driver using I2C communication, providing the `ImuSensor` trait interface for the EKF AHRS subsystem. The driver reads gyroscope, accelerometer, and magnetometer data at 400Hz, applies calibration corrections, and exposes sensor health status. ICM-20948 is the primary sensor (TDK InvenSense successor to MPU-9250).
 
 ## Scope
 
-**Note: This task is CANCELLED. See ICM-20948 task for active implementation.**
-
-- In scope (was):
-  - MPU-9250 register definitions and I2C communication
-  - AK8963 magnetometer integration via I2C bypass mode
-  - `ImuSensor` trait definition and implementation
-  - `ImuReading`, `ImuCalibration`, `ImuError` data structures
-  - Calibration data loading and application
+- In scope:
+  - ICM-20948 register definitions and I2C communication
+  - Register bank switching (4-bank architecture)
+  - AK09916 magnetometer integration via I2C bypass mode
+  - `ImuSensor` trait implementation (reuse existing trait definition)
   - Unit tests with mock I2C for host testing
   - Embassy task for 400Hz sampling
 - Out of scope:
   - EKF algorithm implementation (separate task T-p8w8f)
   - SPI interface support (I2C only per ADR decision)
-  - MPU-9250 DMP (Digital Motion Processor) usage
+  - ICM-20948 DMP (Digital Motion Processor) usage
   - Temperature calibration (future enhancement)
-  - ~~ICM-20948 support~~ → Now primary sensor, see separate task
+  - MPU-9250 driver (existing code in `src/devices/imu/mpu9250/`, retained)
 
 ## Success Metrics
 
-- **Sensor Initialization**: WHO_AM_I verification passes (MPU-9250: 0x71, AK8963: 0x48)
+- **Sensor Initialization**: WHO_AM_I verification passes (ICM-20948: 0xEA, AK09916: 0x09)
 - **Sampling Rate**: Sustained 400Hz ± 5Hz over 10-second window
 - **I2C Latency**: Full 9-axis read completes in < 1.5ms (95th percentile)
 - **Reliability**: < 1 read error per 1000 samples under normal operation
