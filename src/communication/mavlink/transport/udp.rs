@@ -42,7 +42,10 @@
 //! }
 //! ```
 
+// Only needed for mock implementation (non-pico2_w builds)
+#[cfg(not(feature = "pico2_w"))]
 use super::{MavlinkTransport, TransportError};
+#[cfg(not(feature = "pico2_w"))]
 use heapless::Vec;
 
 /// MAVLink UDP port (standard)

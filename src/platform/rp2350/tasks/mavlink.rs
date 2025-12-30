@@ -10,12 +10,8 @@
 //! 4. **Connection Monitoring**: Track GCS connection status
 
 use crate::communication::mavlink::{
-    dispatcher::MessageDispatcher,
-    parser::MavlinkParser,
-    state::SystemState,
     task::{MavlinkConfig, MavlinkContext},
     vehicle::GroundRover,
-    writer::MavlinkWriter,
 };
 use crate::platform::rp2350::Rp2350Flash;
 use crate::platform::traits::flash::FlashInterface;

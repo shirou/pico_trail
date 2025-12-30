@@ -11,6 +11,9 @@
 //! - Bank 2: Sensor configuration (gyro/accel ranges, DLPF)
 //! - Bank 3: I2C master configuration
 
+// Hardware register definitions - not all are used in the driver
+#![allow(dead_code)]
+
 // =============================================================================
 // I2C Addresses
 // =============================================================================
