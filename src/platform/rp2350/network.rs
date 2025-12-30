@@ -46,7 +46,6 @@
 //! }
 //! ```
 
-#[cfg(feature = "pico2_w")]
 use crate::parameters::wifi::WifiParams;
 use embassy_executor::Spawner;
 use embassy_net::{
@@ -55,11 +54,8 @@ use embassy_net::{
 use embassy_rp::clocks::RoscRng;
 use embassy_time::{Duration, Timer};
 
-#[cfg(feature = "pico2_w")]
 use cyw43::{Control, JoinOptions};
-#[cfg(feature = "pico2_w")]
 use cyw43_pio::DEFAULT_CLOCK_DIVIDER;
-#[cfg(feature = "pico2_w")]
 use embassy_rp::{
     bind_interrupts,
     gpio::{Level, Output},
@@ -67,7 +63,6 @@ use embassy_rp::{
     pio::{InterruptHandler as PioInterruptHandler, Pio},
     Peri,
 };
-#[cfg(feature = "pico2_w")]
 use static_cell::StaticCell;
 
 /// Maximum WiFi connection attempts before giving up
@@ -103,7 +98,6 @@ impl WifiConfig {
     /// # Returns
     ///
     /// WiFi configuration ready for initialization
-    #[cfg(feature = "pico2_w")]
     pub fn from_params(params: &WifiParams) -> Self {
         Self {
             ssid: params.ssid.clone(),
@@ -148,7 +142,6 @@ pub enum WifiError {
     InvalidConfig,
 }
 
-#[cfg(feature = "pico2_w")]
 /// Initialize WiFi and network stack
 ///
 /// # Arguments
@@ -403,12 +396,10 @@ fn get_retry_delay(attempt: u8) -> Duration {
     Duration::from_millis(delay_ms)
 }
 
-#[cfg(feature = "pico2_w")]
 bind_interrupts!(struct PioIrqs {
     PIO0_IRQ_0 => PioInterruptHandler<PIO0>;
 });
 
-#[cfg(feature = "pico2_w")]
 /// WiFi driver task
 ///
 /// Runs the CYW43439 WiFi driver event loop.
@@ -420,7 +411,6 @@ async fn wifi_task(
     runner.run().await
 }
 
-#[cfg(feature = "pico2_w")]
 /// Network stack task
 ///
 /// Runs the embassy-net network stack event loop.

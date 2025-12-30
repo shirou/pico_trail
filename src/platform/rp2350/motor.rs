@@ -65,22 +65,15 @@
 //! | M3    | 6        | 7        | Slice 3   |
 //! | M4    | 8        | 9        | Slice 4   |
 
-#[cfg(feature = "pico2_w")]
 use crate::libraries::motor_driver::{HBridgeMotor, MotorError, PwmPin};
-#[cfg(feature = "pico2_w")]
 use core::cell::RefCell;
-#[cfg(feature = "pico2_w")]
 use embedded_hal_1::pwm::SetDutyCycle;
-#[cfg(feature = "pico2_w")]
 use rp235x_hal::pwm::{Slice, SliceId};
 
-#[cfg(feature = "pico2_w")]
 extern crate alloc;
-#[cfg(feature = "pico2_w")]
 use alloc::rc::Rc;
 
 /// PWM channel identifier (A or B)
-#[cfg(feature = "pico2_w")]
 #[derive(Debug, Clone, Copy)]
 pub enum PwmChannel {
     /// Channel A of the PWM slice
@@ -93,13 +86,11 @@ pub enum PwmChannel {
 ///
 /// Wraps an rp235x-hal PWM slice and channel to implement the `PwmPin` trait.
 /// Uses Rc<RefCell> for sharing the slice between two channels (IN1 and IN2 of the H-bridge).
-#[cfg(feature = "pico2_w")]
 pub struct Rp2350PwmPin<S: SliceId> {
     slice: Rc<RefCell<Slice<S, rp235x_hal::pwm::FreeRunning>>>,
     channel: PwmChannel,
 }
 
-#[cfg(feature = "pico2_w")]
 impl<S: SliceId> PwmPin for Rp2350PwmPin<S> {
     fn set_duty(&mut self, duty: f32) -> Result<(), MotorError> {
         if !(0.0..=1.0).contains(&duty) {
@@ -133,7 +124,6 @@ impl<S: SliceId> PwmPin for Rp2350PwmPin<S> {
 }
 
 /// Motor PWM frequency for H-bridge control (500 Hz - matches Freenove reference)
-#[cfg(feature = "pico2_w")]
 pub const MOTOR_PWM_FREQ_HZ: u32 = 500;
 
 /// Initialize a single H-bridge motor from a PWM slice
@@ -156,7 +146,6 @@ pub const MOTOR_PWM_FREQ_HZ: u32 = 500;
 /// let mut motor1 = init_motor(slice1);
 /// motor1.set_speed(0.5)?;
 /// ```
-#[cfg(feature = "pico2_w")]
 pub fn init_motor<S: SliceId>(
     slice: Slice<S, rp235x_hal::pwm::FreeRunning>,
 ) -> HBridgeMotor<Rp2350PwmPin<S>, Rp2350PwmPin<S>> {
@@ -187,7 +176,6 @@ pub fn init_motor<S: SliceId>(
 /// # Returns
 ///
 /// Configured PWM slice in FreeRunning mode
-#[cfg(feature = "pico2_w")]
 pub fn init_motor_pwm_slice<S: SliceId>(
     mut slice: Slice<S, rp235x_hal::pwm::FreeRunning>,
 ) -> Slice<S, rp235x_hal::pwm::FreeRunning> {
@@ -214,7 +202,6 @@ pub fn init_motor_pwm_slice<S: SliceId>(
 /// ```ignore
 /// let motor1 = init_motor_from_slice!(pwm_slices.pwm1, pins.gpio18, pins.gpio19);
 /// ```
-#[cfg(feature = "pico2_w")]
 #[macro_export]
 macro_rules! init_motor_from_slice {
     ($slice:expr, $pin1:expr, $pin2:expr) => {{
@@ -231,12 +218,10 @@ macro_rules! init_motor_from_slice {
 }
 
 // Embassy-RP PWM wrapper for motor control
-#[cfg(feature = "pico2_w")]
 pub struct EmbassyPwmPin {
     pub output: core::cell::RefCell<embassy_rp::pwm::PwmOutput<'static>>,
 }
 
-#[cfg(feature = "pico2_w")]
 impl PwmPin for EmbassyPwmPin {
     fn set_duty(&mut self, duty: f32) -> Result<(), MotorError> {
         use embedded_hal_1::pwm::SetDutyCycle;
@@ -294,7 +279,6 @@ impl PwmPin for EmbassyPwmPin {
 /// let mut motor = init_motor_embassy(pwm);
 /// motor.set_speed(0.5)?;
 /// ```
-#[cfg(feature = "pico2_w")]
 pub fn init_motor_embassy(
     pwm: embassy_rp::pwm::Pwm<'static>,
 ) -> HBridgeMotor<EmbassyPwmPin, EmbassyPwmPin> {

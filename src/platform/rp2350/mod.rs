@@ -35,13 +35,8 @@ mod uart;
 // TODO: Fix uart_async for new embassy-rp UART signature (Uart<'d, M> not Uart<'d, T, M>)
 // mod uart_async;
 
-#[cfg(feature = "pico2_w")]
 pub mod network;
-
-#[cfg(feature = "pico2_w")]
 pub mod tasks;
-
-#[cfg(feature = "pico2_w")]
 pub mod transport;
 
 pub use flash::Rp2350Flash;
@@ -54,7 +49,6 @@ pub use timer::Rp2350Timer;
 pub use uart::Rp2350Uart;
 // pub use uart_async::Rp2350AsyncUart;
 
-#[cfg(feature = "pico2_w")]
 pub use motor::{
     init_motor, init_motor_embassy, init_motor_pwm_slice, EmbassyPwmPin, Rp2350PwmPin,
     MOTOR_PWM_FREQ_HZ,
