@@ -1,26 +1,66 @@
 //! MPU-9250 I2C Driver Implementation
 //!
 //! Core driver implementation for reading IMU data via I2C.
+//!
+//! This driver is platform-agnostic and works with any `embedded_hal_async::i2c::I2c`
+//! implementation. Time operations require the `embassy` feature.
 
 use super::config::{AccelRange, GyroRange, Mpu9250Config};
 use super::registers::{self, MAG_SENSITIVITY, TEMP_OFFSET, TEMP_SENSITIVITY};
 use crate::devices::traits::{ImuCalibration, ImuError, ImuReading, ImuSensor};
-use embassy_rp::i2c::{Async, I2c};
-use embassy_time::Instant;
-use embedded_hal_async::i2c::I2c as AsyncI2c;
+use embedded_hal_async::i2c::I2c;
 use nalgebra::Vector3;
 
 /// Maximum consecutive errors before marking sensor unhealthy
 const MAX_CONSECUTIVE_ERRORS: u32 = 3;
+
+// =============================================================================
+// Time Abstraction Helpers
+// =============================================================================
+
+/// Async delay in milliseconds
+///
+/// Uses `embassy_time::Timer` when the `embassy` feature is enabled.
+/// No-op for host tests without embassy.
+#[cfg(feature = "embassy")]
+async fn delay_ms(ms: u64) {
+    embassy_time::Timer::after_millis(ms).await;
+}
+
+#[cfg(not(feature = "embassy"))]
+async fn delay_ms(_ms: u64) {
+    // No-op for host tests
+}
+
+/// Get current timestamp in microseconds
+///
+/// Returns actual timestamp when `embassy` feature is enabled.
+/// Returns 0 for host tests without embassy.
+#[cfg(feature = "embassy")]
+fn timestamp_us() -> u64 {
+    embassy_time::Instant::now().as_micros()
+}
+
+#[cfg(not(feature = "embassy"))]
+fn timestamp_us() -> u64 {
+    0 // Host test stub
+}
 
 /// MPU-9250/MPU-6500/MPU-9255 I2C Driver
 ///
 /// Implements `ImuSensor` trait for the MPU-9250 9-axis IMU.
 /// Also supports MPU-6500 (6-axis, no magnetometer) and MPU-9255.
 /// Uses I2C bypass mode for AK8963 magnetometer access when available.
-pub struct Mpu9250Driver<'d, T: embassy_rp::i2c::Instance> {
+///
+/// # Type Parameters
+///
+/// * `I2C` - Any type implementing `embedded_hal_async::i2c::I2c`
+pub struct Mpu9250Driver<I2C>
+where
+    I2C: I2c,
+{
     /// I2C bus handle
-    i2c: I2c<'d, T, Async>,
+    i2c: I2C,
 
     /// Driver configuration
     config: Mpu9250Config,
@@ -50,18 +90,21 @@ pub struct Mpu9250Driver<'d, T: embassy_rp::i2c::Instance> {
     initialized: bool,
 }
 
-impl<'d, T: embassy_rp::i2c::Instance> Mpu9250Driver<'d, T> {
+impl<I2C> Mpu9250Driver<I2C>
+where
+    I2C: I2c,
+{
     /// Create and initialize a new MPU-9250 driver
     ///
     /// # Arguments
     ///
-    /// * `i2c` - Embassy I2C handle in async mode
+    /// * `i2c` - I2C bus implementing `embedded_hal_async::i2c::I2c`
     /// * `config` - Driver configuration
     ///
     /// # Returns
     ///
     /// Initialized driver or error if initialization failed
-    pub async fn new(i2c: I2c<'d, T, Async>, config: Mpu9250Config) -> Result<Self, ImuError> {
+    pub async fn new(i2c: I2C, config: Mpu9250Config) -> Result<Self, ImuError> {
         let mut driver = Self {
             i2c,
             config,
@@ -100,12 +143,12 @@ impl<'d, T: embassy_rp::i2c::Instance> Mpu9250Driver<'d, T> {
         // Step 2: Reset device
         self.write_register(registers::PWR_MGMT_1, registers::PWR_MGMT_1_H_RESET)
             .await?;
-        embassy_time::Timer::after_millis(100).await;
+        delay_ms(100).await;
 
         // Step 3: Wake up device with auto clock select
         self.write_register(registers::PWR_MGMT_1, registers::PWR_MGMT_1_CLKSEL_AUTO)
             .await?;
-        embassy_time::Timer::after_millis(10).await;
+        delay_ms(10).await;
 
         // Step 4: Configure sample rate divider
         self.write_register(registers::SMPLRT_DIV, self.config.sample_rate_div)
@@ -144,14 +187,14 @@ impl<'d, T: embassy_rp::i2c::Instance> Mpu9250Driver<'d, T> {
             // This allows direct I2C access to the AK8963 magnetometer
             self.write_register(registers::USER_CTRL, registers::USER_CTRL_I2C_MST_DIS)
                 .await?;
-            embassy_time::Timer::after_millis(10).await;
+            delay_ms(10).await;
 
             // Enable I2C bypass mode for direct AK8963 access
             // The AK8963 has a separate I2C address (0x0C) and becomes visible
             // on the bus only when bypass mode is enabled
             self.write_register(registers::INT_PIN_CFG, registers::INT_PIN_CFG_BYPASS_EN)
                 .await?;
-            embassy_time::Timer::after_millis(10).await;
+            delay_ms(10).await;
 
             // Verify bypass mode is enabled
             let int_cfg = self.read_register(registers::INT_PIN_CFG).await?;
@@ -190,12 +233,12 @@ impl<'d, T: embassy_rp::i2c::Instance> Mpu9250Driver<'d, T> {
         // Reset magnetometer
         self.write_mag_register(registers::AK8963_CNTL2, registers::AK8963_CNTL2_SRST)
             .await?;
-        embassy_time::Timer::after_millis(10).await;
+        delay_ms(10).await;
 
         // Enter Fuse ROM access mode to read sensitivity adjustment
         self.write_mag_register(registers::AK8963_CNTL1, registers::AK8963_MODE_FUSE_ROM)
             .await?;
-        embassy_time::Timer::after_millis(10).await;
+        delay_ms(10).await;
 
         // Read sensitivity adjustment values
         let asax = self.read_mag_register(registers::AK8963_ASAX).await?;
@@ -210,7 +253,7 @@ impl<'d, T: embassy_rp::i2c::Instance> Mpu9250Driver<'d, T> {
         // Power down
         self.write_mag_register(registers::AK8963_CNTL1, registers::AK8963_MODE_POWER_DOWN)
             .await?;
-        embassy_time::Timer::after_millis(10).await;
+        delay_ms(10).await;
 
         // Set continuous measurement mode
         self.write_mag_register(
@@ -218,7 +261,7 @@ impl<'d, T: embassy_rp::i2c::Instance> Mpu9250Driver<'d, T> {
             self.config.mag_mode.register_value(),
         )
         .await?;
-        embassy_time::Timer::after_millis(10).await;
+        delay_ms(10).await;
 
         crate::log_info!(
             "AK8963 initialized: ASA=[{}, {}, {}]",
@@ -377,13 +420,13 @@ impl<'d, T: embassy_rp::i2c::Instance> Mpu9250Driver<'d, T> {
     }
 
     /// Convert raw temperature to °C
-    fn convert_temp(raw: i16) -> f32 {
+    pub fn convert_temp(raw: i16) -> f32 {
         (raw as f32 / TEMP_SENSITIVITY) + TEMP_OFFSET
     }
 
     /// Get current timestamp in microseconds
-    fn timestamp_us() -> u64 {
-        Instant::now().as_micros()
+    pub fn timestamp_us() -> u64 {
+        timestamp_us()
     }
 
     /// Reconfigure gyroscope range
@@ -399,7 +442,14 @@ impl<'d, T: embassy_rp::i2c::Instance> Mpu9250Driver<'d, T> {
     }
 }
 
-impl<'d, T: embassy_rp::i2c::Instance> ImuSensor for Mpu9250Driver<'d, T> {
+// =============================================================================
+// ImuSensor Trait Implementation
+// =============================================================================
+
+impl<I2C> ImuSensor for Mpu9250Driver<I2C>
+where
+    I2C: I2c,
+{
     async fn read_all(&mut self) -> Result<ImuReading, ImuError> {
         let (gyro_raw, accel_raw, temp_raw) = self.read_gyro_accel_raw().await?;
 

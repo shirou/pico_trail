@@ -3,25 +3,65 @@
 //! Core driver implementation for reading IMU data via I2C.
 //! The ICM-20948 uses a 4-bank register architecture requiring
 //! bank switching for configuration access.
+//!
+//! This driver is platform-agnostic and works with any `embedded_hal_async::i2c::I2c`
+//! implementation. Time operations require the `embassy` feature.
 
 use super::config::{AccelRange, GyroRange, Icm20948Config, RegisterBank};
 use super::registers::{self, TEMP_OFFSET, TEMP_SENSITIVITY};
 use crate::devices::traits::{ImuCalibration, ImuError, ImuReading, ImuSensor};
-use embassy_rp::i2c::{Async, I2c};
-use embassy_time::Instant;
-use embedded_hal_async::i2c::I2c as AsyncI2c;
+use embedded_hal_async::i2c::I2c;
 use nalgebra::Vector3;
 
 /// Maximum consecutive errors before marking sensor unhealthy
 const MAX_CONSECUTIVE_ERRORS: u32 = 3;
 
+// =============================================================================
+// Time Abstraction Helpers
+// =============================================================================
+
+/// Async delay in milliseconds
+///
+/// Uses `embassy_time::Timer` when the `embassy` feature is enabled.
+/// No-op for host tests without embassy.
+#[cfg(feature = "embassy")]
+async fn delay_ms(ms: u64) {
+    embassy_time::Timer::after_millis(ms).await;
+}
+
+#[cfg(not(feature = "embassy"))]
+async fn delay_ms(_ms: u64) {
+    // No-op for host tests
+}
+
+/// Get current timestamp in microseconds
+///
+/// Returns actual timestamp when `embassy` feature is enabled.
+/// Returns 0 for host tests without embassy.
+#[cfg(feature = "embassy")]
+fn timestamp_us() -> u64 {
+    embassy_time::Instant::now().as_micros()
+}
+
+#[cfg(not(feature = "embassy"))]
+fn timestamp_us() -> u64 {
+    0 // Host test stub
+}
+
 /// ICM-20948 I2C Driver
 ///
 /// Implements `ImuSensor` trait for the ICM-20948 9-axis IMU.
 /// Uses I2C bypass mode for AK09916 magnetometer access.
-pub struct Icm20948Driver<'d, T: embassy_rp::i2c::Instance> {
+///
+/// # Type Parameters
+///
+/// * `I2C` - Any type implementing `embedded_hal_async::i2c::I2c`
+pub struct Icm20948Driver<I2C>
+where
+    I2C: I2c,
+{
     /// I2C bus handle
-    i2c: I2c<'d, T, Async>,
+    i2c: I2C,
 
     /// Driver configuration
     config: Icm20948Config,
@@ -48,16 +88,19 @@ pub struct Icm20948Driver<'d, T: embassy_rp::i2c::Instance> {
     initialized: bool,
 }
 
-impl<'d, T: embassy_rp::i2c::Instance> Icm20948Driver<'d, T> {
+impl<I2C> Icm20948Driver<I2C>
+where
+    I2C: I2c,
+{
     /// Create a new ICM-20948 driver (uninitialized)
     ///
     /// Call `init()` to initialize the sensor before use.
     ///
     /// # Arguments
     ///
-    /// * `i2c` - Embassy I2C handle in async mode
+    /// * `i2c` - I2C bus implementing `embedded_hal_async::i2c::I2c`
     /// * `config` - Driver configuration
-    pub fn new(i2c: I2c<'d, T, Async>, config: Icm20948Config) -> Self {
+    pub fn new(i2c: I2C, config: Icm20948Config) -> Self {
         Self {
             i2c,
             config,
@@ -75,16 +118,13 @@ impl<'d, T: embassy_rp::i2c::Instance> Icm20948Driver<'d, T> {
     ///
     /// # Arguments
     ///
-    /// * `i2c` - Embassy I2C handle in async mode
+    /// * `i2c` - I2C bus implementing `embedded_hal_async::i2c::I2c`
     /// * `config` - Driver configuration
     ///
     /// # Returns
     ///
     /// Initialized driver or error if initialization failed
-    pub async fn new_initialized(
-        i2c: I2c<'d, T, Async>,
-        config: Icm20948Config,
-    ) -> Result<Self, ImuError> {
+    pub async fn new_initialized(i2c: I2C, config: Icm20948Config) -> Result<Self, ImuError> {
         let mut driver = Self::new(i2c, config);
         driver.init().await?;
         Ok(driver)
@@ -120,7 +160,7 @@ impl<'d, T: embassy_rp::i2c::Instance> Icm20948Driver<'d, T> {
         // Step 3: Reset device
         self.write_register(registers::PWR_MGMT_1, registers::PWR_MGMT_1_DEVICE_RESET)
             .await?;
-        embassy_time::Timer::after_millis(100).await;
+        delay_ms(100).await;
 
         // After reset, bank is reset to 0
         self.current_bank = RegisterBank::Bank0;
@@ -128,7 +168,7 @@ impl<'d, T: embassy_rp::i2c::Instance> Icm20948Driver<'d, T> {
         // Step 4: Wake up device with auto clock select
         self.write_register(registers::PWR_MGMT_1, registers::PWR_MGMT_1_CLKSEL_AUTO)
             .await?;
-        embassy_time::Timer::after_millis(10).await;
+        delay_ms(10).await;
 
         // Step 5: Enable all sensors
         self.write_register(registers::PWR_MGMT_2, registers::PWR_MGMT_2_ENABLE_ALL)
@@ -171,12 +211,12 @@ impl<'d, T: embassy_rp::i2c::Instance> Icm20948Driver<'d, T> {
 
         // Disable I2C master mode (required for bypass)
         self.write_register(registers::USER_CTRL, 0x00).await?;
-        embassy_time::Timer::after_millis(10).await;
+        delay_ms(10).await;
 
         // Enable I2C bypass mode
         self.write_register(registers::INT_PIN_CFG, registers::INT_PIN_CFG_BYPASS_EN)
             .await?;
-        embassy_time::Timer::after_millis(10).await;
+        delay_ms(10).await;
 
         // Verify bypass mode is enabled
         let int_cfg = self.read_register(registers::INT_PIN_CFG).await?;
@@ -440,7 +480,7 @@ impl<'d, T: embassy_rp::i2c::Instance> Icm20948Driver<'d, T> {
 
     /// Get current timestamp in microseconds
     pub fn timestamp_us() -> u64 {
-        Instant::now().as_micros()
+        timestamp_us()
     }
 
     // =========================================================================
@@ -542,12 +582,12 @@ impl<'d, T: embassy_rp::i2c::Instance> Icm20948Driver<'d, T> {
         // Soft reset
         self.write_mag_register(registers::AK09916_CNTL3, registers::AK09916_CNTL3_SRST)
             .await?;
-        embassy_time::Timer::after_millis(10).await;
+        delay_ms(10).await;
 
         // Set continuous measurement mode at 100Hz
         self.write_mag_register(registers::AK09916_CNTL2, registers::AK09916_MODE_CONT_100HZ)
             .await?;
-        embassy_time::Timer::after_millis(10).await;
+        delay_ms(10).await;
 
         crate::log_info!("AK09916 configured for 100Hz continuous mode");
         Ok(())
@@ -857,7 +897,10 @@ impl<'d, T: embassy_rp::i2c::Instance> Icm20948Driver<'d, T> {
 // ImuSensor Trait Implementation
 // =============================================================================
 
-impl<'d, T: embassy_rp::i2c::Instance> ImuSensor for Icm20948Driver<'d, T> {
+impl<I2C> ImuSensor for Icm20948Driver<I2C>
+where
+    I2C: I2c,
+{
     /// Read all 9 axes: gyro (rad/s), accel (m/s²), mag (µT)
     ///
     /// Returns calibrated sensor data with timestamp.
@@ -930,10 +973,30 @@ mod tests {
     use super::*;
     use crate::devices::imu::icm20948::config::{AccelRange, GyroRange};
 
+    /// Stub I2C for testing static methods
+    ///
+    /// This is a minimal implementation that satisfies the trait bound
+    /// but is never actually used - only needed for type instantiation.
+    struct StubI2c;
+
+    impl embedded_hal_async::i2c::ErrorType for StubI2c {
+        type Error = embedded_hal_async::i2c::ErrorKind;
+    }
+
+    impl embedded_hal_async::i2c::I2c for StubI2c {
+        async fn transaction(
+            &mut self,
+            _address: u8,
+            _operations: &mut [embedded_hal_async::i2c::Operation<'_>],
+        ) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
     #[test]
     fn test_convert_temp_room_temperature() {
         // At room temperature offset (raw = 0), should return 21°C
-        let temp = Icm20948Driver::<embassy_rp::peripherals::I2C0>::convert_temp(0);
+        let temp = Icm20948Driver::<StubI2c>::convert_temp(0);
         assert!((temp - 21.0).abs() < 0.01);
     }
 
@@ -941,7 +1004,7 @@ mod tests {
     fn test_convert_temp_above_room() {
         // Test positive offset
         // raw = 333.87 should give 22°C
-        let temp = Icm20948Driver::<embassy_rp::peripherals::I2C0>::convert_temp(334);
+        let temp = Icm20948Driver::<StubI2c>::convert_temp(334);
         assert!((temp - 22.0).abs() < 0.1);
     }
 
@@ -949,7 +1012,7 @@ mod tests {
     fn test_convert_temp_below_room() {
         // Test negative offset
         // raw = -333.87 should give 20°C
-        let temp = Icm20948Driver::<embassy_rp::peripherals::I2C0>::convert_temp(-334);
+        let temp = Icm20948Driver::<StubI2c>::convert_temp(-334);
         assert!((temp - 20.0).abs() < 0.1);
     }
 

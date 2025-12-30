@@ -1124,7 +1124,11 @@ impl pico_trail::platform::traits::UartInterface for EmbassyBufferedUart {
 /// * `imu` - Initialized MPU-9250 driver
 #[cfg(feature = "pico2_w")]
 #[embassy_executor::task]
-async fn imu_task(imu: Mpu9250Driver<'static, hal::peripherals::I2C0>) {
+async fn imu_task(
+    imu: Mpu9250Driver<
+        embassy_rp::i2c::I2c<'static, hal::peripherals::I2C0, embassy_rp::i2c::Async>,
+    >,
+) {
     pico_trail::log_info!("IMU task started (400Hz)");
 
     let config = ImuTaskConfig::default();
