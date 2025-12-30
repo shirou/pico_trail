@@ -23,11 +23,9 @@
 //! - FR-q2sjt-control-mode-framework: Mode framework requirements
 //! - NFR-kqvyf-manual-control-latency: Latency requirements
 
-#[cfg(feature = "pico2_w")]
+use crate::core::traits::SharedState;
 use crate::libraries::RC_INPUT;
-#[cfg(feature = "pico2_w")]
 use crate::rover::ModeManager;
-#[cfg(feature = "pico2_w")]
 use embassy_time::{Duration, Instant, Ticker};
 
 /// Control loop task (50 Hz mode execution)
@@ -54,7 +52,6 @@ use embassy_time::{Duration, Instant, Ticker};
 ///     spawner.spawn(control_loop_task(mode_manager)).unwrap();
 /// }
 /// ```
-#[cfg(feature = "pico2_w")]
 #[embassy_executor::task]
 pub async fn control_loop_task(mut mode_manager: ModeManager) {
     crate::log_info!("Control loop task started");
@@ -67,15 +64,15 @@ pub async fn control_loop_task(mut mode_manager: ModeManager) {
         // Get current timestamp
         let current_time_us = Instant::now().as_micros();
 
-        // Check RC timeout
-        {
-            let mut rc = RC_INPUT.lock().await;
+        // Check RC timeout (uses blocking mutex with critical section)
+        let rc_lost = RC_INPUT.with_mut(|rc| {
             rc.check_timeout(current_time_us);
+            rc.is_lost()
+        });
 
-            // Log RC status changes
-            if rc.is_lost() {
-                crate::log_warn!("RC input lost (timeout)");
-            }
+        // Log RC status changes
+        if rc_lost {
+            crate::log_warn!("RC input lost (timeout)");
         }
 
         // Execute mode manager
@@ -95,16 +92,5 @@ pub async fn control_loop_task(mut mode_manager: ModeManager) {
 
         // Wait for next tick
         ticker.next().await;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_control_task_compilation() {
-        // This test just verifies that the task compiles correctly
-        // Actual task execution requires Embassy runtime and cannot be tested in unit tests
     }
 }

@@ -9,10 +9,14 @@
 //!
 //! - MissionState enum for tracking execution status
 //! - Global MISSION_STORAGE accessible from navigation and handlers
-//! - Helper functions for async state access
+//! - Helper functions for synchronized state access
+//!
+//! # Migration Note (FR-jpmdj)
+//!
+//! This module uses `EmbassyState` for synchronized access, which provides
+//! sync (non-async) operations via critical sections. All functions are now
+//! synchronous, eliminating the need for separate `_sync` variants.
 
-#[cfg(feature = "embassy")]
-use super::MissionStorage;
 use super::Waypoint;
 use crate::subsystems::navigation::PositionTarget;
 
@@ -31,245 +35,190 @@ pub enum MissionState {
 }
 
 // ============================================================================
-// Global State (embassy feature)
+// Embassy Implementation (embedded targets)
 // ============================================================================
 
 #[cfg(feature = "embassy")]
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-#[cfg(feature = "embassy")]
-use embassy_sync::mutex::Mutex;
+mod embassy_impl {
+    use super::{MissionState, PositionTarget, Waypoint};
+    use crate::core::mission::MissionStorage;
+    use crate::core::traits::{EmbassyState, SharedState};
 
-/// Global mission state (protected by Mutex)
-///
-/// Tracks mission execution status (Idle/Running/Completed).
-/// Updated by mode handlers and navigation task.
-#[cfg(feature = "embassy")]
-pub static MISSION_STATE: Mutex<CriticalSectionRawMutex, MissionState> =
-    Mutex::new(MissionState::Idle);
+    /// Global mission state (protected by EmbassyState)
+    ///
+    /// Tracks mission execution status (Idle/Running/Completed).
+    /// Updated by mode handlers and navigation task.
+    /// Uses blocking mutex with critical sections for interrupt-safe access.
+    pub static MISSION_STATE: EmbassyState<MissionState> = EmbassyState::new(MissionState::Idle);
 
-/// Global mission storage (protected by Mutex)
-///
-/// Single source of truth for waypoint navigation.
-/// Updated by MISSION_ITEM protocol and SET_POSITION_TARGET handler.
-/// Read by navigation_task for target waypoints.
-#[cfg(feature = "embassy")]
-pub static MISSION_STORAGE: Mutex<CriticalSectionRawMutex, MissionStorage> =
-    Mutex::new(MissionStorage::new_const());
+    /// Global mission storage (protected by EmbassyState)
+    ///
+    /// Single source of truth for waypoint navigation.
+    /// Updated by MISSION_ITEM protocol and SET_POSITION_TARGET handler.
+    /// Read by navigation_task for target waypoints.
+    /// Uses blocking mutex with critical sections for interrupt-safe access.
+    pub static MISSION_STORAGE: EmbassyState<MissionStorage> =
+        EmbassyState::new(MissionStorage::new_const());
 
-// ============================================================================
-// Helper Functions (embassy feature)
-// ============================================================================
+    /// Get current mission state
+    ///
+    /// Returns the current mission execution state.
+    pub fn get_mission_state() -> MissionState {
+        MISSION_STATE.with(|state| *state)
+    }
 
-/// Get current mission state
-///
-/// Returns the current mission execution state.
-#[cfg(feature = "embassy")]
-pub async fn get_mission_state() -> MissionState {
-    *MISSION_STATE.lock().await
-}
+    /// Set mission state
+    ///
+    /// Updates the mission execution state.
+    pub fn set_mission_state(state: MissionState) {
+        MISSION_STATE.with_mut(|s| *s = state);
+    }
 
-/// Set mission state
-///
-/// Updates the mission execution state.
-#[cfg(feature = "embassy")]
-pub async fn set_mission_state(state: MissionState) {
-    *MISSION_STATE.lock().await = state;
-}
+    /// Get current navigation target from mission storage
+    ///
+    /// Returns the current waypoint as PositionTarget if available.
+    /// This is the primary interface for navigation_task to get its target.
+    pub fn get_current_target() -> Option<PositionTarget> {
+        MISSION_STORAGE.with(|storage| storage.current_waypoint().map(PositionTarget::from))
+    }
 
-/// Get current navigation target from mission storage
-///
-/// Returns the current waypoint as PositionTarget if available.
-/// This is the primary interface for navigation_task to get its target.
-#[cfg(feature = "embassy")]
-pub async fn get_current_target() -> Option<PositionTarget> {
-    let storage = MISSION_STORAGE.lock().await;
-    storage.current_waypoint().map(PositionTarget::from)
-}
+    /// Advance to next waypoint in AUTO mode
+    ///
+    /// Increments current_index if more waypoints exist and autocontinue is enabled.
+    /// Returns true if advanced, false if at last waypoint (mission complete) or autocontinue is disabled.
+    pub fn advance_waypoint() -> bool {
+        MISSION_STORAGE.with_mut(|storage| {
+            let current = storage.current_index();
+            let count = storage.count();
 
-/// Advance to next waypoint in AUTO mode
-///
-/// Increments current_index if more waypoints exist and autocontinue is enabled.
-/// Returns true if advanced, false if at last waypoint (mission complete) or autocontinue is disabled.
-#[cfg(feature = "embassy")]
-pub async fn advance_waypoint() -> bool {
-    let mut storage = MISSION_STORAGE.lock().await;
-    let current = storage.current_index();
-    let count = storage.count();
+            // Check autocontinue of current waypoint
+            if let Some(wp) = storage.get_waypoint(current) {
+                if wp.autocontinue == 0 {
+                    return false; // Don't advance if autocontinue is disabled
+                }
+            }
 
-    // Check autocontinue of current waypoint
-    if let Some(wp) = storage.get_waypoint(current) {
-        if wp.autocontinue == 0 {
-            return false; // Don't advance if autocontinue is disabled
+            if current + 1 < count {
+                let _ = storage.set_current_index(current + 1);
+                true
+            } else {
+                false
+            }
+        })
+    }
+
+    /// Check if mission storage has waypoints
+    pub fn has_waypoints() -> bool {
+        MISSION_STORAGE.with(|storage| !storage.is_empty())
+    }
+
+    /// Clear mission storage and reset state
+    pub fn clear_mission() {
+        MISSION_STORAGE.with_mut(|storage| storage.clear());
+        MISSION_STATE.with_mut(|state| *state = MissionState::Idle);
+    }
+
+    /// Add waypoint to mission storage
+    ///
+    /// Used by SET_POSITION_TARGET handler to create single-waypoint mission.
+    pub fn set_single_waypoint(waypoint: Waypoint) {
+        MISSION_STORAGE.with_mut(|storage| {
+            storage.clear();
+            let _ = storage.add_waypoint(waypoint);
+        });
+    }
+
+    /// Start mission from index 0
+    ///
+    /// Sets current_index to 0 and MissionState to Running.
+    /// Used by MISSION_START handler and GUIDED ARM handler.
+    pub fn start_mission() -> Result<(), &'static str> {
+        let is_empty = MISSION_STORAGE.with_mut(|storage| {
+            if storage.is_empty() {
+                return true;
+            }
+            let _ = storage.set_current_index(0);
+            false
+        });
+
+        if is_empty {
+            return Err("Mission empty");
+        }
+
+        MISSION_STATE.with_mut(|state| *state = MissionState::Running);
+        Ok(())
+    }
+
+    /// Start mission from current index
+    ///
+    /// Sets MissionState to Running if waypoints exist.
+    /// Returns true if mission started, false if no waypoints.
+    pub fn start_mission_from_current() -> bool {
+        let has_waypoints = MISSION_STORAGE.with(|storage| !storage.is_empty());
+        if has_waypoints {
+            MISSION_STATE.with_mut(|state| *state = MissionState::Running);
+            true
+        } else {
+            false
         }
     }
 
-    if current + 1 < count {
-        let _ = storage.set_current_index(current + 1);
-        true
-    } else {
-        false
-    }
-}
+    /// Start mission from index 0
+    ///
+    /// Resets current_index to 0 and sets MissionState to Running if waypoints exist.
+    /// Returns true if mission started, false if no waypoints.
+    pub fn start_mission_from_beginning() -> bool {
+        let started = MISSION_STORAGE.with_mut(|storage| {
+            if storage.is_empty() {
+                return false;
+            }
+            let _ = storage.set_current_index(0);
+            true
+        });
 
-/// Check if mission storage has waypoints
-#[cfg(feature = "embassy")]
-pub async fn has_waypoints() -> bool {
-    !MISSION_STORAGE.lock().await.is_empty()
-}
-
-/// Clear mission storage and reset state
-#[cfg(feature = "embassy")]
-pub async fn clear_mission() {
-    MISSION_STORAGE.lock().await.clear();
-    *MISSION_STATE.lock().await = MissionState::Idle;
-}
-
-/// Add waypoint to mission storage
-///
-/// Used by SET_POSITION_TARGET handler to create single-waypoint mission.
-#[cfg(feature = "embassy")]
-pub async fn set_single_waypoint(waypoint: Waypoint) {
-    let mut storage = MISSION_STORAGE.lock().await;
-    storage.clear();
-    let _ = storage.add_waypoint(waypoint);
-}
-
-/// Start mission from index 0
-///
-/// Sets current_index to 0 and MissionState to Running.
-/// Used by MISSION_START handler and GUIDED ARM handler.
-#[cfg(feature = "embassy")]
-pub async fn start_mission() -> Result<(), &'static str> {
-    let mut storage = MISSION_STORAGE.lock().await;
-    if storage.is_empty() {
-        return Err("Mission empty");
-    }
-    let _ = storage.set_current_index(0);
-    drop(storage);
-
-    *MISSION_STATE.lock().await = MissionState::Running;
-    Ok(())
-}
-
-// ============================================================================
-// Synchronous Access (for command handlers using critical_section)
-// ============================================================================
-
-/// Synchronous mission state storage (for use with critical_section)
-///
-/// This is a separate storage from the async MISSION_STATE/MISSION_STORAGE
-/// to allow synchronous access from command handlers.
-#[cfg(feature = "embassy")]
-pub static MISSION_STATE_SYNC: critical_section::Mutex<core::cell::RefCell<MissionState>> =
-    critical_section::Mutex::new(core::cell::RefCell::new(MissionState::Idle));
-
-/// Get mission state synchronously (for command handlers)
-#[cfg(feature = "embassy")]
-pub fn get_mission_state_sync() -> MissionState {
-    critical_section::with(|cs| *MISSION_STATE_SYNC.borrow_ref(cs))
-}
-
-/// Set mission state synchronously (for command handlers)
-#[cfg(feature = "embassy")]
-pub fn set_mission_state_sync(state: MissionState) {
-    critical_section::with(|cs| {
-        *MISSION_STATE_SYNC.borrow_ref_mut(cs) = state;
-    });
-}
-
-/// Check if mission storage has waypoints (synchronous, for command handlers)
-///
-/// Uses the async MISSION_STORAGE via try_lock to check without blocking.
-/// Returns false if lock cannot be acquired (assumes no waypoints in that case).
-#[cfg(feature = "embassy")]
-pub fn has_waypoints_sync() -> bool {
-    // Access the async MISSION_STORAGE using try_lock
-    // If lock is held, we conservatively return false
-    if let Ok(storage) = MISSION_STORAGE.try_lock() {
-        !storage.is_empty()
-    } else {
-        false
-    }
-}
-
-/// Start mission synchronously (for GUIDED mode ARM handler)
-///
-/// Sets MissionState to Running if waypoints exist.
-/// Returns true if mission started, false if no waypoints.
-#[cfg(feature = "embassy")]
-pub fn start_mission_sync() -> bool {
-    let has_waypoints = has_waypoints_sync();
-    if has_waypoints {
-        set_mission_state_sync(MissionState::Running);
-        true
-    } else {
-        false
-    }
-}
-
-/// Start mission from index 0 synchronously (for AUTO mode MISSION_START handler)
-///
-/// Resets current_index to 0 and sets MissionState to Running if waypoints exist.
-/// Returns true if mission started, false if no waypoints or lock unavailable.
-#[cfg(feature = "embassy")]
-pub fn start_mission_from_beginning_sync() -> bool {
-    // Try to acquire the storage lock
-    if let Ok(mut storage) = MISSION_STORAGE.try_lock() {
-        if storage.is_empty() {
-            return false;
+        if started {
+            MISSION_STATE.with_mut(|state| *state = MissionState::Running);
         }
-        let _ = storage.set_current_index(0);
-        drop(storage);
-        set_mission_state_sync(MissionState::Running);
-        true
-    } else {
-        // Lock unavailable - return false
-        false
+        started
+    }
+
+    /// Stop mission
+    ///
+    /// Sets MissionState to Idle.
+    pub fn stop_mission() {
+        MISSION_STATE.with_mut(|state| *state = MissionState::Idle);
+    }
+
+    /// Complete mission
+    ///
+    /// Sets MissionState to Completed.
+    pub fn complete_mission() {
+        MISSION_STATE.with_mut(|state| *state = MissionState::Completed);
+    }
+
+    /// Clear waypoints
+    ///
+    /// Clears all waypoints from mission storage.
+    pub fn clear_waypoints() {
+        MISSION_STORAGE.with_mut(|storage| storage.clear());
+    }
+
+    /// Add waypoint
+    ///
+    /// Adds a waypoint to mission storage.
+    /// Returns true if added successfully, false if storage is full.
+    pub fn add_waypoint(waypoint: Waypoint) -> bool {
+        MISSION_STORAGE.with_mut(|storage| storage.add_waypoint(waypoint).is_ok())
     }
 }
 
-/// Stop mission synchronously (for mode change handling)
-///
-/// Sets MissionState to Idle.
 #[cfg(feature = "embassy")]
-pub fn stop_mission_sync() {
-    set_mission_state_sync(MissionState::Idle);
-}
-
-/// Complete mission synchronously (for waypoint arrival handling)
-///
-/// Sets MissionState to Completed.
-#[cfg(feature = "embassy")]
-pub fn complete_mission_sync() {
-    set_mission_state_sync(MissionState::Completed);
-}
-
-/// Clear waypoints synchronously (for mission handlers)
-///
-/// Uses try_lock to access MISSION_STORAGE without blocking.
-/// Returns true if cleared successfully, false if lock unavailable.
-#[cfg(feature = "embassy")]
-pub fn clear_waypoints_sync() -> bool {
-    if let Ok(mut storage) = MISSION_STORAGE.try_lock() {
-        storage.clear();
-        true
-    } else {
-        false
-    }
-}
-
-/// Add waypoint synchronously (for mission handlers)
-///
-/// Uses try_lock to access MISSION_STORAGE without blocking.
-/// Returns true if added successfully, false if lock unavailable or storage error.
-#[cfg(feature = "embassy")]
-pub fn add_waypoint_sync(waypoint: Waypoint) -> bool {
-    if let Ok(mut storage) = MISSION_STORAGE.try_lock() {
-        storage.add_waypoint(waypoint).is_ok()
-    } else {
-        false
-    }
-}
+pub use embassy_impl::{
+    add_waypoint, advance_waypoint, clear_mission, clear_waypoints, complete_mission,
+    get_current_target, get_mission_state, has_waypoints, set_mission_state, set_single_waypoint,
+    start_mission, start_mission_from_beginning, start_mission_from_current, stop_mission,
+    MISSION_STATE, MISSION_STORAGE,
+};
 
 // ============================================================================
 // Waypoint to PositionTarget Conversion

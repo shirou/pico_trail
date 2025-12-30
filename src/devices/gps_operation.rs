@@ -14,14 +14,44 @@ use crate::devices::gps::{GpsDriver, GpsFixType, GpsPosition};
 use crate::platform::traits::UartInterface;
 use crate::platform::Result;
 
-#[cfg(feature = "embassy")]
-use crate::communication::mavlink::state::SYSTEM_STATE;
-#[cfg(feature = "embassy")]
-use embassy_time::{Duration, Instant};
+// =============================================================================
+// Embassy Operations Module
+// =============================================================================
 
-// For host tests, provide stub types
+#[cfg(feature = "embassy")]
+mod embassy_ops {
+    use crate::communication::mavlink::state::SYSTEM_STATE;
+    use crate::devices::gps::GpsPosition;
+    pub use embassy_time::{Duration, Instant};
+
+    /// Async delay for retry backoff
+    pub async fn delay_millis(ms: u64) {
+        embassy_time::Timer::after(Duration::from_millis(ms)).await;
+    }
+
+    /// Update global SYSTEM_STATE with GPS position
+    pub fn update_system_gps(position: GpsPosition) {
+        let timestamp_us = Instant::now().as_micros();
+        critical_section::with(|cs| {
+            SYSTEM_STATE
+                .borrow(cs)
+                .borrow_mut()
+                .update_gps(position, timestamp_us);
+        });
+    }
+}
+
+#[cfg(feature = "embassy")]
+use embassy_ops::{delay_millis, update_system_gps, Duration, Instant};
+
+// =============================================================================
+// Host Test Stubs
+// =============================================================================
+
 #[cfg(not(feature = "embassy"))]
-mod stub_time {
+mod stub_ops {
+    use crate::devices::gps::GpsPosition;
+
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct Instant(u64);
 
@@ -39,10 +69,20 @@ mod stub_time {
             Duration(ms)
         }
     }
+
+    /// No-op delay for host tests
+    pub async fn delay_millis(_ms: u64) {
+        // No actual delay in host tests
+    }
+
+    /// No-op GPS update for host tests
+    pub fn update_system_gps(_position: GpsPosition) {
+        // No global state in host tests
+    }
 }
 
 #[cfg(not(feature = "embassy"))]
-use stub_time::{Duration, Instant};
+use stub_ops::{delay_millis, update_system_gps, Duration, Instant};
 
 /// GPS polling rate configuration
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,13 +221,7 @@ impl<U: UartInterface> GpsOperation<U> {
 
                     // Exponential backoff: 100ms, 200ms, 400ms
                     let delay_ms = 100 * (1 << (retry_count - 1));
-
-                    #[cfg(feature = "embassy")]
-                    embassy_time::Timer::after(Duration::from_millis(delay_ms)).await;
-
-                    // For host tests, we can't actually delay, so just skip
-                    #[cfg(not(feature = "embassy"))]
-                    let _ = delay_ms;
+                    delay_millis(delay_ms).await;
                 }
             }
         }
@@ -205,16 +239,7 @@ impl<U: UartInterface> GpsOperation<U> {
         self.no_fix_count = 0;
 
         // Update global SYSTEM_STATE for telemetry access
-        #[cfg(feature = "embassy")]
-        {
-            let timestamp_us = Instant::now().as_micros();
-            critical_section::with(|cs| {
-                SYSTEM_STATE
-                    .borrow(cs)
-                    .borrow_mut()
-                    .update_gps(position, timestamp_us);
-            });
-        }
+        update_system_gps(position);
 
         if was_no_fix {
             crate::log_info!(

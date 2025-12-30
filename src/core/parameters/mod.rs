@@ -6,7 +6,7 @@
 pub mod block;
 pub mod crc;
 pub mod registry;
-#[cfg(feature = "pico2_w")]
+#[cfg(feature = "embassy")]
 pub mod saver;
 pub mod storage;
 
@@ -14,6 +14,6 @@ pub mod storage;
 pub use block::{hash_param_name, Parameter, ParameterBlockHeader, ParameterFlags};
 pub use crc::{calculate_crc32, validate_crc32};
 pub use registry::{ParamMetadata, ParamType, ParamValue, ParameterRegistry, RegistryError};
-#[cfg(feature = "pico2_w")]
+#[cfg(feature = "embassy")]
 pub use saver::{ParamSaver, SaveRequest};
 pub use storage::{FlashParamStorage, StorageStats};

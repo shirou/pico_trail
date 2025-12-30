@@ -10,3 +10,4 @@ pub mod logging;
 pub mod mission;
 pub mod parameters;
 pub mod scheduler;
+pub mod traits;

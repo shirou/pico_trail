@@ -118,6 +118,7 @@ use pico_trail::{
         transport_router::TransportRouter,
         vehicle::GroundRover,
     },
+    core::traits::SharedState,
     devices::imu::mpu9250::{Mpu9250Config, Mpu9250Driver},
     libraries::{kinematics::DifferentialDrive, motor_driver::MotorGroup, RC_INPUT},
     parameters::wifi::WifiParams,
@@ -751,33 +752,24 @@ async fn motor_control_task(
         // Get steering/throttle based on mode
         let (steering, throttle, rc_status) = match mode {
             FlightMode::Manual => {
-                // Manual mode: use RC input directly
-                let rc = RC_INPUT.lock().await;
-                let steering = rc.channels[0]; // Channel 1 (index 0)
-                let throttle = rc.channels[2]; // Channel 3 (index 2)
-                let status = rc.status;
-                drop(rc);
-                (steering, throttle, Some(status))
+                // Manual mode: use RC input directly (blocking mutex with critical section)
+                RC_INPUT.with(|rc| {
+                    let steering = rc.channels[0]; // Channel 1 (index 0)
+                    let throttle = rc.channels[2]; // Channel 3 (index 2)
+                    (steering, throttle, Some(rc.status))
+                })
             }
             FlightMode::Guided => {
                 // Guided mode: use navigation controller output
-                let nav_output = NAV_OUTPUT.lock().await;
                 // Navigation output: steering is [-1, 1], throttle is [0, 1]
                 // For bidirectional movement, we keep throttle as-is (forward only in Guided)
-                let steering = nav_output.steering;
-                let throttle = nav_output.throttle;
-                drop(nav_output);
-                (steering, throttle, None) // No RC status in Guided mode
+                NAV_OUTPUT.with(|nav_output| (nav_output.steering, nav_output.throttle, None))
+                // No RC status in Guided mode
             }
             _ => {
                 // Other modes (Stabilize, Loiter, Auto, RTL): not implemented yet
-                // For now, use RC input as fallback
-                let rc = RC_INPUT.lock().await;
-                let steering = rc.channels[0];
-                let throttle = rc.channels[2];
-                let status = rc.status;
-                drop(rc);
-                (steering, throttle, Some(status))
+                // For now, use RC input as fallback (blocking mutex with critical section)
+                RC_INPUT.with(|rc| (rc.channels[0], rc.channels[2], Some(rc.status)))
             }
         };
 
@@ -889,8 +881,8 @@ async fn gps_task(uart: embassy_rp::uart::BufferedUart) {
 async fn navigation_task() {
     use pico_trail::communication::mavlink::state::{FlightMode, SYSTEM_STATE};
     use pico_trail::core::mission::{
-        advance_waypoint, complete_mission_sync, get_current_target, get_mission_state_sync,
-        set_mission_state, MissionState, Waypoint, MISSION_STORAGE,
+        advance_waypoint, complete_mission, get_current_target, get_mission_state,
+        set_mission_state, set_single_waypoint, MissionState, Waypoint,
     };
     use pico_trail::subsystems::navigation::take_reposition_target;
 
@@ -924,11 +916,7 @@ async fn navigation_task() {
             };
 
             // Update MISSION_STORAGE (clear and add single waypoint)
-            {
-                let mut storage = MISSION_STORAGE.lock().await;
-                storage.clear();
-                let _ = storage.add_waypoint(waypoint);
-            }
+            set_single_waypoint(waypoint);
 
             // Get current mode to check if we should start navigation
             let mode = critical_section::with(|cs| {
@@ -938,7 +926,7 @@ async fn navigation_task() {
 
             // If in GUIDED mode, set MissionState::Running
             if mode == FlightMode::Guided {
-                set_mission_state(MissionState::Running).await;
+                set_mission_state(MissionState::Running);
                 pico_trail::log_info!("GUIDED mode: Starting navigation to reposition target");
             }
         }
@@ -949,8 +937,8 @@ async fn navigation_task() {
             (state.mode, state.gps_position)
         });
 
-        // Get mission state (sync access for consistency with command handler)
-        let mission_state = get_mission_state_sync();
+        // Get mission state
+        let mission_state = get_mission_state();
 
         // Only run navigation when mission is running and in Guided or Auto mode
         let should_navigate = mission_state == MissionState::Running
@@ -958,31 +946,30 @@ async fn navigation_task() {
 
         if should_navigate {
             // Get navigation target from MISSION_STORAGE (unified source)
-            let target = get_current_target().await;
+            let target = get_current_target();
 
             if let (Some(current), Some(target)) = (gps_position, target) {
                 // Compute navigation output
                 let output = controller.update(&current, &target, 0.02); // 20ms dt
 
                 // Update global NAV_OUTPUT
-                {
-                    let mut nav_output = NAV_OUTPUT.lock().await;
+                NAV_OUTPUT.with_mut(|nav_output| {
                     *nav_output = output;
-                }
+                });
 
                 // Handle waypoint arrival
                 if output.at_target {
                     if mode == FlightMode::Guided {
                         // GUIDED mode: single waypoint, mission complete
-                        complete_mission_sync();
+                        complete_mission();
                         pico_trail::log_info!("GUIDED: Waypoint reached, mission completed");
                     } else if mode == FlightMode::Auto {
                         // AUTO mode: advance to next waypoint or complete mission
-                        if advance_waypoint().await {
+                        if advance_waypoint() {
                             pico_trail::log_info!("AUTO: Waypoint reached, advancing to next");
                         } else {
                             // Last waypoint reached - mission complete
-                            complete_mission_sync();
+                            complete_mission();
                             pico_trail::log_info!("AUTO: Mission completed, all waypoints reached");
                         }
                     }
@@ -1006,13 +993,15 @@ async fn navigation_task() {
                 }
             } else {
                 // No GPS or no target - output zero
-                let mut nav_output = NAV_OUTPUT.lock().await;
-                *nav_output = pico_trail::subsystems::navigation::NavigationOutput::default();
+                NAV_OUTPUT.with_mut(|nav_output| {
+                    *nav_output = pico_trail::subsystems::navigation::NavigationOutput::default();
+                });
             }
         } else if mode == FlightMode::Guided || mode == FlightMode::Auto {
             // Mode is Guided/Auto but mission not running - zero output
-            let mut nav_output = NAV_OUTPUT.lock().await;
-            *nav_output = pico_trail::subsystems::navigation::NavigationOutput::default();
+            NAV_OUTPUT.with_mut(|nav_output| {
+                *nav_output = pico_trail::subsystems::navigation::NavigationOutput::default();
+            });
         }
 
         // 50 Hz update rate (20ms)

@@ -32,6 +32,76 @@ use mavlink::common::{
     MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA,
 };
 
+// Storage operations module - embassy-specific implementations
+#[cfg(feature = "embassy")]
+mod storage_ops {
+    use crate::core::mission::{
+        add_waypoint, clear_waypoints, start_mission_from_current, MissionStorage, Waypoint,
+        MISSION_STORAGE,
+    };
+    use crate::core::traits::SharedState;
+
+    /// Load waypoints from global storage to transfer buffer
+    pub fn load_to_buffer(buffer: &mut MissionStorage) {
+        buffer.clear();
+        MISSION_STORAGE.with(|storage| {
+            for i in 0..storage.count() {
+                if let Some(wp) = storage.get_waypoint(i) {
+                    let _ = buffer.add_waypoint(*wp);
+                }
+            }
+        });
+        crate::log_info!(
+            "Download: loaded {} waypoints from global storage",
+            buffer.count()
+        );
+    }
+
+    /// Store waypoints from transfer buffer to global storage
+    pub fn store_from_buffer(buffer: &MissionStorage) {
+        clear_waypoints();
+        for i in 0..buffer.count() {
+            if let Some(wp) = buffer.get_waypoint(i) {
+                if !add_waypoint(*wp) {
+                    crate::log_warn!("Failed to copy waypoint {} to global storage", i);
+                }
+            }
+        }
+        crate::log_info!("Copied {} waypoints to global storage", buffer.count());
+    }
+
+    /// Store single waypoint and start mission if in GUIDED mode
+    pub fn store_single_and_maybe_start(wp: Waypoint) {
+        use crate::communication::mavlink::state::{FlightMode, SYSTEM_STATE};
+
+        clear_waypoints();
+        if !add_waypoint(wp) {
+            crate::log_warn!("Failed to add waypoint to global storage");
+        }
+
+        let is_guided = critical_section::with(|cs| {
+            let state = SYSTEM_STATE.borrow_ref(cs);
+            state.mode == FlightMode::Guided
+        });
+
+        if is_guided && start_mission_from_current() {
+            crate::log_info!("GUIDED: Mission started from Fly Here");
+        }
+    }
+}
+
+// Storage operations module - stub implementations for non-embassy builds
+#[cfg(not(feature = "embassy"))]
+mod storage_ops {
+    use crate::core::mission::{MissionStorage, Waypoint};
+
+    pub fn load_to_buffer(_buffer: &mut MissionStorage) {}
+
+    pub fn store_from_buffer(_buffer: &MissionStorage) {}
+
+    pub fn store_single_and_maybe_start(_wp: Waypoint) {}
+}
+
 /// Mission transfer timeout (5 seconds in microseconds)
 const MISSION_TIMEOUT_US: u64 = 5_000_000;
 
@@ -198,25 +268,7 @@ impl MissionHandler {
 
         // Copy from global MISSION_STORAGE to transfer_buffer for download
         // This ensures we return the authoritative mission data, not stale transfer_buffer
-        #[cfg(feature = "embassy")]
-        {
-            use crate::core::mission::MISSION_STORAGE;
-
-            self.transfer_buffer.clear();
-            if let Ok(storage) = MISSION_STORAGE.try_lock() {
-                for i in 0..storage.count() {
-                    if let Some(wp) = storage.get_waypoint(i) {
-                        let _ = self.transfer_buffer.add_waypoint(*wp);
-                    }
-                }
-                crate::log_info!(
-                    "Download: loaded {} waypoints from global storage",
-                    self.transfer_buffer.count()
-                );
-            } else {
-                crate::log_warn!("Download: failed to lock MISSION_STORAGE");
-            }
-        }
+        storage_ops::load_to_buffer(&mut self.transfer_buffer);
 
         self.state = MissionState::DownloadInProgress {
             last_activity_us: current_time_us,
@@ -386,26 +438,7 @@ impl MissionHandler {
                     crate::log_info!("Mission upload complete: {} waypoints", count);
 
                     // Copy waypoints from transfer_buffer to global MISSION_STORAGE
-                    #[cfg(feature = "embassy")]
-                    {
-                        use crate::core::mission::{add_waypoint_sync, clear_waypoints_sync};
-
-                        clear_waypoints_sync();
-                        for i in 0..self.transfer_buffer.count() {
-                            if let Some(wp) = self.transfer_buffer.get_waypoint(i) {
-                                if !add_waypoint_sync(*wp) {
-                                    crate::log_warn!(
-                                        "Failed to copy waypoint {} to global storage",
-                                        i
-                                    );
-                                }
-                            }
-                        }
-                        crate::log_info!(
-                            "Copied {} waypoints to global storage",
-                            self.transfer_buffer.count()
-                        );
-                    }
+                    storage_ops::store_from_buffer(&self.transfer_buffer);
 
                     self.state = MissionState::Idle;
                     Ok(None) // No more requests, upload complete
@@ -434,31 +467,8 @@ impl MissionHandler {
                     }
 
                     // Also update global MISSION_STORAGE for navigation
-                    #[cfg(feature = "embassy")]
-                    {
-                        use crate::communication::mavlink::state::{FlightMode, SYSTEM_STATE};
-                        use crate::core::mission::{
-                            add_waypoint_sync, clear_waypoints_sync, start_mission_sync,
-                        };
-
-                        // Update global mission storage
-                        clear_waypoints_sync();
-                        if !add_waypoint_sync(wp) {
-                            crate::log_warn!("Failed to add waypoint to global storage");
-                        }
-
-                        // If in GUIDED mode, start mission automatically
-                        let is_guided = critical_section::with(|cs| {
-                            let state = SYSTEM_STATE.borrow_ref(cs);
-                            state.mode == FlightMode::Guided
-                        });
-
-                        if is_guided {
-                            if start_mission_sync() {
-                                crate::log_info!("GUIDED: Mission started from Fly Here");
-                            }
-                        }
-                    }
+                    // and start mission if in GUIDED mode
+                    storage_ops::store_single_and_maybe_start(wp);
 
                     // Return None to signal completion (sends MISSION_ACK with ACCEPTED)
                     Ok(None)

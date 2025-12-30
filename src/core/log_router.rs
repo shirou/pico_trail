@@ -23,25 +23,6 @@
 
 use crate::core::log_buffer::{LogMessage, RingBufferSink};
 
-#[cfg(feature = "embassy")]
-use crate::communication::mavlink::status_notifier;
-#[cfg(feature = "embassy")]
-use crate::core::log_buffer::LogLevel;
-
-#[cfg(feature = "embassy")]
-use crate::core::log_buffer::LOG_BUFFER_SIZE;
-
-#[cfg(feature = "embassy")]
-use heapless::Vec;
-
-#[cfg(feature = "embassy")]
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-#[cfg(feature = "embassy")]
-use embassy_sync::blocking_mutex::Mutex;
-
-#[cfg(feature = "embassy")]
-use core::cell::RefCell;
-
 /// Log router that dispatches messages to multiple sinks
 pub struct LogRouter {
     buffer_sink: RingBufferSink,
@@ -81,170 +62,173 @@ impl Default for LogRouter {
 }
 
 // =============================================================================
-// Global Log Router (embassy feature)
+// Embassy Implementation (embedded targets)
 // =============================================================================
 
 #[cfg(feature = "embassy")]
-static LOG_ROUTER: Mutex<CriticalSectionRawMutex, RefCell<LogRouter>> =
-    Mutex::new(RefCell::new(LogRouter::new()));
+mod embassy_impl {
+    use super::{LogMessage, LogRouter, RingBufferSink};
+    use crate::communication::mavlink::status_notifier;
+    use crate::core::log_buffer::{LogLevel, LOG_BUFFER_SIZE};
+    use crate::core::traits::{EmbassyState, SharedState};
+    use heapless::Vec;
 
-/// Route a log message through the global router
-///
-/// - Buffers the message in the ring buffer (inside lock)
-/// - Routes WARNING/ERROR to STATUSTEXT (outside lock to prevent recursion)
-#[cfg(feature = "embassy")]
-pub fn route_log(msg: LogMessage) {
-    // Capture level and message before entering the lock
-    let level = msg.level;
-    let message_clone = msg.message.clone();
+    /// Global log router (protected by EmbassyState)
+    pub static LOG_ROUTER: EmbassyState<LogRouter> = EmbassyState::new(LogRouter::new());
 
-    // Buffer the message inside the lock
-    LOG_ROUTER.lock(|router| {
-        router.borrow_mut().route(msg);
-    });
+    /// Route a log message through the global router
+    ///
+    /// - Buffers the message in the ring buffer (inside lock)
+    /// - Routes WARNING/ERROR to STATUSTEXT (outside lock to prevent recursion)
+    pub fn route_log(msg: LogMessage) {
+        // Capture level and message before entering the lock
+        let level = msg.level;
+        let message_clone = msg.message.clone();
 
-    // Route to STATUSTEXT outside the lock to prevent recursive borrow
-    match level {
-        LogLevel::Warn => status_notifier::send_warning(message_clone.as_str()),
-        LogLevel::Error => status_notifier::send_error(message_clone.as_str()),
-        // INFO, DEBUG, TRACE are not routed to STATUSTEXT
-        _ => {}
+        // Buffer the message inside the lock
+        LOG_ROUTER.with_mut(|router| {
+            router.route(msg);
+        });
+
+        // Route to STATUSTEXT outside the lock to prevent recursive borrow
+        match level {
+            LogLevel::Warn => status_notifier::send_warning(message_clone.as_str()),
+            LogLevel::Error => status_notifier::send_error(message_clone.as_str()),
+            // INFO, DEBUG, TRACE are not routed to STATUSTEXT
+            _ => {}
+        }
+    }
+
+    /// Get all buffered logs (drains the buffer)
+    pub fn get_buffered_logs() -> Vec<LogMessage, LOG_BUFFER_SIZE> {
+        LOG_ROUTER.with_mut(|router| router.buffer_sink_mut().drain())
+    }
+
+    /// Peek at buffered logs without clearing
+    ///
+    /// Calls the provided closure with a reference to the buffer sink.
+    pub fn peek_buffered_logs<F, R>(f: F) -> R
+    where
+        F: FnOnce(&RingBufferSink) -> R,
+    {
+        LOG_ROUTER.with(|router| f(router.buffer_sink()))
+    }
+
+    /// Get the current number of buffered messages
+    pub fn buffer_len() -> usize {
+        LOG_ROUTER.with(|router| router.buffer_sink().len())
+    }
+
+    /// Get the number of messages lost due to buffer overflow
+    pub fn overflow_count() -> u32 {
+        LOG_ROUTER.with(|router| router.buffer_sink().overflow_count())
+    }
+
+    /// Clear all buffered messages
+    pub fn clear_buffer() {
+        LOG_ROUTER.with_mut(|router| {
+            router.buffer_sink_mut().clear();
+        });
     }
 }
 
-/// Get all buffered logs (drains the buffer)
 #[cfg(feature = "embassy")]
-pub fn get_buffered_logs() -> Vec<LogMessage, LOG_BUFFER_SIZE> {
-    LOG_ROUTER.lock(|router| router.borrow_mut().buffer_sink_mut().drain())
-}
-
-/// Peek at buffered logs without clearing
-///
-/// Calls the provided closure with a reference to the buffer sink.
-#[cfg(feature = "embassy")]
-pub fn peek_buffered_logs<F, R>(f: F) -> R
-where
-    F: FnOnce(&RingBufferSink) -> R,
-{
-    LOG_ROUTER.lock(|router| f(router.borrow().buffer_sink()))
-}
-
-/// Get the current number of buffered messages
-#[cfg(feature = "embassy")]
-pub fn buffer_len() -> usize {
-    LOG_ROUTER.lock(|router| router.borrow().buffer_sink().len())
-}
-
-/// Get the number of messages lost due to buffer overflow
-#[cfg(feature = "embassy")]
-pub fn overflow_count() -> u32 {
-    LOG_ROUTER.lock(|router| router.borrow().buffer_sink().overflow_count())
-}
-
-/// Clear all buffered messages
-#[cfg(feature = "embassy")]
-pub fn clear_buffer() {
-    LOG_ROUTER.lock(|router| {
-        router.borrow_mut().buffer_sink_mut().clear();
-    });
-}
+pub use embassy_impl::{
+    buffer_len, clear_buffer, get_buffered_logs, overflow_count, peek_buffered_logs, route_log,
+};
 
 // =============================================================================
-// Test-only implementation (no embassy feature)
+// Test Implementation (host tests without embassy)
 // =============================================================================
 
 #[cfg(all(test, not(feature = "embassy")))]
-use std::cell::RefCell;
+mod test_impl {
+    use super::{LogMessage, LogRouter, RingBufferSink};
+    use crate::communication::mavlink::status_notifier;
+    use crate::core::log_buffer::{LogLevel, LOG_BUFFER_SIZE};
+    use heapless::Vec;
+    use std::cell::RefCell;
 
-#[cfg(all(test, not(feature = "embassy")))]
-use crate::communication::mavlink::status_notifier;
-#[cfg(all(test, not(feature = "embassy")))]
-use crate::core::log_buffer::LogLevel;
-#[cfg(all(test, not(feature = "embassy")))]
-use crate::core::log_buffer::LOG_BUFFER_SIZE;
+    thread_local! {
+        pub static TEST_ROUTER: RefCell<LogRouter> = const { RefCell::new(LogRouter::new()) };
+    }
 
-#[cfg(all(test, not(feature = "embassy")))]
-use heapless::Vec;
+    // Thread-local flag to enable/disable STATUSTEXT routing during tests.
+    // By default, STATUSTEXT routing is disabled to avoid parallel test issues
+    // with the global NOTIFIER. Tests that specifically need STATUSTEXT routing
+    // should call `enable_statustext_routing()` first.
+    thread_local! {
+        static STATUSTEXT_ROUTING_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
 
-#[cfg(all(test, not(feature = "embassy")))]
-thread_local! {
-    static TEST_ROUTER: RefCell<LogRouter> = const { RefCell::new(LogRouter::new()) };
-}
+    pub fn route_log(msg: LogMessage) {
+        // Capture level and message before entering the borrow
+        let level = msg.level;
+        let message_clone = msg.message.clone();
 
-// Thread-local flag to enable/disable STATUSTEXT routing during tests.
-// By default, STATUSTEXT routing is disabled to avoid parallel test issues
-// with the global NOTIFIER. Tests that specifically need STATUSTEXT routing
-// should call `enable_statustext_routing()` first.
-#[cfg(all(test, not(feature = "embassy")))]
-thread_local! {
-    static STATUSTEXT_ROUTING_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
+        // Buffer the message inside the borrow
+        TEST_ROUTER.with(|router| {
+            router.borrow_mut().route(msg);
+        });
 
-#[cfg(all(test, not(feature = "embassy")))]
-pub fn route_log(msg: LogMessage) {
-    // Capture level and message before entering the borrow
-    let level = msg.level;
-    let message_clone = msg.message.clone();
-
-    // Buffer the message inside the borrow
-    TEST_ROUTER.with(|router| {
-        router.borrow_mut().route(msg);
-    });
-
-    // Route to STATUSTEXT outside the borrow to prevent recursive borrow
-    // Only enabled for specific tests that need it
-    STATUSTEXT_ROUTING_ENABLED.with(|enabled| {
-        if enabled.get() {
-            match level {
-                LogLevel::Warn => status_notifier::send_warning(message_clone.as_str()),
-                LogLevel::Error => status_notifier::send_error(message_clone.as_str()),
-                _ => {}
+        // Route to STATUSTEXT outside the borrow to prevent recursive borrow
+        // Only enabled for specific tests that need it
+        STATUSTEXT_ROUTING_ENABLED.with(|enabled| {
+            if enabled.get() {
+                match level {
+                    LogLevel::Warn => status_notifier::send_warning(message_clone.as_str()),
+                    LogLevel::Error => status_notifier::send_error(message_clone.as_str()),
+                    _ => {}
+                }
             }
-        }
-    });
+        });
+    }
+
+    /// Enable STATUSTEXT routing for the current test thread
+    pub fn enable_statustext_routing() {
+        STATUSTEXT_ROUTING_ENABLED.with(|enabled| enabled.set(true));
+    }
+
+    /// Disable STATUSTEXT routing for the current test thread
+    pub fn disable_statustext_routing() {
+        STATUSTEXT_ROUTING_ENABLED.with(|enabled| enabled.set(false));
+    }
+
+    pub fn get_buffered_logs() -> Vec<LogMessage, LOG_BUFFER_SIZE> {
+        TEST_ROUTER.with(|router| router.borrow_mut().buffer_sink_mut().drain())
+    }
+
+    pub fn peek_buffered_logs<F, R>(f: F) -> R
+    where
+        F: FnOnce(&RingBufferSink) -> R,
+    {
+        TEST_ROUTER.with(|router| f(router.borrow().buffer_sink()))
+    }
+
+    pub fn buffer_len() -> usize {
+        TEST_ROUTER.with(|router| router.borrow().buffer_sink().len())
+    }
+
+    pub fn overflow_count() -> u32 {
+        TEST_ROUTER.with(|router| router.borrow().buffer_sink().overflow_count())
+    }
+
+    pub fn clear_buffer() {
+        TEST_ROUTER.with(|router| {
+            router.borrow_mut().buffer_sink_mut().clear();
+        });
+    }
 }
 
-/// Enable STATUSTEXT routing for the current test thread
 #[cfg(all(test, not(feature = "embassy")))]
-pub fn enable_statustext_routing() {
-    STATUSTEXT_ROUTING_ENABLED.with(|enabled| enabled.set(true));
-}
+pub use test_impl::{
+    buffer_len, clear_buffer, disable_statustext_routing, enable_statustext_routing,
+    get_buffered_logs, overflow_count, peek_buffered_logs, route_log,
+};
 
-/// Disable STATUSTEXT routing for the current test thread
-#[cfg(all(test, not(feature = "embassy")))]
-pub fn disable_statustext_routing() {
-    STATUSTEXT_ROUTING_ENABLED.with(|enabled| enabled.set(false));
-}
-
-#[cfg(all(test, not(feature = "embassy")))]
-pub fn get_buffered_logs() -> Vec<LogMessage, LOG_BUFFER_SIZE> {
-    TEST_ROUTER.with(|router| router.borrow_mut().buffer_sink_mut().drain())
-}
-
-#[cfg(all(test, not(feature = "embassy")))]
-pub fn peek_buffered_logs<F, R>(f: F) -> R
-where
-    F: FnOnce(&RingBufferSink) -> R,
-{
-    TEST_ROUTER.with(|router| f(router.borrow().buffer_sink()))
-}
-
-#[cfg(all(test, not(feature = "embassy")))]
-pub fn buffer_len() -> usize {
-    TEST_ROUTER.with(|router| router.borrow().buffer_sink().len())
-}
-
-#[cfg(all(test, not(feature = "embassy")))]
-pub fn overflow_count() -> u32 {
-    TEST_ROUTER.with(|router| router.borrow().buffer_sink().overflow_count())
-}
-
-#[cfg(all(test, not(feature = "embassy")))]
-pub fn clear_buffer() {
-    TEST_ROUTER.with(|router| {
-        router.borrow_mut().buffer_sink_mut().clear();
-    });
-}
+// =============================================================================
+// Unit Tests
+// =============================================================================
 
 #[cfg(test)]
 mod tests {
@@ -341,6 +325,8 @@ mod tests {
 
     #[test]
     fn test_overflow_count_accuracy() {
+        use crate::core::log_buffer::LOG_BUFFER_SIZE;
+
         reset_router();
 
         // Fill the buffer
@@ -566,6 +552,8 @@ mod tests {
 
     #[test]
     fn test_buffer_overflow_during_burst() {
+        use crate::core::log_buffer::LOG_BUFFER_SIZE;
+
         reset_router();
 
         // Burst 50 messages
@@ -580,6 +568,8 @@ mod tests {
 
     #[test]
     fn test_retrieval_after_overflow() {
+        use crate::core::log_buffer::LOG_BUFFER_SIZE;
+
         reset_router();
 
         // Fill buffer and overflow

@@ -11,9 +11,7 @@
 //! - FR-993xy-rc-channels-processing: RC requirements
 
 #[cfg(feature = "embassy")]
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-#[cfg(feature = "embassy")]
-use embassy_sync::mutex::Mutex;
+use crate::core::traits::EmbassyState;
 
 /// RC timeout threshold (1 second in microseconds)
 const RC_TIMEOUT_US: u64 = 1_000_000;
@@ -245,9 +243,12 @@ impl RcInput {
     }
 }
 
-/// Global RC input (protected by Mutex)
+/// Global RC input (protected by EmbassyState)
+///
+/// Uses blocking mutex with critical sections for interrupt-safe access.
+/// Access via `SharedState` trait methods: `.with()` for read, `.with_mut()` for write.
 #[cfg(feature = "embassy")]
-pub static RC_INPUT: Mutex<CriticalSectionRawMutex, RcInput> = Mutex::new(RcInput::new());
+pub static RC_INPUT: EmbassyState<RcInput> = EmbassyState::new(RcInput::new());
 
 #[cfg(test)]
 mod tests {

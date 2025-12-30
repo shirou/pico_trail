@@ -5,8 +5,8 @@
 //! ## Available Drivers
 //!
 //! - `mock`: Mock IMU for testing (always available)
-//! - `mpu9250`: MPU-9250 9-axis IMU driver (requires `pico2_w` feature)
-//! - `icm20948`: ICM-20948 9-axis IMU driver (requires `pico2_w` feature)
+//! - `Mpu9250Driver`: MPU-9250 9-axis IMU driver (requires `pico2_w` feature, in platform module)
+//! - `Icm20948Driver`: ICM-20948 9-axis IMU driver (requires `pico2_w` feature, in platform module)
 //!
 //! ## Usage
 //!
@@ -20,16 +20,9 @@
 
 pub mod mock;
 
-#[cfg(feature = "pico2_w")]
-pub mod icm20948;
-
-#[cfg(feature = "pico2_w")]
-pub mod mpu9250;
-
 pub use mock::MockImu;
 
+// Platform-specific IMU drivers are in crate::platform::rp2350::devices::imu
+// Re-export modules and types for convenience
 #[cfg(feature = "pico2_w")]
-pub use icm20948::Icm20948Driver;
-
-#[cfg(feature = "pico2_w")]
-pub use mpu9250::Mpu9250Driver;
+pub use crate::platform::rp2350::devices::imu::{icm20948, mpu9250, Icm20948Driver, Mpu9250Driver};

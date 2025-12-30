@@ -114,25 +114,9 @@ fn report_task_stats() {
     }
 }
 
-/// Monitoring task (Embassy version)
-///
-/// Runs at 1Hz to collect and report scheduler statistics.
-/// This task should be spawned alongside user tasks.
+// Re-export monitor_task from platform module
 #[cfg(feature = "pico2_w")]
-#[embassy_executor::task]
-pub async fn monitor_task() {
-    use embassy_time::{Duration, Instant, Ticker};
-
-    let start = Instant::now();
-    let mut ticker = Ticker::every(Duration::from_secs(1));
-
-    loop {
-        ticker.next().await;
-
-        let uptime_ms = start.elapsed().as_millis();
-        collect_and_report_stats(uptime_ms);
-    }
-}
+pub use crate::platform::rp2350::tasks::monitor::monitor_task;
 
 #[cfg(test)]
 mod tests {

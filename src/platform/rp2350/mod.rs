@@ -22,6 +22,7 @@
 //! let uart = platform.create_uart(/* config */);
 //! ```
 
+pub mod devices;
 mod flash;
 mod gpio;
 mod i2c;
@@ -36,6 +37,12 @@ mod uart;
 
 #[cfg(feature = "pico2_w")]
 pub mod network;
+
+#[cfg(feature = "pico2_w")]
+pub mod tasks;
+
+#[cfg(feature = "pico2_w")]
+pub mod transport;
 
 pub use flash::Rp2350Flash;
 pub use gpio::Rp2350Gpio;

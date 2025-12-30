@@ -8,8 +8,11 @@
 ## Links
 
 - Prerequisite Requirements: N/A
-- Dependent Requirements: N/A
-- Related Tasks: N/A - Tasks will be created after ADRs
+- Dependent Requirements:
+  - [FR-jpmdj-trait-based-async-abstraction](../requirements/FR-jpmdj-trait-based-async-abstraction.md)
+  - [NFR-wl974-feature-gate-reduction](../requirements/NFR-wl974-feature-gate-reduction.md)
+- Related Tasks:
+  - [T-d9rim-trait-based-async-abstraction](../tasks/T-d9rim-trait-based-async-abstraction/README.md)
 
 ## Requirement Statement
 

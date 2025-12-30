@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Design
-- Status: Draft
+- Status: Approved
 
 ## Links
 
@@ -16,9 +16,9 @@ This design describes the refactoring of GPS vendor-specific initialization code
 
 ## Success Metrics
 
-- [ ] All existing GPS unit tests pass without modification
-- [ ] Binary size increase is negligible (<500 bytes) for single-vendor builds
-- [ ] Embedded build compiles successfully with `gps-ublox` feature
+- [x] All existing GPS unit tests pass without modification
+- [x] Binary size increase is negligible (<500 bytes) for single-vendor builds
+- [x] Embedded build compiles successfully with `gps-ublox` feature
 
 ## Background and Current State
 

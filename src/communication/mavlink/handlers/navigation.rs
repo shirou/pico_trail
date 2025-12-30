@@ -84,7 +84,14 @@ impl NavigationHandler {
             altitude,
         })
     }
+}
 
+// ============================================================================
+// Embassy Implementation (embedded targets)
+// ============================================================================
+
+#[cfg(feature = "embassy")]
+impl NavigationHandler {
     /// Update MissionStorage with new position target (async)
     ///
     /// This method integrates with the unified waypoint navigation system by:
@@ -100,13 +107,14 @@ impl NavigationHandler {
     /// # Returns
     ///
     /// `true` if target was successfully updated, `false` if invalid
-    #[cfg(feature = "embassy")]
     pub async fn handle_set_position_target(
         &self,
         data: &SET_POSITION_TARGET_GLOBAL_INT_DATA,
     ) -> bool {
         use crate::communication::mavlink::state::{FlightMode, SYSTEM_STATE};
-        use crate::core::mission::{set_mission_state, MissionState, Waypoint, MISSION_STORAGE};
+        use crate::core::mission::{
+            set_mission_state, set_single_waypoint, MissionState, Waypoint,
+        };
 
         if let Some(target) = self.extract_target(data) {
             crate::log_info!(
@@ -132,11 +140,7 @@ impl NavigationHandler {
             };
 
             // Update MISSION_STORAGE (clear and add single waypoint)
-            {
-                let mut storage = MISSION_STORAGE.lock().await;
-                storage.clear();
-                let _ = storage.add_waypoint(waypoint);
-            }
+            set_single_waypoint(waypoint);
 
             // If in GUIDED mode, set MissionState::Running
             let is_guided = critical_section::with(|cs| {
@@ -145,7 +149,7 @@ impl NavigationHandler {
             });
 
             if is_guided {
-                set_mission_state(MissionState::Running).await;
+                set_mission_state(MissionState::Running);
                 crate::log_info!("GUIDED mode: Starting navigation to target");
             }
 
@@ -154,9 +158,15 @@ impl NavigationHandler {
             false
         }
     }
+}
 
+// ============================================================================
+// Host Test Stubs (synchronous version)
+// ============================================================================
+
+#[cfg(not(feature = "embassy"))]
+impl NavigationHandler {
     /// Synchronous version for non-async contexts (host tests)
-    #[cfg(not(feature = "embassy"))]
     pub fn handle_set_position_target(&self, data: &SET_POSITION_TARGET_GLOBAL_INT_DATA) -> bool {
         self.extract_target(data).is_some()
     }

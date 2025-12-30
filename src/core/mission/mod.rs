@@ -34,11 +34,10 @@ mod state;
 pub use state::MissionState;
 #[cfg(feature = "embassy")]
 pub use state::{
-    add_waypoint_sync, advance_waypoint, clear_mission, clear_waypoints_sync,
-    complete_mission_sync, get_current_target, get_mission_state, get_mission_state_sync,
-    has_waypoints, has_waypoints_sync, set_mission_state, set_mission_state_sync,
-    set_single_waypoint, start_mission, start_mission_from_beginning_sync, start_mission_sync,
-    stop_mission_sync, MISSION_STATE, MISSION_STATE_SYNC, MISSION_STORAGE,
+    add_waypoint, advance_waypoint, clear_mission, clear_waypoints, complete_mission,
+    get_current_target, get_mission_state, has_waypoints, set_mission_state, set_single_waypoint,
+    start_mission, start_mission_from_beginning, start_mission_from_current, stop_mission,
+    MISSION_STATE, MISSION_STORAGE,
 };
 
 use heapless::Vec;
