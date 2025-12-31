@@ -94,7 +94,7 @@ impl SimpleNavigationController {
     /// Calculate steering based on heading error
     fn calculate_steering(&self, heading_error: f32) -> f32 {
         let steering = heading_error / self.config.max_heading_error;
-        clamp(steering, -1.0, 1.0)
+        steering.clamp(-1.0, 1.0)
     }
 }
 
@@ -164,23 +164,12 @@ impl NavigationController for SimpleNavigationController {
     }
 }
 
-/// Clamp a value to a range
-fn clamp(value: f32, min: f32, max: f32) -> f32 {
-    if value < min {
-        min
-    } else if value > max {
-        max
-    } else {
-        value
-    }
-}
-
 /// Sanitize output value, handling NaN and infinity
 fn sanitize_output(value: f32, min: f32, max: f32, default: f32) -> f32 {
     if value.is_nan() || value.is_infinite() {
         default
     } else {
-        clamp(value, min, max)
+        value.clamp(min, max)
     }
 }
 

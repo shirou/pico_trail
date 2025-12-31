@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Implementation Plan
-- Status: Draft
+- Status: Completed
 
 ## Links
 
@@ -16,11 +16,11 @@ Implement trait-based abstractions for async runtime operations to reduce featur
 
 ## Success Metrics
 
-- [ ] Feature gate count ≤60 (measured by `grep -r "#\[cfg(feature" src/ | wc -l`)
-- [ ] `cargo test --lib` passes without feature flags
-- [ ] `./scripts/build-rp2350.sh pico_trail_rover` succeeds
-- [ ] Control loop maintains 50Hz (≤20ms average period)
-- [ ] All existing tests pass; no regressions
+- [x] Feature gate count ≤60 (measured by `grep -r "#\[cfg(feature" src/ | wc -l`)
+- [x] `cargo test --lib` passes without feature flags
+- [x] `./scripts/build-rp2350.sh pico_trail_rover` succeeds
+- [x] Control loop maintains 50Hz (≤20ms average period)
+- [x] All existing tests pass; no regressions
 
 ## Scope
 
@@ -31,8 +31,8 @@ Implement trait-based abstractions for async runtime operations to reduce featur
 
 ## ADR & Legacy Alignment
 
-- [ ] Confirm ADR-3ciu6 is referenced and followed
-- [ ] Note: Current code uses direct Embassy types; migration to traits required
+- [x] Confirm ADR-3ciu6 is referenced and followed
+- [x] Note: Current code uses direct Embassy types; migration to traits required
 
 ## Plan Summary
 
@@ -65,23 +65,23 @@ Implement trait-based abstractions for async runtime operations to reduce featur
 
 ### Tasks
 
-- [ ] **Create traits module structure**
-  - [ ] Create `src/core/traits/mod.rs`
-  - [ ] Create `src/core/traits/time.rs`
-  - [ ] Create `src/core/traits/sync.rs`
-  - [ ] Export from `src/core/mod.rs`
+- [x] **Create traits module structure**
+  - [x] Create `src/core/traits/mod.rs`
+  - [x] Create `src/core/traits/time.rs`
+  - [x] Create `src/core/traits/sync.rs`
+  - [x] Export from `src/core/mod.rs`
 
-- [ ] **Implement TimeSource trait**
-  - [ ] Define `TimeSource` trait with `now_ms()`, `now_us()`, `elapsed_since()`
-  - [ ] Implement `EmbassyTime` with `#[cfg(feature = "embassy")]`
-  - [ ] Implement `MockTime` (always available)
-  - [ ] Add unit tests for `MockTime`
+- [x] **Implement TimeSource trait**
+  - [x] Define `TimeSource` trait with `now_ms()`, `now_us()`, `elapsed_since()`
+  - [x] Implement `EmbassyTime` with `#[cfg(feature = "embassy")]`
+  - [x] Implement `MockTime` (always available)
+  - [x] Add unit tests for `MockTime`
 
-- [ ] **Implement SharedState trait**
-  - [ ] Define `SharedState<T>` trait with `with()`, `with_mut()`
-  - [ ] Implement `EmbassyState<T>` with `#[cfg(feature = "embassy")]`
-  - [ ] Implement `MockState<T>` (always available)
-  - [ ] Add unit tests for `MockState<T>`
+- [x] **Implement SharedState trait**
+  - [x] Define `SharedState<T>` trait with `with()`, `with_mut()`
+  - [x] Implement `EmbassyState<T>` with `#[cfg(feature = "embassy")]`
+  - [x] Implement `MockState<T>` (always available)
+  - [x] Add unit tests for `MockState<T>`
 
 ### Deliverables
 
@@ -128,26 +128,26 @@ cargo test --lib --quiet core::traits
 
 ### Phase 2 Tasks
 
-- [ ] **Migrate rc_channel module (POC)**
-  - [ ] Replace direct `Mutex` usage with `SharedState<RcInput>`
-  - [ ] Update `RC_INPUT` static to use `EmbassyState`
-  - [ ] Add generic type parameters where needed
-  - [ ] Verify existing tests pass
-  - [ ] Verify embedded build works
+- [x] **Migrate rc_channel module (POC)**
+  - [x] Replace direct `Mutex` usage with `SharedState<RcInput>`
+  - [x] Update `RC_INPUT` static to use `EmbassyState`
+  - [x] Add generic type parameters where needed
+  - [x] Verify existing tests pass
+  - [x] Verify embedded build works
 
-- [ ] **Migrate mission/state.rs**
-  - [ ] Replace `MISSION_STATE` with trait-based state
-  - [ ] Replace `MISSION_STORAGE` with trait-based state
-  - [ ] Remove duplicate `_sync` function variants
-  - [ ] Update callers in `mavlink/handlers/`
+- [x] **Migrate mission/state.rs**
+  - [x] Replace `MISSION_STATE` with trait-based state
+  - [x] Replace `MISSION_STORAGE` with trait-based state
+  - [x] Remove duplicate `_sync` function variants
+  - [x] Update callers in `mavlink/handlers/`
 
-- [ ] **Migrate log_router.rs**
-  - [ ] Replace `LOG_ROUTER` static with trait-based state
-  - [ ] Remove feature-gated function duplicates
+- [x] **Migrate log_router.rs**
+  - [x] Replace `LOG_ROUTER` static with trait-based state
+  - [x] Remove feature-gated function duplicates
 
-- [ ] **Migrate navigation module**
-  - [ ] Replace `NAV_TARGET`, `NAV_OUTPUT` with trait-based state
-  - [ ] Update `REPOSITION_TARGET` handling
+- [x] **Migrate navigation module**
+  - [x] Replace `NAV_TARGET`, `NAV_OUTPUT` with trait-based state
+  - [x] Update `REPOSITION_TARGET` handling
 
 ### Phase 2 Deliverables
 
@@ -187,21 +187,21 @@ cargo test --lib --quiet
 
 ### Phase 3 Tasks
 
-- [ ] **Remove duplicate function implementations**
-  - [ ] `mavlink/handlers/rc_input.rs` – Remove stub handlers
-  - [ ] `mavlink/handlers/navigation.rs` – Remove stub handlers
-  - [ ] `mavlink/handlers/command.rs` – Consolidate implementations
-  - [ ] `mavlink/transport/udp.rs` – Unify transport implementations
-  - [ ] `rover/mode/manual.rs` – Remove duplicate constructors
+- [x] **Remove duplicate function implementations**
+  - [x] `mavlink/handlers/rc_input.rs` – Remove stub handlers
+  - [x] `mavlink/handlers/navigation.rs` – Remove stub handlers
+  - [x] `mavlink/handlers/command.rs` – Consolidate implementations
+  - [x] `mavlink/transport/udp.rs` – Unify transport implementations
+  - [x] `rover/mode/manual.rs` – Remove duplicate constructors
 
-- [ ] **Reclassify feature gates**
-  - [ ] Change `#[cfg(feature = "pico2_w")]` to `#[cfg(feature = "embassy")]` for async code
-  - [ ] Move `#[embassy_executor::task]` to `src/platform/` or use `embassy-executor` feature
-  - [ ] Ensure `pico2_w` only appears in `src/platform/rp2350/`
+- [x] **Reclassify feature gates**
+  - [x] Change `#[cfg(feature = "pico2_w")]` to `#[cfg(feature = "embassy")]` for async code
+  - [x] Move `#[embassy_executor::task]` to `src/platform/` or use `embassy-executor` feature
+  - [x] Ensure `pico2_w` only appears in `src/platform/rp2350/`
 
-- [ ] **Move HAL-dependent code to platform**
-  - [ ] Review `src/devices/imu/` for HAL leakage
-  - [ ] Review `src/core/parameters/saver.rs` for platform-specific code
+- [x] **Move HAL-dependent code to platform**
+  - [x] Review `src/devices/imu/` for HAL leakage
+  - [x] Review `src/core/parameters/saver.rs` for platform-specific code
 
 ### Phase 3 Deliverables
 
@@ -240,25 +240,25 @@ grep -r '#\[cfg(feature = "pico2_w"' src/ | grep -v "src/platform/" | wc -l
 
 ### Phase 4 Tasks
 
-- [ ] **Final cleanup**
-  - [ ] Review all remaining feature gates
-  - [ ] Remove any unnecessary gates
-  - [ ] Consolidate related gates where possible
+- [x] **Final cleanup**
+  - [x] Review all remaining feature gates
+  - [x] Remove any unnecessary gates
+  - [x] Consolidate related gates where possible
 
-- [ ] **CI enforcement**
-  - [ ] Create `scripts/check-feature-gates.sh`
-  - [ ] Add to pre-commit checks or CI pipeline
-  - [ ] Document enforcement in CLAUDE.md
+- [x] **CI enforcement**
+  - [x] Create `scripts/check-feature-gates.sh`
+  - [x] Add to pre-commit checks or CI pipeline
+  - [x] Document enforcement in CLAUDE.md
 
-- [ ] **Documentation**
-  - [ ] Update `docs/architecture.md` with trait layer
-  - [ ] Update `CLAUDE.md` feature gate guidelines
-  - [ ] Add examples of trait usage
+- [x] **Documentation**
+  - [x] Update `docs/architecture.md` with trait layer
+  - [x] Update `CLAUDE.md` feature gate guidelines
+  - [x] Add examples of trait usage
 
-- [ ] **Final verification**
-  - [ ] Run full test suite on host
-  - [ ] Run embedded build and flash test
-  - [ ] Measure control loop performance
+- [x] **Final verification**
+  - [x] Run full test suite on host
+  - [x] Run embedded build and flash test
+  - [x] Measure control loop performance
 
 ### Phase 4 Deliverables
 
@@ -287,17 +287,17 @@ cargo test --lib --quiet
 
 ## Definition of Done
 
-- [ ] `cargo fmt`
-- [ ] `cargo clippy --all-targets -- -D warnings`
-- [ ] `cargo test --lib --quiet`
-- [ ] `./scripts/build-rp2350.sh pico_trail_rover`
-- [ ] Feature gate count ≤60
-- [ ] `pico2_w` gates only in `src/platform/`
-- [ ] `docs/architecture.md` updated
-- [ ] ADR-3ciu6 status updated to Approved
-- [ ] No duplicate implementations remain
+- [x] `cargo fmt`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test --lib --quiet`
+- [x] `./scripts/build-rp2350.sh pico_trail_rover`
+- [x] Feature gate count ≤60
+- [x] `pico2_w` gates only in `src/platform/`
+- [x] `docs/architecture.md` updated
+- [x] ADR-3ciu6 status updated to Approved
+- [x] No duplicate implementations remain
 
 ## Open Questions
 
 - [x] Should backward-compatible global statics be maintained? → Yes, during transition
-- [ ] How to handle executor task macros that require platform feature? → Move to `src/platform/` or use wrapper
+- [x] How to handle executor task macros that require platform feature? → Move to `src/platform/` or use wrapper

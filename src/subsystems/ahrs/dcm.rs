@@ -21,6 +21,10 @@
 use micromath::F32Ext;
 use nalgebra::{Matrix3, Vector3};
 
+/// Z-axis unit vector representing gravity direction in NED frame.
+/// Defined as a constant to avoid repeated allocation in the 100Hz update loop.
+const Z_UNIT: Vector3<f32> = Vector3::new(0.0, 0.0, 1.0);
+
 /// Direction Cosine Matrix state
 ///
 /// Represents the rotation from body frame to earth frame using a 3x3 matrix.
@@ -139,9 +143,9 @@ impl Dcm {
 
         // 3. Error correction from accelerometer
         // Accelerometer measures gravity vector in body frame
-        // DCM * [0, 0, 1] gives expected gravity direction in body frame
+        // DCM * Z_UNIT gives expected gravity direction in body frame
         let accel_normalized = accel.normalize();
-        let gravity_body_expected = self.state.dcm_matrix * Vector3::new(0.0, 0.0, 1.0);
+        let gravity_body_expected = self.state.dcm_matrix * Z_UNIT;
         let error = accel_normalized.cross(&gravity_body_expected);
 
         // 4. Proportional and integral corrections
@@ -292,7 +296,8 @@ fn orthonormalize(mut dcm: Matrix3<f32>) -> Matrix3<f32> {
     dcm.set_row(1, &y.transpose());
     dcm.set_row(2, &z.transpose());
 
-    // Determinant check (optional, for debugging)
+    // Determinant check - debug builds only to avoid overhead in release
+    #[cfg(debug_assertions)]
     {
         let det = dcm.determinant();
         if (det - 1.0).abs() > 0.1 {
