@@ -175,7 +175,9 @@ This document tracks planned features outside the formal TDL process. Features h
 
 ### FB-004: Battery RTL
 
-**Status**: Proposed
+**Status**: In Progress
+
+**Analysis**: [AN-vhavw-battery-rtl](analysis/AN-vhavw-battery-rtl.md)
 
 **Description**: Automatic Return to Launch when battery reaches critical level, with distance-aware thresholds.
 

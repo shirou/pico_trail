@@ -21,12 +21,16 @@
 pub mod circle;
 pub mod loiter;
 pub mod manual;
+pub mod rtl;
+pub mod smartrtl;
 
 // Re-export mode implementations
 pub use circle::{CircleConfig, CircleDirection, CircleMode};
 #[cfg(feature = "rover")]
 pub use loiter::{LoiterState, RoverLoiter};
 pub use manual::ManualMode;
+pub use rtl::RtlMode;
+pub use smartrtl::SmartRtlMode;
 
 /// Control mode trait
 ///

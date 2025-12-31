@@ -39,25 +39,25 @@ use crate::subsystems::navigation::{
 ///
 /// When correcting, stop when distance < LOIT_RADIUS * HYSTERESIS_FACTOR.
 /// This creates a deadband between "start correcting" and "stop correcting" thresholds.
-#[cfg(any(feature = "rover", test))]
+#[cfg(feature = "rover")]
 const HYSTERESIS_FACTOR: f32 = 0.8;
 
 /// Low speed threshold for loiter point calculation
 ///
 /// If rover is moving slower than this, use current position as loiter point.
 /// Otherwise, project a stop point ahead based on deceleration.
-#[cfg(any(feature = "rover", test))]
+#[cfg(feature = "rover")]
 const LOW_SPEED_THRESHOLD: f32 = 0.5;
 
 /// Maximum projection distance for loiter point calculation
 ///
 /// Limits how far ahead the loiter point can be projected when entering
 /// loiter mode at high speed.
-#[cfg(any(feature = "rover", test))]
+#[cfg(feature = "rover")]
 const MAX_PROJECTION: f32 = 50.0;
 
 /// Default maximum deceleration for stop point projection (m/s^2)
-#[cfg(any(feature = "rover", test))]
+#[cfg(feature = "rover")]
 const DEFAULT_MAX_DECEL: f32 = 1.0;
 
 /// Loiter mode state

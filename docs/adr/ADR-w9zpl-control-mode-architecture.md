@@ -16,6 +16,7 @@
 - Related Tasks:
   - [T-3irm5-manual-control-implementation](../tasks/T-3irm5-manual-control-implementation/README.md)
   - [T-n24yy-rover-loiter-mode](../tasks/T-n24yy-rover-loiter-mode/README.md)
+  - [T-bo6xc-rtl-smartrtl-implementation](../tasks/T-bo6xc-rtl-smartrtl-implementation/README.md)
 
 ## Context
 
