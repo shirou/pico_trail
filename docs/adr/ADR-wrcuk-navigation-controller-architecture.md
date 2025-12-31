@@ -20,6 +20,7 @@
   - [ADR-2l5fh-differential-drive-kinematics](ADR-2l5fh-differential-drive-kinematics.md)
 - Related Tasks:
   - [T-tto4f-navigation-controller](../tasks/T-tto4f-navigation-controller/README.md)
+  - [T-u8q60-circle-mode-implementation](../tasks/T-u8q60-circle-mode-implementation/README.md)
 
 ## Context
 

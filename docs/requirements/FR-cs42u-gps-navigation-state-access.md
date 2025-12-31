@@ -13,11 +13,16 @@
 - Dependent Requirements:
   - [FR-2vbe8-navigation-controller](../requirements/FR-2vbe8-navigation-controller.md)
   - [FR-333ym-gps-waypoint-navigation](../requirements/FR-333ym-gps-waypoint-navigation.md)
+  - [FR-aw3h3-rover-loiter-mode](../requirements/FR-aw3h3-rover-loiter-mode.md)
   - [FR-erpze-guided-mode-navigation](../requirements/FR-erpze-guided-mode-navigation.md)
   - [FR-jm7mj-auto-mode-mission-execution](../requirements/FR-jm7mj-auto-mode-mission-execution.md)
+  - [FR-khjpl-circle-mode-implementation](../requirements/FR-khjpl-circle-mode-implementation.md)
   - [FR-m2c9z-mission-waypoint-navigation](../requirements/FR-m2c9z-mission-waypoint-navigation.md)
+  - [FR-m2noq-circle-center-point](../requirements/FR-m2noq-circle-center-point.md)
   - [FR-obwjs-position-target-command-handler](../requirements/FR-obwjs-position-target-command-handler.md)
   - [FR-tmibt-position-target-state](../requirements/FR-tmibt-position-target-state.md)
+  - [FR-tzlof-loiter-point-calculation](../requirements/FR-tzlof-loiter-point-calculation.md)
+  - [FR-w0spp-position-drift-detection](../requirements/FR-w0spp-position-drift-detection.md)
   - [NFR-wwke9-gps-state-thread-safety](../requirements/NFR-wwke9-gps-state-thread-safety.md)
 - Related Tasks:
   - [T-gvsxb-gps-state-telemetry](../tasks/T-gvsxb-gps-state-telemetry/README.md)

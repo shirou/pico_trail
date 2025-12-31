@@ -135,7 +135,9 @@ src/
 │   ├── mod.rs          # Module root
 │   ├── mode/           # Control mode implementations
 │   │   ├── mod.rs      # Mode trait definition
-│   │   └── manual.rs   # Manual mode (RC pass-through)
+│   │   ├── manual.rs   # Manual mode (RC pass-through)
+│   │   ├── circle.rs   # Circle mode (autonomous orbit)
+│   │   └── loiter.rs   # Loiter mode (position hold)
 │   └── mode_manager.rs # Mode lifecycle management
 │
 ├── boat/               # Level 5: Boat vehicle implementation (future)
@@ -807,6 +809,62 @@ Manual mode provides direct RC pass-through control with no stabilization.
 - **Actuator Layer**: Disarmed → neutral outputs
 - **Platform Layer**: Hardware failsafe (servo/ESC neutral on signal loss)
 
+### Circle Mode
+
+**Source**: `src/rover/mode/circle.rs`
+
+Circle mode provides autonomous circular orbit around a center point. Uses hybrid approach with continuous circle generator feeding look-ahead targets to the SimpleNavigationController.
+
+**Parameters**:
+
+- `CIRC_RADIUS`: Circle radius in meters (default: 20m)
+- `CIRC_SPEED`: Target speed in m/s (default: 2.0)
+- `CIRC_DIR`: Direction (0=Clockwise, 1=Counter-clockwise)
+
+**Implementation**:
+
+1. On enter: Calculate center point (CIRC_RADIUS ahead in heading direction)
+2. Each update: Generate look-ahead target point on circle perimeter
+3. Delegate path following to SimpleNavigationController
+4. Support stationary mode (CIRC_RADIUS=0)
+
+**References**: ADR-897ov-circle-mode-path-generation, FR-khjpl-circle-mode-implementation
+
+### Loiter Mode
+
+**Source**: `src/rover/mode/loiter.rs`
+
+Loiter mode provides position holding for ground rovers with two behavior types.
+
+**Parameters**:
+
+- `LOIT_TYPE`: Behavior type (0=stop, 1=active hold)
+- `LOIT_RADIUS`: Acceptable drift radius in meters (default: 2.0m)
+
+**Type 0 (Stop)**:
+
+- Simply stops motors and records loiter position
+- No active correction for drift
+- Suitable for flat terrain
+
+**Type 1 (Active Hold)**:
+
+- Monitors drift from loiter position using Haversine distance
+- Hysteresis prevents oscillation (0.8 factor)
+- Navigates back when drift exceeds LOIT_RADIUS
+- Degrades to Type 0 on GPS loss
+
+**Implementation**:
+
+1. On enter: Validate GPS fix, calculate loiter point (current or projected stop)
+2. Each update (Type 1):
+   - Calculate distance to loiter point
+   - Hysteresis state machine: start correcting > radius, stop < radius\*0.8
+   - Navigate back using SimpleNavigationController when correcting
+3. On GPS loss: Degrade to Type 0 (stop motors)
+
+**References**: ADR-8icsq-vehicle-type-separation, FR-aw3h3-rover-loiter-mode
+
 ### MAVLink Integration
 
 **Mode Switching**:
@@ -832,11 +890,12 @@ Manual mode provides direct RC pass-through control with no stabilization.
 
 Planned additions (deferred from current implementation):
 
-- **Additional Modes**: Hold, Auto, RTL, Guided
+- **Additional Modes**: Hold, Auto, RTL, Guided (Circle and Loiter implemented)
 - **Physical RC Receiver**: SBUS/PPM input support
 - **RC Input Filtering**: Low-pass filter for noisy inputs
 - **Actuator Features**: Rate limiting, deadband, expo curves
 - **Differential Steering**: Skid-steer and differential drive support
+- **Boat-specific Loiter**: Different loiter behavior for marine vehicles
 
 ## Development Workflow
 

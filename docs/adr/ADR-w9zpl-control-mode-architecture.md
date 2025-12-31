@@ -15,6 +15,7 @@
 - Supersedes ADRs: N/A
 - Related Tasks:
   - [T-3irm5-manual-control-implementation](../tasks/T-3irm5-manual-control-implementation/README.md)
+  - [T-n24yy-rover-loiter-mode](../tasks/T-n24yy-rover-loiter-mode/README.md)
 
 ## Context
 

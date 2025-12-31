@@ -5,7 +5,7 @@
 //! - Distance between two points (Haversine formula)
 //! - Angle wrapping utilities
 
-use libm::{atan2f, cosf, sinf, sqrtf};
+use libm::{asinf, atan2f, cosf, sinf, sqrtf};
 
 /// Earth radius in meters
 const EARTH_RADIUS_M: f32 = 6_371_000.0;
@@ -116,6 +116,64 @@ pub fn wrap_360(angle: f32) -> f32 {
     }
 
     result
+}
+
+/// Calculate destination point given start point, distance and bearing
+///
+/// Uses the spherical law of cosines to calculate the destination point.
+///
+/// Formula:
+/// φ₂ = asin(sin(φ₁)·cos(d/R) + cos(φ₁)·sin(d/R)·cos(θ))
+/// λ₂ = λ₁ + atan2(sin(θ)·sin(d/R)·cos(φ₁), cos(d/R) − sin(φ₁)·sin(φ₂))
+///
+/// # Arguments
+/// * `lat` - Latitude of start point in degrees
+/// * `lon` - Longitude of start point in degrees
+/// * `distance` - Distance to destination in meters
+/// * `bearing` - Bearing to destination in degrees (0-360, where 0 = North)
+///
+/// # Returns
+/// Tuple of (latitude, longitude) in degrees
+pub fn offset_position(lat: f32, lon: f32, distance: f32, bearing: f32) -> (f32, f32) {
+    // Handle zero distance case
+    if distance <= 0.0 {
+        return (lat, lon);
+    }
+
+    let lat_rad = lat * DEG_TO_RAD;
+    let lon_rad = lon * DEG_TO_RAD;
+    let bearing_rad = bearing * DEG_TO_RAD;
+    let angular_distance = distance / EARTH_RADIUS_M;
+
+    // Calculate destination latitude
+    let sin_lat1 = sinf(lat_rad);
+    let cos_lat1 = cosf(lat_rad);
+    let cos_d = cosf(angular_distance);
+    let sin_d = sinf(angular_distance);
+
+    let sin_lat2 = sin_lat1 * cos_d + cos_lat1 * sin_d * cosf(bearing_rad);
+    // Clamp to [-1, 1] to handle floating point errors
+    let sin_lat2_clamped = sin_lat2.clamp(-1.0, 1.0);
+    let lat2_rad = asinf(sin_lat2_clamped);
+
+    // Calculate destination longitude
+    let y = sinf(bearing_rad) * sin_d * cos_lat1;
+    let x = cos_d - sin_lat1 * sinf(lat2_rad);
+    let lon2_rad = lon_rad + atan2f(y, x);
+
+    // Convert back to degrees and normalize longitude
+    let lat2 = lat2_rad * RAD_TO_DEG;
+    let mut lon2 = lon2_rad * RAD_TO_DEG;
+
+    // Normalize longitude to [-180, +180]
+    while lon2 > 180.0 {
+        lon2 -= 360.0;
+    }
+    while lon2 < -180.0 {
+        lon2 += 360.0;
+    }
+
+    (lat2, lon2)
 }
 
 #[cfg(test)]
@@ -390,6 +448,116 @@ mod tests {
                     lon2
                 );
             }
+        }
+    }
+
+    // ========== offset_position Tests ==========
+
+    #[test]
+    fn test_offset_position_north() {
+        // Move 1000m north from equator/prime meridian
+        let (lat, lon) = offset_position(0.0, 0.0, 1000.0, 0.0);
+        // 1000m north should increase latitude by ~0.009 degrees
+        assert!(
+            lat > 0.008 && lat < 0.010,
+            "Expected lat ~0.009°, got {}°",
+            lat
+        );
+        assert!(lon.abs() < 0.001, "Expected lon ~0°, got {}°", lon);
+    }
+
+    #[test]
+    fn test_offset_position_south() {
+        let (lat, lon) = offset_position(0.0, 0.0, 1000.0, 180.0);
+        assert!(
+            lat < -0.008 && lat > -0.010,
+            "Expected lat ~-0.009°, got {}°",
+            lat
+        );
+        assert!(lon.abs() < 0.001, "Expected lon ~0°, got {}°", lon);
+    }
+
+    #[test]
+    fn test_offset_position_east() {
+        let (lat, lon) = offset_position(0.0, 0.0, 1000.0, 90.0);
+        assert!(lat.abs() < 0.001, "Expected lat ~0°, got {}°", lat);
+        assert!(
+            lon > 0.008 && lon < 0.010,
+            "Expected lon ~0.009°, got {}°",
+            lon
+        );
+    }
+
+    #[test]
+    fn test_offset_position_west() {
+        let (lat, lon) = offset_position(0.0, 0.0, 1000.0, 270.0);
+        assert!(lat.abs() < 0.001, "Expected lat ~0°, got {}°", lat);
+        assert!(
+            lon < -0.008 && lon > -0.010,
+            "Expected lon ~-0.009°, got {}°",
+            lon
+        );
+    }
+
+    #[test]
+    fn test_offset_position_zero_distance() {
+        let (lat, lon) = offset_position(35.6762, 139.6503, 0.0, 45.0);
+        assert!(
+            (lat - 35.6762).abs() < 0.0001,
+            "Expected lat 35.6762°, got {}°",
+            lat
+        );
+        assert!(
+            (lon - 139.6503).abs() < 0.0001,
+            "Expected lon 139.6503°, got {}°",
+            lon
+        );
+    }
+
+    #[test]
+    fn test_offset_position_roundtrip() {
+        // Offset then calculate distance should match original
+        let start_lat = 35.6762;
+        let start_lon = 139.6503;
+        let distance = 500.0;
+        let bearing = 45.0;
+
+        let (end_lat, end_lon) = offset_position(start_lat, start_lon, distance, bearing);
+        let calc_distance = calculate_distance(start_lat, start_lon, end_lat, end_lon);
+
+        assert!(
+            (calc_distance - distance).abs() < 1.0,
+            "Expected distance {}m, got {}m",
+            distance,
+            calc_distance
+        );
+    }
+
+    #[test]
+    fn test_offset_position_all_bearings() {
+        let start_lat = 0.0;
+        let start_lon = 0.0;
+        let distance = 1000.0;
+
+        for bearing in (0..360).step_by(30) {
+            let (lat, lon) = offset_position(start_lat, start_lon, distance, bearing as f32);
+            assert!(
+                !lat.is_nan() && !lon.is_nan(),
+                "NaN result for bearing {}°",
+                bearing
+            );
+            assert!(
+                (-90.0..=90.0).contains(&lat),
+                "Latitude out of range for bearing {}°: {}",
+                bearing,
+                lat
+            );
+            assert!(
+                (-180.0..=180.0).contains(&lon),
+                "Longitude out of range for bearing {}°: {}",
+                bearing,
+                lon
+            );
         }
     }
 }

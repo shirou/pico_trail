@@ -18,9 +18,14 @@
 //! - FR-sp3at-control-modes: Mode requirements
 //! - ArduPilot Rover modes: https://ardupilot.org/rover/docs/rover-control-modes.html
 
+pub mod circle;
+pub mod loiter;
 pub mod manual;
 
 // Re-export mode implementations
+pub use circle::{CircleConfig, CircleDirection, CircleMode};
+#[cfg(feature = "rover")]
+pub use loiter::{LoiterState, RoverLoiter};
 pub use manual::ManualMode;
 
 /// Control mode trait

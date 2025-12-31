@@ -47,7 +47,7 @@ mod types;
 
 // Re-export public API
 pub use controller::{NavigationController, SimpleNavigationController};
-pub use geo::{calculate_bearing, calculate_distance, wrap_180, wrap_360};
+pub use geo::{calculate_bearing, calculate_distance, offset_position, wrap_180, wrap_360};
 pub use types::{NavigationOutput, PositionTarget, SimpleNavConfig};
 
 // ============================================================================

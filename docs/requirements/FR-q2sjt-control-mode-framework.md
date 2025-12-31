@@ -12,6 +12,7 @@
 - Dependent Requirements:
   - [FR-erpze-guided-mode-navigation](FR-erpze-guided-mode-navigation.md)
   - [FR-jm7mj-auto-mode-mission-execution](FR-jm7mj-auto-mode-mission-execution.md)
+  - [FR-khjpl-circle-mode-implementation](FR-khjpl-circle-mode-implementation.md)
   - [FR-sp3at-control-modes](FR-sp3at-control-modes.md)
   - [FR-uk0us-manual-mode](FR-uk0us-manual-mode.md)
 - Related Tasks:

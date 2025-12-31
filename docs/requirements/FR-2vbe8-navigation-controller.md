@@ -14,8 +14,11 @@
   - [FR-cs42u-gps-navigation-state-access](FR-cs42u-gps-navigation-state-access.md)
   - [FR-41nab-differential-drive-kinematics](FR-41nab-differential-drive-kinematics.md)
 - Dependent Requirements:
+  - [FR-9s9th-position-correction-navigation](FR-9s9th-position-correction-navigation.md)
+  - [FR-aw3h3-rover-loiter-mode](FR-aw3h3-rover-loiter-mode.md)
   - [FR-erpze-guided-mode-navigation](FR-erpze-guided-mode-navigation.md)
   - [FR-jm7mj-auto-mode-mission-execution](FR-jm7mj-auto-mode-mission-execution.md)
+  - [FR-khjpl-circle-mode-implementation](FR-khjpl-circle-mode-implementation.md)
   - [FR-m2c9z-mission-waypoint-navigation](FR-m2c9z-mission-waypoint-navigation.md)
   - [NFR-iuk5h-navigation-update-rate](NFR-iuk5h-navigation-update-rate.md)
   - [NFR-wtdig-navigation-controller-performance](NFR-wtdig-navigation-controller-performance.md)

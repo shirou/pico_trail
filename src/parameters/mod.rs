@@ -55,15 +55,19 @@
 pub mod arming;
 pub mod battery;
 pub mod board;
+pub mod circle;
 pub mod failsafe;
 pub mod fence;
+pub mod loiter;
 pub mod storage;
 pub mod wifi;
 
 pub use arming::ArmingParams;
 pub use battery::BatteryParams;
 pub use board::BoardParams;
+pub use circle::CircleParams;
 pub use failsafe::FailsafeParams;
 pub use fence::FenceParams;
+pub use loiter::LoiterParams;
 pub use storage::{ParamValue, ParameterStore};
 pub use wifi::WifiParams;

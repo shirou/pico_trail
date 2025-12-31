@@ -12,10 +12,11 @@
   - [NFR-3wlo1-imu-sampling-rate](NFR-3wlo1-imu-sampling-rate.md)
 
 - Dependent Requirements:
-  - [FR-333ym-gps-waypoint-navigation](FR-333ym-gps-waypoint-navigation.md)
-  - [FR-ap18p-ekf-health-validation](FR-ap18p-ekf-health-validation.md)
-  - [FR-3f2cn-quaternion-ekf-ahrs](FR-3f2cn-quaternion-ekf-ahrs.md)
   - [FR-0azz0-attitude-state-interface](FR-0azz0-attitude-state-interface.md)
+  - [FR-333ym-gps-waypoint-navigation](FR-333ym-gps-waypoint-navigation.md)
+  - [FR-3f2cn-quaternion-ekf-ahrs](FR-3f2cn-quaternion-ekf-ahrs.md)
+  - [FR-ap18p-ekf-health-validation](FR-ap18p-ekf-health-validation.md)
+  - [FR-m2noq-circle-center-point](FR-m2noq-circle-center-point.md)
 
 - Related Tasks:
   - [T-49k7n-ahrs-dcm-implementation](../tasks/T-49k7n-ahrs-dcm-implementation/README.md)

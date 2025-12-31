@@ -16,6 +16,7 @@
 
 - Dependent Requirements:
   - [FR-2e00g-mode-execution-framework](FR-2e00g-mode-execution-framework.md)
+  - [FR-aw3h3-rover-loiter-mode](FR-aw3h3-rover-loiter-mode.md)
   - [FR-cxts2-controlled-emergency-stop](FR-cxts2-controlled-emergency-stop.md)
   - [FR-lusbw-rc-signal-loss-failsafe](FR-lusbw-rc-signal-loss-failsafe.md)
   - [FR-meyja-manual-mode-implementation](FR-meyja-manual-mode-implementation.md)

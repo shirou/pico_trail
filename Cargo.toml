@@ -151,6 +151,7 @@ embassy = [
 # RP2350/Pico 2 W platform (includes embassy + RP2350-specific dependencies)
 pico2_w = [
     "embassy",  # Enable common embassy features
+    "rover",    # Enable rover-specific code (ADR-8icsq)
     "cortex-m", "cortex-m-rt", "defmt", "defmt-rtt",
     "panic-probe", "rp235x-hal",
     "embedded-hal", "embedded-hal-1", "embedded-hal-async", "embedded-hal-nb", "nb", "fugit",
@@ -162,6 +163,10 @@ pico2_w = [
 
 usb_serial = ["pico2_w"]  # Enable USB Serial logging (requires pico2_w)
 mock = []
+
+# Vehicle type features (ADR-8icsq: Vehicle Type Separation)
+rover = []  # Ground rover vehicle type
+# boat = []  # Future: Boat/marine vehicle type
 
 # GPS vendor initialization features
 gps-ublox = []  # u-blox GPS initialization (NEO-M8N, etc.)
