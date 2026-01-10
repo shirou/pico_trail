@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Analysis
-- Status: Draft
+- Status: Approved
 
 ## Links
 
@@ -17,7 +17,9 @@
 - Related ADRs:
   - [ADR-t5cq4-mpu9250-i2c-driver-architecture](../adr/ADR-t5cq4-mpu9250-i2c-driver-architecture.md)
   - [ADR-ymkzt-ekf-ahrs-implementation](../adr/ADR-ymkzt-ekf-ahrs-implementation.md)
+  - [ADR-nzvfy-ahrs-abstraction-architecture](../adr/ADR-nzvfy-ahrs-abstraction-architecture.md)
 - Related Tasks:
+  - [T-x8mq2-bno086-driver-implementation](../tasks/T-x8mq2-bno086-driver-implementation/README.md)
   - ~~[T-0kbo4-icm20948-driver-implementation](../tasks/T-0kbo4-icm20948-driver-implementation/README.md)~~ (Cancelled - counterfeit hardware)
   - ~~[T-kx79g-mpu9250-driver-implementation](../tasks/T-kx79g-mpu9250-driver-implementation/README.md)~~ (Cancelled)
 
