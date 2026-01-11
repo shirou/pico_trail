@@ -21,6 +21,7 @@
   - [ADR-t5cq4-mpu9250-i2c-driver-architecture](../adr/ADR-t5cq4-mpu9250-i2c-driver-architecture.md)
 - Related Tasks:
   - [T-x8mq2-bno086-driver-implementation](../tasks/T-x8mq2-bno086-driver-implementation/README.md)
+  - [T-7khm3-ahrs-abstraction-layer](../tasks/T-7khm3-ahrs-abstraction-layer/README.md)
   - ~~[T-0kbo4-icm20948-driver-implementation](../tasks/T-0kbo4-icm20948-driver-implementation/README.md)~~ (Cancelled)
   - ~~[T-kx79g-mpu9250-driver-implementation](../tasks/T-kx79g-mpu9250-driver-implementation/README.md)~~ (Cancelled)
 

@@ -18,9 +18,11 @@
 
 use crate::communication::shtp::{ShtpChannel, ShtpError, ShtpPacket, ShtpTransport};
 use crate::devices::traits::{QuaternionError, QuaternionReading, QuaternionSensor};
-use nalgebra::Quaternion;
+use nalgebra::{Quaternion, Vector3};
 
-use super::reports::{build_product_id_request, ProductIdResponse, RotationVectorReport};
+use super::reports::{
+    build_product_id_request, GyroscopeReport, ProductIdResponse, RotationVectorReport,
+};
 
 /// Maximum consecutive errors before marking sensor unhealthy
 const MAX_CONSECUTIVE_ERRORS: u32 = 3;
@@ -109,6 +111,9 @@ where
     /// Last accuracy estimate (radians)
     last_accuracy: f32,
 
+    /// Last angular rate reading (rad/s, NED frame)
+    last_angular_rate: Vector3<f32>,
+
     /// Last update timestamp (microseconds)
     last_update_us: u64,
 
@@ -146,6 +151,7 @@ where
             config,
             last_quaternion: Quaternion::identity(),
             last_accuracy: core::f32::consts::PI,
+            last_angular_rate: Vector3::zeros(),
             last_update_us: 0,
             healthy: false,
             error_count: 0,
@@ -291,11 +297,11 @@ where
         Ok(())
     }
 
-    /// Configure Rotation Vector report
+    /// Configure Rotation Vector and Gyroscope Calibrated reports
     async fn configure_rotation_vector(&mut self) -> Result<(), QuaternionError> {
         use super::reports::{build_set_feature_command_for, ReportId};
 
-        // Try enabling Game Rotation Vector (0x08) - doesn't need magnetometer
+        // Enable Game Rotation Vector (0x08) - doesn't need magnetometer
         #[cfg(feature = "pico2_w")]
         crate::log_info!(
             "Enabling Game Rotation Vector (0x08) at {}us interval",
@@ -317,14 +323,41 @@ where
             .await
             .map_err(|_| QuaternionError::I2cError)?;
 
-        #[cfg(feature = "pico2_w")]
-        crate::log_info!("Feature command sent, waiting for response...");
-
         // Wait for command to be processed
+        delay_ms(50).await;
+
+        // Enable Gyroscope Calibrated (0x02) for angular rate data
+        // Required for PID D-term in flight control
+        #[cfg(feature = "pico2_w")]
+        crate::log_info!(
+            "Enabling Gyroscope Calibrated (0x02) at {}us interval",
+            self.config.report_interval_us
+        );
+
+        let gyro_payload = build_set_feature_command_for(
+            ReportId::GyroscopeCalibrated as u8,
+            self.config.report_interval_us,
+        );
+
+        packet = ShtpPacket::<128>::with_header(ShtpChannel::Control, 0);
+        packet
+            .set_payload(&gyro_payload)
+            .map_err(|_| QuaternionError::ProtocolError)?;
+
+        self.transport
+            .write_packet(&packet)
+            .await
+            .map_err(|_| QuaternionError::I2cError)?;
+
+        #[cfg(feature = "pico2_w")]
+        crate::log_info!("Feature commands sent, waiting for responses...");
+
+        // Wait for commands to be processed
         delay_ms(100).await;
 
-        // Read responses to see if we get a Feature Response (0xFC)
+        // Read responses to see if we get Feature Responses (0xFC)
         let mut packet = ShtpPacket::<128>::new();
+        let mut got_response = false;
         for _ in 0..10 {
             if self.transport.read_packet(&mut packet).await.is_ok() {
                 let payload_data = packet.payload();
@@ -344,21 +377,27 @@ where
 
                 // 0xFC is Get Feature Response - confirms feature is enabled
                 if report_id == ReportId::GetFeatureResponse as u8 {
-                    #[cfg(feature = "pico2_w")]
-                    crate::log_info!("Feature enabled successfully!");
-                    return Ok(());
+                    got_response = true;
                 }
             }
             delay_ms(20).await;
         }
 
-        #[cfg(feature = "pico2_w")]
-        crate::log_warn!("No feature response received, sensor may not be configured");
+        if got_response {
+            #[cfg(feature = "pico2_w")]
+            crate::log_info!("Features enabled successfully!");
+        } else {
+            #[cfg(feature = "pico2_w")]
+            crate::log_warn!("No feature response received, sensor may not be configured");
+        }
 
         Ok(())
     }
 
-    /// Read a single packet and process if it's a Rotation Vector report
+    /// Read a single packet and process sensor reports
+    ///
+    /// Handles both quaternion reports (0x05, 0x08) and gyroscope reports (0x02).
+    /// Returns true if a quaternion report was successfully processed.
     ///
     /// This is the polling-mode read function. In Phase 3, this will be
     /// replaced with interrupt-driven reading.
@@ -367,11 +406,21 @@ where
 
         match self.transport.read_packet(&mut packet).await {
             Ok(()) => {
-                // Check if this is a Rotation Vector or Game Rotation Vector report
+                // Check if this is a sensor report
                 if packet.channel == ShtpChannel::InputReport as u8 {
                     let payload = packet.payload();
                     if !payload.is_empty() {
                         let report_id = payload[0];
+
+                        // 0x02 = Gyroscope Calibrated
+                        if report_id == 0x02 {
+                            if let Some(report) = GyroscopeReport::parse(payload) {
+                                // Store angular rate in NED frame
+                                self.last_angular_rate = report.to_angular_velocity_ned();
+                            }
+                            // Don't return true for gyro-only - we need quaternion
+                            return Ok(false);
+                        }
 
                         // 0x05 = Rotation Vector, 0x08 = Game Rotation Vector (direct)
                         if report_id == 0x05 || report_id == 0x08 {
@@ -395,6 +444,7 @@ where
                             // After each report: [2-byte delta][next report]...
                             let mut offset = 5;
                             let mut first_report = true;
+                            let mut got_quaternion = false;
 
                             while offset < payload.len() {
                                 // Skip 2-byte time delta (except for first report)
@@ -408,9 +458,12 @@ where
 
                                 let embedded_id = payload[offset];
                                 let report_size = match embedded_id {
-                                    0x01..=0x04 => 10, // Accel/Gyro/Mag/LinAccel
-                                    0x05 => 14,        // Rotation Vector (with accuracy)
-                                    0x08 => 12,        // Game Rotation Vector (no accuracy)
+                                    0x01 => 10, // Accelerometer
+                                    0x02 => 10, // Gyroscope Calibrated
+                                    0x03 => 10, // Magnetometer
+                                    0x04 => 10, // Linear Acceleration
+                                    0x05 => 14, // Rotation Vector (with accuracy)
+                                    0x08 => 12, // Game Rotation Vector (no accuracy)
                                     _ => {
                                         // Unknown report - skip 1 byte and try again
                                         offset += 1;
@@ -423,6 +476,14 @@ where
                                     break;
                                 }
 
+                                // Parse gyroscope reports
+                                if embedded_id == 0x02 {
+                                    if let Some(report) = GyroscopeReport::parse(&payload[offset..])
+                                    {
+                                        self.last_angular_rate = report.to_angular_velocity_ned();
+                                    }
+                                }
+
                                 // Parse quaternion reports
                                 if embedded_id == 0x05 || embedded_id == 0x08 {
                                     if let Some(report) =
@@ -433,17 +494,21 @@ where
                                         self.last_update_us = timestamp_us();
                                         self.error_count = 0;
                                         self.healthy = true;
-                                        return Ok(true);
+                                        got_quaternion = true;
                                     }
                                 }
 
                                 // Move to next report
                                 offset += report_size;
                             }
+
+                            if got_quaternion {
+                                return Ok(true);
+                            }
                         }
                     }
                 }
-                // Packet received but not a Rotation Vector report
+                // Packet received but not a quaternion report
                 Ok(false)
             }
             Err(ShtpError::NoData) => {
@@ -496,6 +561,16 @@ where
     /// Get the current error count
     pub fn error_count(&self) -> u32 {
         self.error_count
+    }
+
+    /// Get the last angular rate reading (rad/s, NED frame)
+    ///
+    /// Returns the most recent gyroscope reading converted to NED frame.
+    /// Updated whenever a Gyroscope Calibrated report (0x02) is received.
+    ///
+    /// This is required for PID D-term control in flight controllers.
+    pub fn angular_rate(&self) -> Vector3<f32> {
+        self.last_angular_rate
     }
 
     /// Release the transport layer

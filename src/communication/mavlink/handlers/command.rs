@@ -1111,6 +1111,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_set_home_specified_location() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -1146,6 +1147,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_set_home_current_location_no_gps() {
         let state = SystemState::new(); // No GPS fix
         critical_section::with(|cs| {
@@ -1164,6 +1166,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_set_home_current_location_with_gps() {
         use crate::devices::gps::{GpsFixType, GpsPosition};
 
@@ -1206,6 +1209,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_set_home_invalid_coordinates() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -1226,6 +1230,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_set_home_negative_coordinates() {
         let state = SystemState::new();
         critical_section::with(|cs| {

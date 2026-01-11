@@ -18,6 +18,7 @@
 - Related Tasks:
   - [T-x8mq2-bno086-driver-implementation](../tasks/T-x8mq2-bno086-driver-implementation/README.md)
   - [T-49k7n-ahrs-dcm-implementation](../tasks/T-49k7n-ahrs-dcm-implementation/README.md)
+  - [T-7khm3-ahrs-abstraction-layer](../tasks/T-7khm3-ahrs-abstraction-layer/README.md)
   - ~~[T-qwvco-bmi088-imu-driver-implementation](../tasks/T-qwvco-bmi088-imu-driver-implementation/README.md)~~ (Deprecated)
 
 ## Requirement Statement

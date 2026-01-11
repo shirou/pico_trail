@@ -21,6 +21,7 @@ pub mod communication;
 pub mod parameters;
 
 // Subsystems (FR-eyuh8: AHRS, Navigation, Control)
+// AHRS abstraction layer is part of subsystems::ahrs (ADR-nzvfy)
 pub mod subsystems;
 
 // Common libraries (ArduPilot libraries/ equivalent)

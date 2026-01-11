@@ -91,6 +91,6 @@ pub use gpio::{IntPin, NoIntPin, NoRstPin, RstPin};
 
 // Report types
 pub use reports::{
-    build_product_id_request, build_set_feature_command, ControlCommand, ProductIdResponse,
-    ReportId, RotationVectorReport,
+    build_product_id_request, build_set_feature_command, build_set_feature_command_for,
+    ControlCommand, GyroscopeReport, ProductIdResponse, ReportId, RotationVectorReport,
 };

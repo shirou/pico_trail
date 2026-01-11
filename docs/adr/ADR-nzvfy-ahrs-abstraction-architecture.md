@@ -18,6 +18,7 @@
 - Supersedes ADRs: N/A
 - Related Tasks:
   - [T-x8mq2-bno086-driver-implementation](../tasks/T-x8mq2-bno086-driver-implementation/README.md)
+  - [T-7khm3-ahrs-abstraction-layer](../tasks/T-7khm3-ahrs-abstraction-layer/README.md)
 
 ## Context
 
@@ -306,8 +307,9 @@ src/
 
 ## Open Questions
 
-- [ ] Should `AhrsState` include covariance/uncertainty estimates? → Method: Evaluate if flight control needs this
-- [ ] How to handle BNO086 angular rate output (separate report)? → Method: Investigate enabling gyro report alongside quaternion
+- [x] Should `AhrsState` include covariance/uncertainty estimates? → Resolved: Added `accuracy_rad: Option<f32>` field for external AHRS
+- [x] How to handle BNO086 angular rate output (separate report)? → Resolved: Must enable GYROSCOPE_CALIBRATED (Report ID 0x05) alongside rotation vector. Angular rate is REQUIRED for PID D-term.
+- [x] BNO086 coordinate frame conversion? → Resolved: BNO086 outputs Z-up frame, must convert to NED in `Bno086ExternalAhrs` implementation
 - [ ] GPS velocity integration for yaw correction? → Next step: Design in separate ADR when GPS integration is planned
 
 ## External References

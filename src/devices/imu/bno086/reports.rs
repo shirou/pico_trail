@@ -6,19 +6,28 @@
 //! # Report Types
 //!
 //! - Rotation Vector (0x05): Quaternion orientation with accuracy
-//! - Game Rotation Vector (0x08): Quaternion without magnetometer (future)
+//! - Game Rotation Vector (0x08): Quaternion without magnetometer
+//! - Gyroscope Calibrated (0x02): Angular velocity in rad/s
 //! - Product ID Response (0xF8): Device identification
 //!
 //! # Fixed-Point Formats
 //!
 //! - Q14: Quaternion components (scale = 1/16384)
 //! - Q12: Accuracy in radians (scale = 1/4096)
+//! - Q9: Gyroscope angular velocity (scale = 1/512)
+//!
+//! # Coordinate Frame
+//!
+//! BNO086 outputs in Android-style coordinate system (X=right, Y=up, Z=out).
+//! For NED (North-East-Down) frame used in flight control, coordinate conversion
+//! is required in the AHRS abstraction layer.
 //!
 //! # References
 //!
 //! - BNO080/BNO085/BNO086 Datasheet - Section 6.5: Sensor Reports
+//! - SH-2 Reference Manual - Gyroscope Calibrated Report (0x02)
 
-use nalgebra::Quaternion;
+use nalgebra::{Quaternion, Vector3};
 
 /// BNO086 Report IDs
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +70,9 @@ const Q14_SCALE: f32 = 1.0 / 16384.0;
 
 /// Q12 fixed-point scale factor (1/4096)
 const Q12_SCALE: f32 = 1.0 / 4096.0;
+
+/// Q9 fixed-point scale factor (1/512) - used for gyroscope data
+const Q9_SCALE: f32 = 1.0 / 512.0;
 
 /// BNO086 Rotation Vector Report
 ///
@@ -227,6 +239,130 @@ impl RotationVectorReport {
     /// Lower values indicate higher accuracy.
     pub fn accuracy_radians(&self) -> f32 {
         self.accuracy as f32 * Q12_SCALE
+    }
+
+    /// Get status accuracy level (0-3)
+    ///
+    /// - 0: Unreliable
+    /// - 1: Low accuracy
+    /// - 2: Medium accuracy
+    /// - 3: High accuracy
+    pub fn accuracy_status(&self) -> u8 {
+        self.status & 0x03
+    }
+}
+
+/// BNO086 Gyroscope Calibrated Report
+///
+/// Parsed from Report ID 0x02. Contains calibrated angular velocity in rad/s.
+///
+/// # Memory Layout (10 bytes total)
+///
+/// ```text
+/// Offset  Size  Description
+/// 0       1     Report ID (0x02)
+/// 1       1     Sequence number
+/// 2       1     Status (accuracy in bits 1:0)
+/// 3       1     Delay
+/// 4-5     2     Gyro X (Q9 fixed-point, rad/s)
+/// 6-7     2     Gyro Y (Q9 fixed-point, rad/s)
+/// 8-9     2     Gyro Z (Q9 fixed-point, rad/s)
+/// ```
+///
+/// # Coordinate Frame
+///
+/// BNO086 outputs in Android-style coordinate system.
+/// For NED frame, conversion is applied in the AHRS layer.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct GyroscopeReport {
+    /// Sequence number for this report
+    pub sequence: u8,
+    /// Status byte (accuracy bits in lower 2 bits)
+    pub status: u8,
+    /// Angular velocity X (Q9 fixed-point, rad/s)
+    pub gyro_x: i16,
+    /// Angular velocity Y (Q9 fixed-point, rad/s)
+    pub gyro_y: i16,
+    /// Angular velocity Z (Q9 fixed-point, rad/s)
+    pub gyro_z: i16,
+}
+
+impl GyroscopeReport {
+    /// Minimum payload size for a valid Gyroscope Calibrated report
+    /// header(4) + gyro(6) = 10 bytes
+    pub const MIN_PAYLOAD_SIZE: usize = 10;
+
+    /// Parse from SHTP payload bytes
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` - Raw payload bytes (must be at least 10 bytes)
+    ///
+    /// # Returns
+    ///
+    /// * `Some(report)` - Successfully parsed report
+    /// * `None` - Payload too small or wrong report ID
+    pub fn parse(payload: &[u8]) -> Option<Self> {
+        if payload.len() < Self::MIN_PAYLOAD_SIZE {
+            return None;
+        }
+
+        // Verify report ID
+        if payload[0] != ReportId::GyroscopeCalibrated as u8 {
+            return None;
+        }
+
+        // SH-2 Reference Manual report structure:
+        // Byte 0: Report ID (0x02)
+        // Byte 1: Sequence number
+        // Byte 2: Status
+        // Byte 3: Delay
+        // Byte 4-5: Gyro X (16-bit LE, Q9)
+        // Byte 6-7: Gyro Y (16-bit LE, Q9)
+        // Byte 8-9: Gyro Z (16-bit LE, Q9)
+
+        let gyro_x = i16::from_le_bytes([payload[4], payload[5]]);
+        let gyro_y = i16::from_le_bytes([payload[6], payload[7]]);
+        let gyro_z = i16::from_le_bytes([payload[8], payload[9]]);
+
+        Some(Self {
+            sequence: payload[1],
+            status: payload[2],
+            gyro_x,
+            gyro_y,
+            gyro_z,
+        })
+    }
+
+    /// Convert to angular velocity vector (rad/s)
+    ///
+    /// Returns angular velocity in the sensor's coordinate frame (Android-style).
+    /// For NED frame conversion, use `to_angular_velocity_ned()`.
+    pub fn to_angular_velocity(&self) -> Vector3<f32> {
+        Vector3::new(
+            self.gyro_x as f32 * Q9_SCALE,
+            self.gyro_y as f32 * Q9_SCALE,
+            self.gyro_z as f32 * Q9_SCALE,
+        )
+    }
+
+    /// Convert to angular velocity vector in NED frame (rad/s)
+    ///
+    /// Applies coordinate transformation from BNO086's Android-style frame
+    /// to NED (North-East-Down) frame used in flight control.
+    ///
+    /// BNO086 (Android): X=right, Y=up, Z=out (of screen)
+    /// NED: X=north/forward, Y=east/right, Z=down
+    ///
+    /// When sensor is mounted with chip facing up:
+    /// - NED X (roll rate) = BNO Y (forward rotation)
+    /// - NED Y (pitch rate) = BNO X (right rotation)
+    /// - NED Z (yaw rate) = -BNO Z (down rotation, inverted)
+    pub fn to_angular_velocity_ned(&self) -> Vector3<f32> {
+        let sensor = self.to_angular_velocity();
+        // Transform from Android frame to NED frame
+        // This assumes standard mounting (sensor chip facing up)
+        Vector3::new(sensor.y, sensor.x, -sensor.z)
     }
 
     /// Get status accuracy level (0-3)
@@ -525,5 +661,92 @@ mod tests {
         assert!((4096.0 * Q12_SCALE - 1.0).abs() < 0.0001);
         // Raw 2048 should equal 0.5
         assert!((2048.0 * Q12_SCALE - 0.5).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_q9_scale_factor() {
+        // Q9 format: value = raw * (1/512)
+        // Raw 512 should equal 1.0 rad/s
+        assert!((512.0 * Q9_SCALE - 1.0).abs() < 0.0001);
+        // Raw 256 should equal 0.5 rad/s
+        assert!((256.0 * Q9_SCALE - 0.5).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_gyroscope_report_parse() {
+        // Simulated Gyroscope Calibrated report payload
+        // Report ID=0x02, seq=5, status=3 (high accuracy)
+        // Gyro values: X=512 (1.0 rad/s), Y=256 (0.5 rad/s), Z=-256 (-0.5 rad/s)
+        let payload: [u8; 10] = [
+            0x02, // Byte 0: Report ID
+            0x05, // Byte 1: Sequence
+            0x03, // Byte 2: Status (high accuracy)
+            0x00, // Byte 3: Delay
+            0x00, 0x02, // Byte 4-5: Gyro X = 512 (LE: 0x0200)
+            0x00, 0x01, // Byte 6-7: Gyro Y = 256 (LE: 0x0100)
+            0x00, 0xFF, // Byte 8-9: Gyro Z = -256 (LE: 0xFF00)
+        ];
+
+        let report = GyroscopeReport::parse(&payload).unwrap();
+
+        assert_eq!(report.sequence, 5);
+        assert_eq!(report.status, 3);
+        assert_eq!(report.gyro_x, 512);
+        assert_eq!(report.gyro_y, 256);
+        assert_eq!(report.gyro_z, -256);
+        assert_eq!(report.accuracy_status(), 3);
+    }
+
+    #[test]
+    fn test_gyroscope_report_to_angular_velocity() {
+        let report = GyroscopeReport {
+            sequence: 0,
+            status: 3,
+            gyro_x: 512,  // 1.0 rad/s
+            gyro_y: 256,  // 0.5 rad/s
+            gyro_z: -512, // -1.0 rad/s
+        };
+
+        let v = report.to_angular_velocity();
+
+        assert!((v.x - 1.0).abs() < 0.001);
+        assert!((v.y - 0.5).abs() < 0.001);
+        assert!((v.z + 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_gyroscope_report_to_angular_velocity_ned() {
+        // Test NED frame conversion
+        // Sensor frame: X=1.0, Y=0.5, Z=-1.0
+        // NED frame: X=Y_sensor=0.5, Y=X_sensor=1.0, Z=-Z_sensor=1.0
+        let report = GyroscopeReport {
+            sequence: 0,
+            status: 3,
+            gyro_x: 512,  // 1.0 rad/s
+            gyro_y: 256,  // 0.5 rad/s
+            gyro_z: -512, // -1.0 rad/s
+        };
+
+        let v_ned = report.to_angular_velocity_ned();
+
+        assert!((v_ned.x - 0.5).abs() < 0.001); // NED X = sensor Y
+        assert!((v_ned.y - 1.0).abs() < 0.001); // NED Y = sensor X
+        assert!((v_ned.z - 1.0).abs() < 0.001); // NED Z = -sensor Z
+    }
+
+    #[test]
+    fn test_gyroscope_report_parse_too_small() {
+        let payload: [u8; 5] = [0x02, 0x01, 0x03, 0x00, 0x00];
+        assert!(GyroscopeReport::parse(&payload).is_none());
+    }
+
+    #[test]
+    fn test_gyroscope_report_parse_wrong_report_id() {
+        // 10 bytes with wrong report ID (0x05 instead of 0x02)
+        let payload: [u8; 10] = [
+            0x05, // Wrong Report ID (Rotation Vector)
+            0x01, 0x03, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00, 0xFF,
+        ];
+        assert!(GyroscopeReport::parse(&payload).is_none());
     }
 }

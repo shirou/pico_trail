@@ -3,7 +3,7 @@
 //! Runs at 100Hz to update attitude estimate from IMU data.
 //! Publishes results to shared state for other subsystems.
 
-use super::{CalibrationData, Dcm, DcmConfig, SharedAttitudeState};
+use super::{CalibrationData, Dcm, DcmConfig, SharedAhrsState};
 use crate::devices::traits::ImuReading;
 use nalgebra::Vector3;
 
@@ -129,7 +129,7 @@ impl AhrsTaskState {
 ///
 /// # Arguments
 ///
-/// * `state` - Shared attitude state to publish results
+/// * `state` - Shared AHRS state to publish results
 /// * `config` - AHRS task configuration
 /// * `calibration` - IMU calibration data
 /// * `imu_reader` - Async function to read IMU data
@@ -139,7 +139,7 @@ impl AhrsTaskState {
 /// ```ignore
 /// #[embassy_executor::task]
 /// async fn ahrs_task(
-///     state: &'static SharedAttitudeState,
+///     state: &'static SharedAhrsState,
 ///     imu: impl ImuDriver,
 /// ) {
 ///     let config = AhrsTaskConfig::default();
@@ -151,7 +151,7 @@ impl AhrsTaskState {
 /// }
 /// ```
 pub async fn run_ahrs_task<F, Fut>(
-    shared_state: &SharedAttitudeState,
+    shared_state: &SharedAhrsState,
     config: AhrsTaskConfig,
     calibration: CalibrationData,
     mut imu_reader: F,
@@ -184,9 +184,10 @@ pub async fn run_ahrs_task<F, Fut>(
         // Update convergence status
         let converged = task_state.update_convergence(imu.timestamp_ms, config.convergence_time_s);
 
-        // Publish to shared state
-        shared_state.update_attitude(roll, pitch, yaw, imu.timestamp_ms);
-        shared_state.set_converged(converged);
+        // Publish to shared state (convert ms to us for AhrsState)
+        let timestamp_us = imu.timestamp_ms * 1000;
+        shared_state.update_euler(roll, pitch, yaw, timestamp_us);
+        shared_state.set_healthy(converged);
 
         // Note: In real implementation, timing would be controlled by
         // Embassy timer or task scheduler to maintain 100Hz rate

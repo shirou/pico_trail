@@ -53,7 +53,8 @@
       "mcp__serena__think_about_task_adherence",
       "mcp__serena__search_for_pattern",
       "mcp__serena__think_about_collected_information",
-      "Bash(do node /home/shirou/Works/golang/src/github.com/shirou/pico_trail/scripts/tdl-new-id.ts)"
+      "Bash(do node /home/shirou/Works/golang/src/github.com/shirou/pico_trail/scripts/tdl-new-id.ts)",
+      "WebFetch(domain:www.ceva-ip.com)"
     ],
     "deny": [],
     "ask": []

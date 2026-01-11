@@ -23,6 +23,10 @@ categories = ["embedded", "no-std"]
 name = "pico_trail_rover"
 required-features = ["pico2_w"]
 
+[[example]]
+name = "bno086_demo"
+required-features = ["pico2_w"]
+
 [lib]
 # harness = false is only needed for no_std embedded targets
 # For host tests, we need the default test harness

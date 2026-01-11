@@ -8,6 +8,8 @@
 
 pub mod imu;
 pub mod quaternion;
+pub mod raw_imu;
 
 pub use imu::{ImuCalibration, ImuError, ImuReading, ImuSensor};
 pub use quaternion::{QuaternionError, QuaternionReading, QuaternionSensor};
+pub use raw_imu::RawImu;

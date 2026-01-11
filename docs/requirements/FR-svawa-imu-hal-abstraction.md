@@ -15,6 +15,7 @@
   - [ADR-bikyc-imu-embedded-hal-async](../adr/ADR-bikyc-imu-embedded-hal-async.md)
 - Related Tasks:
   - [T-cj02a-imu-hal-refactor](../tasks/T-cj02a-imu-hal-refactor/README.md)
+  - [T-7khm3-ahrs-abstraction-layer](../tasks/T-7khm3-ahrs-abstraction-layer/README.md)
 
 ## Requirement Statement
 
