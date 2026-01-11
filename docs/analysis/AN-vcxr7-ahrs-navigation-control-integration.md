@@ -20,10 +20,12 @@
 - Related ADRs:
   - [ADR-nzvfy-ahrs-abstraction-architecture](../adr/ADR-nzvfy-ahrs-abstraction-architecture.md)
   - [ADR-wrcuk-navigation-controller-architecture](../adr/ADR-wrcuk-navigation-controller-architecture.md)
+  - [ADR-h3k9f-heading-source-integration](../adr/ADR-h3k9f-heading-source-integration.md)
 - Related Tasks:
   - [T-7khm3-ahrs-abstraction-layer](../tasks/T-7khm3-ahrs-abstraction-layer/README.md) (Complete)
   - [T-tto4f-navigation-controller](../tasks/T-tto4f-navigation-controller/README.md) (Complete)
   - [T-x8mq2-bno086-driver-implementation](../tasks/T-x8mq2-bno086-driver-implementation/README.md) (Complete)
+  - [T-r9v2k-heading-source-navigation-integration](../tasks/T-r9v2k-heading-source-navigation-integration/README.md)
 
 ## Executive Summary
 
@@ -138,25 +140,169 @@ N/A - Derived from project requirements and ArduPilot standards.
 
 **ArduPilot Heading Source Selection:**
 
-ArduPilot uses a priority-based heading source selection:
+ArduPilot uses EKF3-based sensor fusion for heading estimation. The heading source is controlled by the `EK3_SRC1_YAW` parameter:
 
-1. **GPS COG** - Primary when speed > 1 m/s (configurable via `GPS_NAVFILTER`)
-2. **Compass/AHRS Yaw** - Used when stationary or slow
-3. **Dead Reckoning** - Extrapolates from last known heading using gyro
+| Value | Source                 | Description                                       |
+| ----- | ---------------------- | ------------------------------------------------- |
+| 1     | Compass                | Default - magnetometer-based heading              |
+| 2     | GPS                    | Dual GPS Moving Baseline (requires 2x uBlox F9)   |
+| 3     | GPS + Compass Fallback | GPS yaw with compass offset learning for failover |
+| 6     | ExternalNav            | External navigation system (e.g., RealSense T265) |
+| 8     | GSF                    | Gaussian Sum Filter - GPS velocity + IMU fusion   |
 
-```cpp
-// ArduPilot simplified logic (Rover)
-if (gps.ground_speed() > GPS_NAVFILTER_SPEED) {
-    heading = gps.ground_course();
-} else {
-    heading = ahrs.yaw_sensor;
-}
-```
+**GSF (Gaussian Sum Filter):**
+
+For compass-less operation, ArduPilot uses GSF which estimates heading from GPS velocity and IMU data:
+
+- Requires 5 consecutive valid GPS velocity samples for yaw alignment (`GPS_VEL_YAW_ALIGN_COUNT_THRESHOLD`)
+- Maximum 15° uncertainty tolerance (`GPS_VEL_YAW_ALIGN_MAX_ANG_ERR`)
+- Automatic fallback when compass is disabled (`COMPASS_ENABLE = 0`)
+- Depends on good GPS velocity reports (uBlox M8 or better recommended)
 
 **Key Parameters:**
 
-- `GPS_NAVFILTER`: Speed threshold for GPS heading (default 1.0 m/s)
-- `COMPASS_USE`: Enable compass for heading (1 = enabled)
+- `EK3_SRC1_YAW`: Primary yaw source selection (1=Compass, 8=GSF, etc.)
+- `GPS_NAVFILTER`: GPS navigation filter mode for uBlox receivers
+  - 0: Portable, 4: Automotive, 5: Sea, 8: Airborne4G (default)
+- `EK3_YAW_M_NSE`: Compass/GPS weighting in EKF (default 0.5, lower = trust compass more)
+- `COMPASS_ENABLE`: Enable/disable compass (0 = disabled, triggers GSF fallback)
+
+**Source Switching Mechanisms:**
+
+- RC auxiliary switch (`RCx_OPTION = 90`) for manual EKF source set switching
+- MAVLink command `MAV_CMD_SET_EKF_SOURCE_SET` for programmatic switching
+- Three independent source configuration sets (`EK3_SRC1_*`, `EK3_SRC2_*`, `EK3_SRC3_*`)
+
+**References:**
+
+- [EKF Source Selection and Switching](https://ardupilot.org/copter/docs/common-ekf-sources.html)
+- [Compass-less Operation](https://ardupilot.org/rover/docs/common-compassless.html)
+- [AP_NavEKF3_core.h](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_NavEKF3/AP_NavEKF3_core.h)
+
+**ArduPilot Guided Mode:**
+
+Rover Guided mode supports multiple submodes via SET_POSITION_TARGET_GLOBAL_INT:
+
+| Submode             | Description                                    |
+| ------------------- | ---------------------------------------------- |
+| WP                  | Waypoint navigation with S-curve path planning |
+| HeadingAndSpeed     | Direct heading control (±5° tolerance)         |
+| TurnRateAndSpeed    | Angular velocity-based steering                |
+| SteeringAndThrottle | Raw motor control inputs                       |
+| Loiter              | Circular holding pattern                       |
+| Stop                | Emergency vehicle halt                         |
+
+**Bitmask for SET_POSITION_TARGET_GLOBAL_INT:**
+
+| Bitmask        | Decimal | Usage         |
+| -------------- | ------- | ------------- |
+| 0b110111111100 | 3580    | Position only |
+| 0b110111100111 | 3559    | Velocity only |
+| 0b100111111111 | 2559    | Heading only  |
+| 0b010111111111 | 1535    | Yaw rate only |
+
+- Velocity commands require re-send every 1 second (3-second timeout triggers stop)
+- Geofence may silently reject targets outside fence boundary
+
+**References:**
+
+- [Rover Commands in Guided Mode](https://ardupilot.org/dev/docs/mavlink-rover-commands.html)
+- [Guided Mode Documentation](https://ardupilot.org/rover/docs/guided-mode.html)
+
+**ArduPilot Auto Mode:**
+
+Rover Auto mode executes uploaded waypoint missions with:
+
+- AHRS origin confirmation before mission start
+- Mission change detection and waypoint command restart
+- Loiter duration management (`cmd.p1` seconds)
+- Trigger mechanisms: digital pin, acceleration kickstart (`AUTO_KICKSTART`), or unrestricted
+
+**References:**
+
+- [mode_auto.cpp](https://github.com/ArduPilot/ardupilot/blob/master/Rover/mode_auto.cpp)
+
+### Codebase Investigation
+
+**Current AHRS Architecture:**
+
+The AHRS subsystem provides a trait-based abstraction for attitude estimation:
+
+| Component               | Location                                    | Status   |
+| ----------------------- | ------------------------------------------- | -------- |
+| `Ahrs` trait            | `src/subsystems/ahrs/traits.rs:250`         | Complete |
+| `AhrsState` struct      | `src/subsystems/ahrs/traits.rs:85`          | Complete |
+| `SharedAhrsState`       | `src/subsystems/ahrs/traits.rs:280`         | Complete |
+| `Bno086ExternalAhrs<T>` | `src/subsystems/ahrs/external/bno086.rs:48` | Complete |
+
+**`SharedAhrsState` API** (thread-safe global state):
+
+```rust
+// Read operations (no mutex required - uses critical section)
+pub fn read(&self) -> AhrsState
+pub fn get_yaw(&self) -> f32           // radians
+pub fn get_quaternion(&self) -> Quaternion<f32>
+pub fn is_healthy(&self) -> bool
+
+// Write operations (called from AHRS task)
+pub fn write(&self, state: &AhrsState)
+pub fn update_quaternion(&self, q: Quaternion<f32>, angular_rate: Vector3<f32>, ...)
+```
+
+**Current Navigation Controller:**
+
+`SimpleNavigationController` (`src/subsystems/navigation/controller.rs:130`) uses GPS COG exclusively:
+
+```rust
+let current_heading = current.course_over_ground.unwrap_or(0.0);
+```
+
+When COG is unavailable (vehicle stationary), it defaults to 0° and reduces throttle.
+
+**Existing heading_provider Pattern (CircleMode):**
+
+`CircleMode` (`src/rover/mode/circle.rs:152`) demonstrates AHRS integration:
+
+```rust
+pub struct CircleMode<'a> {
+    // ...
+    #[cfg(feature = "embassy")]
+    heading_provider: fn() -> Option<f32>,  // External heading source
+}
+
+// Usage (line 260-262):
+let heading = (self.heading_provider)()
+    .or(gps.course_over_ground)
+    .ok_or("No heading available")?;
+```
+
+This pattern:
+
+- Tries AHRS heading first via function pointer
+- Falls back to GPS COG if AHRS unavailable
+- Returns error if neither source is available
+
+**Mode Implementations Status:**
+
+| Mode     | Status          | Heading Source          |
+| -------- | --------------- | ----------------------- |
+| Manual   | Complete        | N/A (direct RC)         |
+| RTL      | Complete        | GPS COG only            |
+| SmartRTL | Complete        | GPS COG only            |
+| Circle   | Complete        | AHRS → GPS COG fallback |
+| Loiter   | Complete        | GPS COG only            |
+| Guided   | Not implemented | -                       |
+| Auto     | Not implemented | -                       |
+
+**Global Navigation State** (`src/subsystems/navigation/mod.rs:68-89`):
+
+```rust
+pub static NAV_TARGET: Mutex<...> = ...;      // SET_POSITION_TARGET_GLOBAL_INT destination
+pub static NAV_OUTPUT: Mutex<...> = ...;      // Navigation output at 50Hz
+pub static REPOSITION_TARGET: Mutex<...> = ...; // MAV_CMD_DO_REPOSITION destination
+```
+
+These global states are defined but not yet consumed by any Mode implementation.
 
 ### Technical Investigation
 
@@ -176,7 +322,7 @@ fn get_heading(gps: &GpsPosition, ahrs: &AhrsState) -> f32 {
 }
 ```
 
-- Pros: Simple, matches ArduPilot behavior
+- Pros: Simple, easy to implement and debug
 - Cons: Abrupt transition at threshold
 
 #### Option 2: Blended Heading
@@ -202,13 +348,13 @@ fn get_heading(gps: &GpsPosition, ahrs: &AhrsState) -> f32 {
 - Pros: Smooth transition between sources
 - Cons: More complex, potential oscillation at boundary
 
-#### Option 3: Kalman Filter Fusion
+#### Option 3: Kalman Filter Fusion (EKF/GSF)
 
 - Pros: Optimal fusion with uncertainty estimation
-- Cons: High complexity, overkill for initial implementation
-- Recommendation: Defer to future SoftwareAhrs implementation
+- Cons: High complexity, requires careful tuning
+- Recommendation: Consider for future SoftwareAhrs implementation
 
-**Recommendation:** Start with Option 1 (simple switch), migrate to Option 2 if jitter observed.
+**Recommendation:** Start with Option 1 (simple switch) for initial implementation. Migrate to Option 2 (blended) if heading jitter is observed at speed transitions. Option 3 (EKF/GSF) should be considered when implementing the full SoftwareAhrs with sensor fusion.
 
 ### Data Analysis
 

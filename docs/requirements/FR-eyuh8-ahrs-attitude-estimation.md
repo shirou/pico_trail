@@ -24,6 +24,7 @@
   - ~~[T-qwvco-bmi088-imu-driver-implementation](../tasks/T-qwvco-bmi088-imu-driver-implementation/README.md)~~ (Deprecated)
   - [T-kx79g-mpu9250-driver-implementation](../tasks/T-kx79g-mpu9250-driver-implementation/README.md)
   - [T-p8w8f-ekf-ahrs-implementation](../tasks/T-p8w8f-ekf-ahrs-implementation/README.md)
+  - [T-r9v2k-heading-source-navigation-integration](../tasks/T-r9v2k-heading-source-navigation-integration/README.md)
 
 ## Requirement Statement
 

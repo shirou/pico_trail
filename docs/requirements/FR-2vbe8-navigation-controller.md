@@ -26,6 +26,7 @@
   - [ADR-wrcuk-navigation-controller-architecture](../adr/ADR-wrcuk-navigation-controller-architecture.md)
 - Related Tasks:
   - [T-tto4f-navigation-controller](../tasks/T-tto4f-navigation-controller/README.md)
+  - [T-r9v2k-heading-source-navigation-integration](../tasks/T-r9v2k-heading-source-navigation-integration/README.md)
 
 ## Requirement Statement
 

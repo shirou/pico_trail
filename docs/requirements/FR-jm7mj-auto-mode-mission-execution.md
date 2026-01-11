@@ -20,7 +20,8 @@
   - [FR-v6571-mission-execution-state](FR-v6571-mission-execution-state.md)
 - Dependent Requirements:
   - [FR-w893v-mission-start-command](FR-w893v-mission-start-command.md)
-- Related Tasks: N/A - Tasks will be created after ADRs
+- Related Tasks:
+  - [T-r9v2k-heading-source-navigation-integration](../tasks/T-r9v2k-heading-source-navigation-integration/README.md)
 
 ## Requirement Statement
 
