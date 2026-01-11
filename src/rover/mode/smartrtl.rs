@@ -77,6 +77,9 @@ pub struct SmartRtlMode<'a> {
     /// Home position provider function
     #[cfg(feature = "embassy")]
     home_provider: fn() -> Option<(f32, f32)>,
+    /// Heading provider function (returns heading in degrees, 0-360)
+    #[cfg(feature = "embassy")]
+    heading_provider: fn() -> Option<f32>,
 }
 
 #[allow(dead_code)]
@@ -89,12 +92,14 @@ impl<'a> SmartRtlMode<'a> {
     /// * `gps_provider` - Function that returns current GPS position
     /// * `path_provider` - Function that fills buffer with path points and returns count
     /// * `home_provider` - Function that returns home position (lat, lon)
+    /// * `heading_provider` - Function that returns current heading (degrees, 0-360)
     #[cfg(feature = "embassy")]
     pub fn new(
         actuators: &'a mut dyn ActuatorInterface,
         gps_provider: fn() -> Option<GpsPosition>,
         path_provider: fn(&mut [PathPoint]) -> usize,
         home_provider: fn() -> Option<(f32, f32)>,
+        heading_provider: fn() -> Option<f32>,
     ) -> Self {
         Self {
             actuators,
@@ -105,6 +110,7 @@ impl<'a> SmartRtlMode<'a> {
             gps_provider,
             path_provider,
             home_provider,
+            heading_provider,
         }
     }
 
@@ -237,12 +243,17 @@ impl<'a> Mode for SmartRtlMode<'a> {
                 return Err("GPS fix lost during SmartRTL");
             }
 
+            // Get heading from heading provider (fallback to GPS COG)
+            let heading = (self.heading_provider)()
+                .or(gps.course_over_ground)
+                .ok_or("No heading available for SmartRTL")?;
+
             // Get current waypoint
             let waypoint = &self.waypoints[state.waypoint_idx];
             let target = PositionTarget::new(waypoint.latitude, waypoint.longitude);
 
             // Navigate to waypoint
-            let output = self.nav_controller.update(&gps, &target, dt);
+            let output = self.nav_controller.update(&gps, &target, heading, dt);
 
             // Check for waypoint arrival
             if output.at_target {

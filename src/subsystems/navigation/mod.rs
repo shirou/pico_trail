@@ -43,12 +43,14 @@
 
 mod controller;
 mod geo;
+pub mod heading;
 pub mod path_recorder;
 mod types;
 
 // Re-export public API
 pub use controller::{NavigationController, SimpleNavigationController};
 pub use geo::{calculate_bearing, calculate_distance, offset_position, wrap_180, wrap_360};
+pub use heading::{FusedHeadingSource, HeadingSource, HeadingSourceType};
 pub use path_recorder::{PathPoint, PathRecorder};
 pub use types::{NavigationOutput, PositionTarget, SimpleNavConfig};
 

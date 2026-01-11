@@ -71,6 +71,9 @@ pub struct RtlMode<'a> {
     /// Home position provider function
     #[cfg(feature = "embassy")]
     home_provider: fn() -> Option<(f32, f32)>,
+    /// Heading provider function (returns heading in degrees, 0-360)
+    #[cfg(feature = "embassy")]
+    heading_provider: fn() -> Option<f32>,
 }
 
 #[allow(dead_code)]
@@ -82,11 +85,13 @@ impl<'a> RtlMode<'a> {
     /// * `actuators` - Actuator interface for steering and throttle
     /// * `gps_provider` - Function that returns current GPS position
     /// * `home_provider` - Function that returns home position (lat, lon)
+    /// * `heading_provider` - Function that returns current heading (degrees, 0-360)
     #[cfg(feature = "embassy")]
     pub fn new(
         actuators: &'a mut dyn ActuatorInterface,
         gps_provider: fn() -> Option<GpsPosition>,
         home_provider: fn() -> Option<(f32, f32)>,
+        heading_provider: fn() -> Option<f32>,
     ) -> Self {
         Self {
             actuators,
@@ -94,6 +99,7 @@ impl<'a> RtlMode<'a> {
             state: None,
             gps_provider,
             home_provider,
+            heading_provider,
         }
     }
 
@@ -194,11 +200,16 @@ impl<'a> Mode for RtlMode<'a> {
                 return Err("GPS fix lost during RTL");
             }
 
+            // Get heading from heading provider (fallback to GPS COG)
+            let heading = (self.heading_provider)()
+                .or(gps.course_over_ground)
+                .ok_or("No heading available for RTL")?;
+
             // Create target
             let target = PositionTarget::new(state.target_lat, state.target_lon);
 
             // Navigate to target
-            let output = self.nav_controller.update(&gps, &target, dt);
+            let output = self.nav_controller.update(&gps, &target, heading, dt);
 
             // Check for arrival
             if output.at_target {

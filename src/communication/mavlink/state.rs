@@ -253,6 +253,56 @@ impl HomePosition {
     }
 }
 
+/// Attitude state from AHRS
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AttitudeState {
+    /// Roll angle in radians
+    pub roll: f32,
+    /// Pitch angle in radians
+    pub pitch: f32,
+    /// Yaw angle in radians (heading, 0 = north)
+    pub yaw: f32,
+    /// Roll angular rate in rad/s
+    pub rollspeed: f32,
+    /// Pitch angular rate in rad/s
+    pub pitchspeed: f32,
+    /// Yaw angular rate in rad/s
+    pub yawspeed: f32,
+    /// Timestamp when attitude was last updated (microseconds since boot)
+    pub timestamp_us: u64,
+    /// True if AHRS data is valid and healthy
+    pub healthy: bool,
+}
+
+impl AttitudeState {
+    /// Create attitude state with placeholder values (const fn for static initialization)
+    pub const fn placeholder() -> Self {
+        Self {
+            roll: 0.0,
+            pitch: 0.0,
+            yaw: 0.0,
+            rollspeed: 0.0,
+            pitchspeed: 0.0,
+            yawspeed: 0.0,
+            timestamp_us: 0,
+            healthy: false,
+        }
+    }
+
+    /// Check if attitude data is fresh (updated within threshold)
+    ///
+    /// # Arguments
+    ///
+    /// * `current_time_us` - Current system uptime in microseconds
+    /// * `threshold_us` - Maximum age for data to be considered fresh (default: 500ms)
+    pub fn is_fresh(&self, current_time_us: u64, threshold_us: u64) -> bool {
+        if !self.healthy {
+            return false;
+        }
+        current_time_us.saturating_sub(self.timestamp_us) < threshold_us
+    }
+}
+
 /// Battery state
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BatteryState {
@@ -400,6 +450,8 @@ pub struct SystemState {
     pub mode: FlightMode,
     /// Battery state
     pub battery: BatteryState,
+    /// Attitude state from AHRS
+    pub attitude: AttitudeState,
     /// GPS position (None if no fix or stale)
     pub gps_position: Option<GpsPosition>,
     /// GPS timestamp (microseconds since boot when position was updated)
@@ -427,6 +479,7 @@ impl Default for SystemState {
             armed: ArmedState::Disarmed,
             mode: FlightMode::Manual,
             battery: BatteryState::placeholder(),
+            attitude: AttitudeState::placeholder(),
             gps_position: None,
             gps_timestamp_us: 0,
             home_position: None,
@@ -446,6 +499,7 @@ impl SystemState {
             armed: ArmedState::Disarmed,
             mode: FlightMode::Manual,
             battery: BatteryState::placeholder(),
+            attitude: AttitudeState::placeholder(),
             gps_position: None,
             gps_timestamp_us: 0,
             home_position: None,
@@ -494,6 +548,7 @@ impl SystemState {
             armed: ArmedState::Disarmed,
             mode: FlightMode::Manual,
             battery: BatteryState::placeholder(),
+            attitude: AttitudeState::placeholder(),
             gps_position: None,
             gps_timestamp_us: 0,
             home_position: None,
@@ -746,6 +801,59 @@ impl SystemState {
     pub fn update_gps(&mut self, position: GpsPosition, timestamp_us: u64) {
         self.gps_position = Some(position);
         self.gps_timestamp_us = timestamp_us;
+    }
+
+    /// Update attitude state from AHRS
+    ///
+    /// Called by AHRS task after new attitude data is available.
+    ///
+    /// # Arguments
+    ///
+    /// * `ahrs_state` - Reference to shared AHRS state
+    pub fn update_attitude(&mut self, ahrs_state: &crate::subsystems::ahrs::SharedAhrsState) {
+        let state = ahrs_state.read();
+        self.attitude.roll = state.roll;
+        self.attitude.pitch = state.pitch;
+        self.attitude.yaw = state.yaw;
+        self.attitude.rollspeed = state.angular_rate.x;
+        self.attitude.pitchspeed = state.angular_rate.y;
+        self.attitude.yawspeed = state.angular_rate.z;
+        self.attitude.timestamp_us = state.timestamp_us;
+        self.attitude.healthy = state.healthy;
+    }
+
+    /// Update attitude state directly from values
+    ///
+    /// Alternative to `update_attitude()` for cases where SharedAhrsState is not used.
+    ///
+    /// # Arguments
+    ///
+    /// * `roll` - Roll angle in radians
+    /// * `pitch` - Pitch angle in radians
+    /// * `yaw` - Yaw angle in radians
+    /// * `rollspeed` - Roll angular rate in rad/s
+    /// * `pitchspeed` - Pitch angular rate in rad/s
+    /// * `yawspeed` - Yaw angular rate in rad/s
+    /// * `timestamp_us` - Timestamp in microseconds
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_attitude_direct(
+        &mut self,
+        roll: f32,
+        pitch: f32,
+        yaw: f32,
+        rollspeed: f32,
+        pitchspeed: f32,
+        yawspeed: f32,
+        timestamp_us: u64,
+    ) {
+        self.attitude.roll = roll;
+        self.attitude.pitch = pitch;
+        self.attitude.yaw = yaw;
+        self.attitude.rollspeed = rollspeed;
+        self.attitude.pitchspeed = pitchspeed;
+        self.attitude.yawspeed = yawspeed;
+        self.attitude.timestamp_us = timestamp_us;
+        self.attitude.healthy = true;
     }
 
     /// Check if GPS data is fresh (updated within threshold)

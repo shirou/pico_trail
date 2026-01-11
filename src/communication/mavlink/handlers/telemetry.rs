@@ -249,16 +249,17 @@ impl<V: VehicleType> TelemetryStreamer<V> {
 
     /// Build ATTITUDE message
     ///
-    /// Currently returns zeros for roll, pitch, yaw until AHRS is implemented.
+    /// Returns roll, pitch, yaw and angular rates from AHRS.
+    /// All angles are in radians, angular rates in rad/s.
     fn build_attitude(&self, state: &SystemState) -> Option<MavMessage> {
         Some(MavMessage::ATTITUDE(ATTITUDE_DATA {
             time_boot_ms: (state.uptime_us / 1000) as u32,
-            roll: 0.0,       // Placeholder: will be from AHRS
-            pitch: 0.0,      // Placeholder: will be from AHRS
-            yaw: 0.0,        // Placeholder: will be from AHRS
-            rollspeed: 0.0,  // Placeholder: will be from AHRS
-            pitchspeed: 0.0, // Placeholder: will be from AHRS
-            yawspeed: 0.0,   // Placeholder: will be from AHRS
+            roll: state.attitude.roll,
+            pitch: state.attitude.pitch,
+            yaw: state.attitude.yaw,
+            rollspeed: state.attitude.rollspeed,
+            pitchspeed: state.attitude.pitchspeed,
+            yawspeed: state.attitude.yawspeed,
         }))
     }
 
@@ -562,13 +563,37 @@ mod tests {
         let mut state = SystemState::new();
         state.uptime_us = 5_000_000; // 5 seconds
 
+        // Test with default (zero) values
         let msg = streamer.build_attitude(&state).unwrap();
         if let MavMessage::ATTITUDE(data) = msg {
             assert_eq!(data.time_boot_ms, 5000); // 5000ms
-                                                 // Placeholder values should be zero
             assert_eq!(data.roll, 0.0);
             assert_eq!(data.pitch, 0.0);
             assert_eq!(data.yaw, 0.0);
+        } else {
+            panic!("Expected ATTITUDE message");
+        }
+
+        // Test with real AHRS values
+        state.update_attitude_direct(
+            0.1,       // roll (rad)
+            0.2,       // pitch (rad)
+            1.57,      // yaw (rad) ~90 degrees
+            0.01,      // rollspeed (rad/s)
+            0.02,      // pitchspeed (rad/s)
+            0.03,      // yawspeed (rad/s)
+            5_000_000, // timestamp
+        );
+
+        let msg = streamer.build_attitude(&state).unwrap();
+        if let MavMessage::ATTITUDE(data) = msg {
+            assert_eq!(data.time_boot_ms, 5000);
+            assert!((data.roll - 0.1).abs() < 0.001);
+            assert!((data.pitch - 0.2).abs() < 0.001);
+            assert!((data.yaw - 1.57).abs() < 0.001);
+            assert!((data.rollspeed - 0.01).abs() < 0.001);
+            assert!((data.pitchspeed - 0.02).abs() < 0.001);
+            assert!((data.yawspeed - 0.03).abs() < 0.001);
         } else {
             panic!("Expected ATTITUDE message");
         }

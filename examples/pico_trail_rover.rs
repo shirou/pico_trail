@@ -88,6 +88,26 @@ static HEAP: Heap = Heap::empty();
 #[cfg(feature = "pico2_w")]
 const HEAP_SIZE: usize = 16 * 1024;
 
+/// Global AHRS state for heading source integration
+///
+/// Updated by imu_task with DCM-processed attitude.
+/// Read by navigation_task via FusedHeadingSource for heading.
+#[cfg(feature = "pico2_w")]
+static AHRS_STATE: SharedAhrsState = SharedAhrsState::new();
+
+/// GPS position provider for FusedHeadingSource
+///
+/// Returns current GPS position from SYSTEM_STATE.
+/// Used by FusedHeadingSource to get COG when moving.
+#[cfg(feature = "pico2_w")]
+fn get_gps_position() -> Option<GpsPosition> {
+    use pico_trail::communication::mavlink::state::SYSTEM_STATE;
+    critical_section::with(|cs| {
+        let state = SYSTEM_STATE.borrow_ref(cs);
+        state.gps_position
+    })
+}
+
 // IRQ bindings: USB + ADC + UART0 + I2C0 when usb_serial is enabled, ADC + UART0 + I2C0 only otherwise
 #[cfg(feature = "usb_serial")]
 hal::bind_interrupts!(struct Irqs {
@@ -119,12 +139,17 @@ use pico_trail::{
         vehicle::GroundRover,
     },
     core::traits::SharedState,
+    devices::gps::GpsPosition,
     devices::imu::mpu9250::{Mpu9250Config, Mpu9250Driver},
+    devices::traits::ImuSensor,
     libraries::{kinematics::DifferentialDrive, motor_driver::MotorGroup, RC_INPUT},
     parameters::wifi::WifiParams,
     platform::rp2350::{network::WifiConfig, Rp2350Flash},
-    subsystems::ahrs::{run_imu_task, ImuTaskConfig},
-    subsystems::navigation::{NavigationController, SimpleNavigationController, NAV_OUTPUT},
+    subsystems::ahrs::SharedAhrsState,
+    subsystems::navigation::{
+        FusedHeadingSource, HeadingSource, NavigationController, SimpleNavigationController,
+        NAV_OUTPUT,
+    },
 };
 
 #[embassy_executor::main]
@@ -890,6 +915,11 @@ async fn navigation_task() {
 
     let mut controller = SimpleNavigationController::new();
 
+    // Create fused heading source with AHRS + GPS COG
+    // Uses GPS COG when moving (>1.0 m/s), AHRS yaw when stationary
+    let heading_source = FusedHeadingSource::with_defaults(&AHRS_STATE, get_gps_position);
+    pico_trail::log_info!("Heading source initialized (AHRS + GPS COG, threshold=1.0 m/s)");
+
     loop {
         // Check for reposition command (from MAV_CMD_DO_REPOSITION / Fly Here)
         if let Some(reposition) = take_reposition_target() {
@@ -949,8 +979,13 @@ async fn navigation_task() {
             let target = get_current_target();
 
             if let (Some(current), Some(target)) = (gps_position, target) {
+                // Get heading from fused source (AHRS when stationary, GPS COG when moving)
+                let heading = heading_source
+                    .get_heading()
+                    .unwrap_or(current.course_over_ground.unwrap_or(0.0));
+
                 // Compute navigation output
-                let output = controller.update(&current, &target, 0.02); // 20ms dt
+                let output = controller.update(&current, &target, heading, 0.02); // 20ms dt
 
                 // Update global NAV_OUTPUT
                 NAV_OUTPUT.with_mut(|nav_output| {
@@ -1116,8 +1151,10 @@ impl pico_trail::platform::traits::UartInterface for EmbassyBufferedUart {
 
 /// IMU task for reading MPU-9250 sensor data at 400Hz
 ///
-/// Reads accelerometer, gyroscope, and magnetometer data from the MPU-9250
-/// and provides it to the EKF AHRS system (to be implemented in T-p8w8f).
+/// Reads accelerometer, gyroscope, and magnetometer data from the MPU-9250,
+/// processes with DCM algorithm for attitude estimation, and updates AHRS_STATE.
+///
+/// The AHRS yaw is used by FusedHeadingSource for navigation when stationary.
 ///
 /// # Arguments
 ///
@@ -1125,31 +1162,62 @@ impl pico_trail::platform::traits::UartInterface for EmbassyBufferedUart {
 #[cfg(feature = "pico2_w")]
 #[embassy_executor::task]
 async fn imu_task(
-    imu: Mpu9250Driver<
+    mut imu: Mpu9250Driver<
         embassy_rp::i2c::I2c<'static, hal::peripherals::I2C0, embassy_rp::i2c::Async>,
     >,
 ) {
-    pico_trail::log_info!("IMU task started (400Hz)");
+    use embassy_time::{Duration, Ticker};
+    use pico_trail::subsystems::ahrs::{Dcm, DcmConfig};
 
-    let config = ImuTaskConfig::default();
+    pico_trail::log_info!("IMU task started (400Hz with DCM)");
 
-    // Simple counter for periodic logging
+    // Initialize DCM for attitude estimation
+    let mut dcm = Dcm::new(DcmConfig::default());
+
+    let sample_rate_hz: u32 = 400;
+    let period_us = 1_000_000 / sample_rate_hz;
+    let dt = 1.0 / sample_rate_hz as f32;
+    let mut ticker = Ticker::every(Duration::from_micros(period_us as u64));
+
     let mut sample_count: u32 = 0;
+    const CONVERGENCE_SAMPLES: u32 = 2000; // 5 seconds at 400Hz
 
-    run_imu_task(config, imu, |data| {
-        sample_count += 1;
-        let count = sample_count;
-        async move {
-            // Log every 400 samples (1 second at 400Hz)
-            if count % 400 == 0 {
-                pico_trail::log_info!(
-                    "IMU: gx={} ax={} az={}",
-                    data.gyro.x,
-                    data.accel.x,
-                    data.accel.z
-                );
+    loop {
+        ticker.next().await;
+
+        match imu.read_all().await {
+            Ok(reading) => {
+                sample_count += 1;
+
+                // Update DCM with gyro and accel
+                dcm.update(reading.gyro, reading.accel, dt);
+
+                // Get euler angles from DCM
+                let (roll, pitch, yaw) = dcm.get_euler_angles();
+
+                // Update shared AHRS state
+                let timestamp_us = reading.timestamp_us;
+                AHRS_STATE.update_euler(roll, pitch, yaw, timestamp_us);
+
+                // Mark as healthy after convergence
+                if sample_count == CONVERGENCE_SAMPLES {
+                    AHRS_STATE.set_healthy(true);
+                    pico_trail::log_info!("AHRS converged after {} samples", sample_count);
+                }
+
+                // Log every 400 samples (1 second at 400Hz)
+                if sample_count % 400 == 0 {
+                    pico_trail::log_info!(
+                        "IMU: yaw={} roll={} pitch={}",
+                        yaw.to_degrees(),
+                        roll.to_degrees(),
+                        pitch.to_degrees()
+                    );
+                }
+            }
+            Err(e) => {
+                pico_trail::log_warn!("IMU read error: {:?}", e);
             }
         }
-    })
-    .await;
+    }
 }

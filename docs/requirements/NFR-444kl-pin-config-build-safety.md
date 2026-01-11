@@ -8,7 +8,6 @@
 ## Links
 
 - Prerequisite Requirements:
-  - [FR-h47nw-pin-configuration-management](../requirements/FR-h47nw-pin-configuration-management.md)
 - Dependent Requirements: N/A - Not yet defined
 - Related Tasks:
   - [T-po5ns-pin-configuration](../tasks/T-po5ns-pin-configuration/README.md)

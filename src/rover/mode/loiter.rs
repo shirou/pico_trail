@@ -101,6 +101,9 @@ pub struct RoverLoiter<'a> {
     /// GPS position provider function
     #[cfg(feature = "embassy")]
     gps_provider: fn() -> Option<GpsPosition>,
+    /// Heading provider function (returns heading in degrees, 0-360)
+    #[cfg(feature = "embassy")]
+    heading_provider: fn() -> Option<f32>,
 }
 
 #[cfg(feature = "rover")]
@@ -112,16 +115,19 @@ impl<'a> RoverLoiter<'a> {
     ///
     /// * `actuators` - Actuator interface for steering and throttle
     /// * `gps_provider` - Function that returns current GPS position
+    /// * `heading_provider` - Function that returns current heading (degrees, 0-360)
     #[cfg(feature = "embassy")]
     pub fn new(
         actuators: &'a mut dyn ActuatorInterface,
         gps_provider: fn() -> Option<GpsPosition>,
+        heading_provider: fn() -> Option<f32>,
     ) -> Self {
         Self {
             actuators,
             nav_controller: SimpleNavigationController::new(),
             state: None,
             gps_provider,
+            heading_provider,
         }
     }
 
@@ -209,9 +215,14 @@ impl<'a> RoverLoiter<'a> {
         }
 
         if state.is_correcting {
+            // Get heading from heading provider (fallback to GPS COG)
+            let heading = (self.heading_provider)()
+                .or(gps.course_over_ground)
+                .ok_or("No heading available for Loiter correction")?;
+
             // Navigate back to loiter point
             let target = PositionTarget::new(state.loiter_lat, state.loiter_lon);
-            let output = self.nav_controller.update(&gps, &target, dt);
+            let output = self.nav_controller.update(&gps, &target, heading, dt);
 
             self.actuators.set_steering(output.steering)?;
             self.actuators.set_throttle(output.throttle)?;

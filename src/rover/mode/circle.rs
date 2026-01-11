@@ -313,13 +313,18 @@ impl<'a> Mode for CircleMode<'a> {
             // Get current GPS position
             let gps = (self.gps_provider)().ok_or("GPS lost")?;
 
+            // Get heading from heading provider (fallback to GPS COG)
+            let heading = (self.heading_provider)()
+                .or(gps.course_over_ground)
+                .ok_or("No heading available for Circle mode")?;
+
             // Calculate target point on circle
             let target = self
                 .calculate_target(&gps)
                 .ok_or("Failed to calculate target")?;
 
             // Delegate to navigation controller
-            let output = self.nav_controller.update(&gps, &target, dt);
+            let output = self.nav_controller.update(&gps, &target, heading, dt);
 
             // Apply commands to actuators
             self.actuators.set_steering(output.steering)?;

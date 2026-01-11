@@ -19,8 +19,9 @@ pub trait NavigationController {
     /// recalculate when GPS updates (1-10Hz).
     ///
     /// # Arguments
-    /// * `current` - Current GPS position with heading
+    /// * `current` - Current GPS position
     /// * `target` - Target position to navigate to
+    /// * `heading` - Current heading in degrees (0-360, 0 = North)
     /// * `_dt` - Time delta since last update (seconds)
     ///
     /// # Returns
@@ -29,6 +30,7 @@ pub trait NavigationController {
         &mut self,
         current: &GpsPosition,
         target: &PositionTarget,
+        heading: f32,
         _dt: f32,
     ) -> NavigationOutput;
 
@@ -109,6 +111,7 @@ impl NavigationController for SimpleNavigationController {
         &mut self,
         current: &GpsPosition,
         target: &PositionTarget,
+        heading: f32,
         _dt: f32,
     ) -> NavigationOutput {
         // Calculate bearing and distance to target
@@ -125,29 +128,19 @@ impl NavigationController for SimpleNavigationController {
             target.longitude,
         );
 
-        // Get current heading (course over ground)
-        // If COG is not available (vehicle stationary), use 0 and reduce throttle
-        let current_heading = current.course_over_ground.unwrap_or(0.0);
-
         // Calculate heading error (wrapped to ±180°)
-        let heading_error = wrap_180(bearing - current_heading);
+        let heading_error = wrap_180(bearing - heading);
 
         // Check if at target
         let at_target = distance < self.config.wp_radius;
 
         // Calculate steering and throttle
         let mut steering = self.calculate_steering(heading_error);
-        let mut throttle = self.calculate_throttle(distance);
-
-        // If COG is not available and we're not at target, use reduced throttle
-        // to allow vehicle to start moving and get a valid COG
-        if current.course_over_ground.is_none() && !at_target {
-            throttle = throttle.min(self.config.min_approach_throttle);
-        }
+        let throttle = self.calculate_throttle(distance);
 
         // Safety: ensure outputs are in valid ranges and handle NaN
         steering = sanitize_output(steering, -1.0, 1.0, 0.0);
-        throttle = sanitize_output(throttle, 0.0, 1.0, 0.0);
+        let throttle = sanitize_output(throttle, 0.0, 1.0, 0.0);
 
         NavigationOutput {
             steering,
@@ -178,13 +171,13 @@ mod tests {
     use super::*;
     use crate::devices::gps::GpsFixType;
 
-    fn make_gps_position(lat: f32, lon: f32, heading: Option<f32>) -> GpsPosition {
+    fn make_gps_position(lat: f32, lon: f32) -> GpsPosition {
         GpsPosition {
             latitude: lat,
             longitude: lon,
             altitude: 0.0,
-            speed: if heading.is_some() { 5.0 } else { 0.0 },
-            course_over_ground: heading,
+            speed: 5.0,
+            course_over_ground: None, // Not used anymore
             fix_type: GpsFixType::Fix3D,
             satellites: 10,
         }
@@ -196,10 +189,11 @@ mod tests {
     fn test_at_target_within_radius() {
         let mut controller = SimpleNavigationController::new();
         // Target is ~1m away (within 2m wp_radius)
-        let current = make_gps_position(0.0, 0.0, Some(0.0));
+        let current = make_gps_position(0.0, 0.0);
         let target = PositionTarget::new(0.000009, 0.0); // ~1m north
+        let heading = 0.0;
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
         assert!(
             output.at_target,
             "Should be at target when within wp_radius"
@@ -215,10 +209,11 @@ mod tests {
     fn test_at_target_outside_radius() {
         let mut controller = SimpleNavigationController::new();
         // Target is ~100m away (outside 2m wp_radius)
-        let current = make_gps_position(0.0, 0.0, Some(0.0));
+        let current = make_gps_position(0.0, 0.0);
         let target = PositionTarget::new(0.0009, 0.0); // ~100m north
+        let heading = 0.0;
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
         assert!(
             !output.at_target,
             "Should not be at target when outside wp_radius"
@@ -231,10 +226,11 @@ mod tests {
     fn test_steering_target_ahead() {
         let mut controller = SimpleNavigationController::new();
         // Vehicle facing north (0°), target is north
-        let current = make_gps_position(0.0, 0.0, Some(0.0));
+        let current = make_gps_position(0.0, 0.0);
         let target = PositionTarget::new(1.0, 0.0); // North
+        let heading = 0.0;
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
         assert!(
             output.steering.abs() < 0.1,
             "Steering should be ~0 when target ahead, got {}",
@@ -246,10 +242,11 @@ mod tests {
     fn test_steering_target_to_left() {
         let mut controller = SimpleNavigationController::new();
         // Vehicle facing north (0°), target is west (bearing 270°)
-        let current = make_gps_position(0.0, 0.0, Some(0.0));
+        let current = make_gps_position(0.0, 0.0);
         let target = PositionTarget::new(0.0, -1.0); // West
+        let heading = 0.0;
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
         assert!(
             output.steering < -0.5,
             "Steering should be negative (left) when target to left, got {}",
@@ -261,10 +258,11 @@ mod tests {
     fn test_steering_target_to_right() {
         let mut controller = SimpleNavigationController::new();
         // Vehicle facing north (0°), target is east (bearing 90°)
-        let current = make_gps_position(0.0, 0.0, Some(0.0));
+        let current = make_gps_position(0.0, 0.0);
         let target = PositionTarget::new(0.0, 1.0); // East
+        let heading = 0.0;
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
         assert!(
             output.steering > 0.5,
             "Steering should be positive (right) when target to right, got {}",
@@ -276,10 +274,11 @@ mod tests {
     fn test_steering_target_behind() {
         let mut controller = SimpleNavigationController::new();
         // Vehicle facing north (0°), target is south (bearing 180°)
-        let current = make_gps_position(0.0, 0.0, Some(0.0));
+        let current = make_gps_position(0.0, 0.0);
         let target = PositionTarget::new(-1.0, 0.0); // South
+        let heading = 0.0;
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
         // Should steer maximally (either left or right based on wrap)
         assert!(
             output.steering.abs() > 0.9,
@@ -293,10 +292,11 @@ mod tests {
         let mut controller = SimpleNavigationController::new();
         // Vehicle facing east (90°), target is west (bearing 270°)
         // Heading error = 180°, should be clamped
-        let current = make_gps_position(0.0, 0.0, Some(90.0));
+        let current = make_gps_position(0.0, 0.0);
         let target = PositionTarget::new(0.0, -1.0); // West
+        let heading = 90.0;
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
         assert!(
             output.steering >= -1.0 && output.steering <= 1.0,
             "Steering should be clamped to [-1, 1], got {}",
@@ -310,10 +310,11 @@ mod tests {
     fn test_throttle_far_from_target() {
         let mut controller = SimpleNavigationController::new();
         // Target is 100m away (far from approach_dist of 10m)
-        let current = make_gps_position(0.0, 0.0, Some(0.0));
+        let current = make_gps_position(0.0, 0.0);
         let target = PositionTarget::new(0.0009, 0.0); // ~100m north
+        let heading = 0.0;
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
         assert!(
             (output.throttle - 1.0).abs() < 0.01,
             "Throttle should be 1.0 far from target, got {}",
@@ -325,10 +326,11 @@ mod tests {
     fn test_throttle_in_approach_zone() {
         let mut controller = SimpleNavigationController::new();
         // Target is ~5m away (in approach zone: between 2m and 10m)
-        let current = make_gps_position(0.0, 0.0, Some(0.0));
+        let current = make_gps_position(0.0, 0.0);
         let target = PositionTarget::new(0.000045, 0.0); // ~5m north
+        let heading = 0.0;
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
         assert!(
             output.throttle > 0.2 && output.throttle < 1.0,
             "Throttle should be reduced in approach zone, got {}",
@@ -340,30 +342,14 @@ mod tests {
     fn test_throttle_at_target() {
         let mut controller = SimpleNavigationController::new();
         // Target is ~1m away (at target: within 2m)
-        let current = make_gps_position(0.0, 0.0, Some(0.0));
+        let current = make_gps_position(0.0, 0.0);
         let target = PositionTarget::new(0.000009, 0.0); // ~1m north
+        let heading = 0.0;
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
         assert!(
             output.throttle < 0.01,
             "Throttle should be 0 at target, got {}",
-            output.throttle
-        );
-    }
-
-    // ========== No COG Tests ==========
-
-    #[test]
-    fn test_no_cog_uses_reduced_throttle() {
-        let mut controller = SimpleNavigationController::new();
-        // No COG available (vehicle stationary), target far away
-        let current = make_gps_position(0.0, 0.0, None);
-        let target = PositionTarget::new(1.0, 0.0); // North, far away
-
-        let output = controller.update(&current, &target, 0.02);
-        assert!(
-            output.throttle <= controller.config().min_approach_throttle,
-            "Throttle should be limited when COG unavailable, got {}",
             output.throttle
         );
     }
@@ -374,18 +360,18 @@ mod tests {
     fn test_output_ranges_always_valid() {
         let mut controller = SimpleNavigationController::new();
 
-        // Test various positions
+        // Test various positions (lat1, lon1, lat2, lon2, heading)
         let test_cases = [
-            (0.0, 0.0, 0.0, 0.0, Some(0.0)),    // Same position
-            (0.0, 0.0, 1.0, 1.0, Some(45.0)),   // Northeast target
-            (0.0, 0.0, -1.0, -1.0, Some(0.0)),  // Southwest target, facing north
-            (89.0, 0.0, 89.0, 1.0, Some(90.0)), // High latitude
+            (0.0, 0.0, 0.0, 0.0, 0.0),    // Same position
+            (0.0, 0.0, 1.0, 1.0, 45.0),   // Northeast target
+            (0.0, 0.0, -1.0, -1.0, 0.0),  // Southwest target, facing north
+            (89.0, 0.0, 89.0, 1.0, 90.0), // High latitude
         ];
 
         for (lat1, lon1, lat2, lon2, heading) in test_cases {
-            let current = make_gps_position(lat1, lon1, heading);
+            let current = make_gps_position(lat1, lon1);
             let target = PositionTarget::new(lat2, lon2);
-            let output = controller.update(&current, &target, 0.02);
+            let output = controller.update(&current, &target, heading, 0.02);
 
             assert!(
                 output.steering >= -1.0 && output.steering <= 1.0,
@@ -407,10 +393,11 @@ mod tests {
     #[test]
     fn test_same_position() {
         let mut controller = SimpleNavigationController::new();
-        let current = make_gps_position(35.6762, 139.6503, Some(45.0));
+        let current = make_gps_position(35.6762, 139.6503);
         let target = PositionTarget::new(35.6762, 139.6503);
+        let heading = 45.0;
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
         assert!(output.at_target, "Should be at target when same position");
         assert!(output.distance_m < 1.0, "Distance should be ~0");
     }
@@ -441,10 +428,11 @@ mod tests {
     fn test_very_large_distance() {
         let mut controller = SimpleNavigationController::new();
         // Tokyo to New York: approximately 10,800km
-        let current = make_gps_position(35.6762, 139.6503, Some(0.0));
+        let current = make_gps_position(35.6762, 139.6503);
         let target = PositionTarget::new(40.7128, -74.0060);
+        let heading = 0.0;
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
 
         // Should still produce valid outputs
         assert!(
@@ -473,10 +461,11 @@ mod tests {
     fn test_near_poles() {
         let mut controller = SimpleNavigationController::new();
         // Near north pole
-        let current = make_gps_position(89.0, 0.0, Some(0.0));
+        let current = make_gps_position(89.0, 0.0);
         let target = PositionTarget::new(89.5, 180.0);
+        let heading = 0.0;
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
 
         // Should still produce valid outputs
         assert!(
@@ -495,10 +484,11 @@ mod tests {
     fn test_date_line_crossing() {
         let mut controller = SimpleNavigationController::new();
         // Crossing the international date line (180° longitude)
-        let current = make_gps_position(0.0, 179.0, Some(90.0)); // Near date line, facing east
+        let current = make_gps_position(0.0, 179.0); // Near date line
         let target = PositionTarget::new(0.0, -179.0); // Just past date line
+        let heading = 90.0; // Facing east
 
-        let output = controller.update(&current, &target, 0.02);
+        let output = controller.update(&current, &target, heading, 0.02);
 
         // Should still produce valid outputs
         assert!(
@@ -524,12 +514,12 @@ mod tests {
     #[test]
     fn test_steering_range_for_all_headings() {
         let mut controller = SimpleNavigationController::new();
+        let current = make_gps_position(0.0, 0.0);
         let target = PositionTarget::new(1.0, 0.0); // North
 
         // Test steering for all possible heading values
         for heading in (0..360).step_by(10) {
-            let current = make_gps_position(0.0, 0.0, Some(heading as f32));
-            let output = controller.update(&current, &target, 0.02);
+            let output = controller.update(&current, &target, heading as f32, 0.02);
 
             assert!(
                 output.steering >= -1.0 && output.steering <= 1.0,
@@ -543,6 +533,8 @@ mod tests {
     #[test]
     fn test_steering_range_for_all_bearings() {
         let mut controller = SimpleNavigationController::new();
+        let current = make_gps_position(0.0, 0.0);
+        let heading = 0.0;
 
         // Test steering for targets in all directions
         for bearing in (0..360).step_by(15) {
@@ -550,9 +542,8 @@ mod tests {
             let lat = libm::sinf(rad);
             let lon = libm::cosf(rad);
 
-            let current = make_gps_position(0.0, 0.0, Some(0.0));
             let target = PositionTarget::new(lat, lon);
-            let output = controller.update(&current, &target, 0.02);
+            let output = controller.update(&current, &target, heading, 0.02);
 
             assert!(
                 output.steering >= -1.0 && output.steering <= 1.0,
@@ -566,7 +557,8 @@ mod tests {
     #[test]
     fn test_throttle_range_for_all_distances() {
         let mut controller = SimpleNavigationController::new();
-        let current = make_gps_position(0.0, 0.0, Some(0.0));
+        let current = make_gps_position(0.0, 0.0);
+        let heading = 0.0;
 
         // Test throttle for various distances (0.1m to 1000km)
         let distances_deg = [
@@ -582,7 +574,7 @@ mod tests {
 
         for lat_offset in distances_deg {
             let target = PositionTarget::new(lat_offset, 0.0);
-            let output = controller.update(&current, &target, 0.02);
+            let output = controller.update(&current, &target, heading, 0.02);
 
             assert!(
                 output.throttle >= 0.0 && output.throttle <= 1.0,
@@ -591,5 +583,206 @@ mod tests {
                 output.distance_m
             );
         }
+    }
+
+    // ========== Heading Input Edge Cases ==========
+
+    #[test]
+    fn test_heading_at_zero() {
+        let mut controller = SimpleNavigationController::new();
+        let current = make_gps_position(0.0, 0.0);
+        let target = PositionTarget::new(1.0, 0.0); // North (bearing 0°)
+
+        let output = controller.update(&current, &target, 0.0, 0.02);
+
+        // Heading error should be ~0 (target is north, heading is north)
+        assert!(
+            output.heading_error_deg.abs() < 1.0,
+            "Heading error should be ~0, got {}",
+            output.heading_error_deg
+        );
+        assert!(
+            output.steering.abs() < 0.1,
+            "Steering should be ~0, got {}",
+            output.steering
+        );
+    }
+
+    #[test]
+    fn test_heading_at_360() {
+        let mut controller = SimpleNavigationController::new();
+        let current = make_gps_position(0.0, 0.0);
+        let target = PositionTarget::new(1.0, 0.0); // North (bearing 0°)
+
+        // Heading 360° should be equivalent to 0°
+        let output = controller.update(&current, &target, 360.0, 0.02);
+
+        // Heading error should be ~0 (360° = 0°)
+        assert!(
+            output.heading_error_deg.abs() < 1.0,
+            "Heading error should be ~0 for 360°, got {}",
+            output.heading_error_deg
+        );
+    }
+
+    #[test]
+    fn test_heading_wraparound_positive() {
+        let mut controller = SimpleNavigationController::new();
+        let current = make_gps_position(0.0, 0.0);
+        let target = PositionTarget::new(1.0, 0.0); // North (bearing 0°)
+
+        // Heading 350°, target bearing 10°: shortest turn is +20° (right)
+        let output = controller.update(&current, &target, 350.0, 0.02);
+
+        // Heading error should be positive (turn right)
+        // bearing(0°) - heading(350°) = -350° → wrapped to +10°
+        assert!(
+            output.heading_error_deg > 0.0,
+            "Heading error should be positive for turn right, got {}",
+            output.heading_error_deg
+        );
+        assert!(
+            output.steering > 0.0,
+            "Steering should be positive for turn right, got {}",
+            output.steering
+        );
+    }
+
+    #[test]
+    fn test_heading_wraparound_negative() {
+        let mut controller = SimpleNavigationController::new();
+        let current = make_gps_position(0.0, 0.0);
+        let target = PositionTarget::new(0.0, -1.0); // West (bearing ~270°)
+
+        // Heading 280°, target bearing 270°: shortest turn is -10° (left)
+        let output = controller.update(&current, &target, 280.0, 0.02);
+
+        // Heading error should be negative (turn left)
+        assert!(
+            output.heading_error_deg < 0.0,
+            "Heading error should be negative for turn left, got {}",
+            output.heading_error_deg
+        );
+        assert!(
+            output.steering < 0.0,
+            "Steering should be negative for turn left, got {}",
+            output.steering
+        );
+    }
+
+    #[test]
+    fn test_heading_exactly_opposite() {
+        let mut controller = SimpleNavigationController::new();
+        let current = make_gps_position(0.0, 0.0);
+        let target = PositionTarget::new(1.0, 0.0); // North (bearing 0°)
+
+        // Heading exactly 180° opposite to target
+        let output = controller.update(&current, &target, 180.0, 0.02);
+
+        // Heading error should be ±180° (maximum error)
+        assert!(
+            output.heading_error_deg.abs() > 170.0,
+            "Heading error should be ~180° when opposite, got {}",
+            output.heading_error_deg
+        );
+        // Steering should be maximal
+        assert!(
+            output.steering.abs() > 0.9,
+            "Steering should be maximal when opposite, got {}",
+            output.steering
+        );
+    }
+
+    #[test]
+    fn test_heading_various_dt_values() {
+        let mut controller = SimpleNavigationController::new();
+        let current = make_gps_position(0.0, 0.0);
+        let target = PositionTarget::new(1.0, 0.0);
+        let heading = 45.0;
+
+        // dt should not affect simple navigation controller (no PID integration)
+        let dt_values = [0.001, 0.02, 0.1, 1.0];
+        let mut outputs = Vec::new();
+
+        for dt in dt_values {
+            outputs.push(controller.update(&current, &target, heading, dt));
+        }
+
+        // All outputs should be the same (dt-independent)
+        for output in &outputs {
+            assert!(
+                (output.steering - outputs[0].steering).abs() < 0.001,
+                "Steering should be dt-independent"
+            );
+            assert!(
+                (output.throttle - outputs[0].throttle).abs() < 0.001,
+                "Throttle should be dt-independent"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bearing_output_range() {
+        let mut controller = SimpleNavigationController::new();
+        let current = make_gps_position(0.0, 0.0);
+
+        // Test bearing output for targets in all directions
+        let test_cases = [
+            (1.0, 0.0, 0.0),     // North
+            (1.0, 1.0, 45.0),    // Northeast (approximate)
+            (0.0, 1.0, 90.0),    // East
+            (-1.0, 1.0, 135.0),  // Southeast (approximate)
+            (-1.0, 0.0, 180.0),  // South
+            (-1.0, -1.0, 225.0), // Southwest (approximate)
+            (0.0, -1.0, 270.0),  // West
+            (1.0, -1.0, 315.0),  // Northwest (approximate)
+        ];
+
+        for (lat, lon, expected_bearing) in test_cases {
+            let target = PositionTarget::new(lat, lon);
+            let output = controller.update(&current, &target, 0.0, 0.02);
+
+            // Bearing should be in range [0, 360)
+            assert!(
+                output.bearing_deg >= 0.0 && output.bearing_deg < 360.0,
+                "Bearing {} out of range for target ({}, {})",
+                output.bearing_deg,
+                lat,
+                lon
+            );
+
+            // Bearing should be approximately correct (within 10° due to Earth curvature)
+            let bearing_diff = (output.bearing_deg - expected_bearing).abs();
+            let bearing_diff = if bearing_diff > 180.0 {
+                360.0 - bearing_diff
+            } else {
+                bearing_diff
+            };
+            assert!(
+                bearing_diff < 15.0,
+                "Bearing {} not close to expected {} for target ({}, {})",
+                output.bearing_deg,
+                expected_bearing,
+                lat,
+                lon
+            );
+        }
+    }
+
+    #[test]
+    fn test_distance_output() {
+        let mut controller = SimpleNavigationController::new();
+        let current = make_gps_position(0.0, 0.0);
+
+        // 1 degree of latitude ≈ 111km
+        let target = PositionTarget::new(1.0, 0.0);
+        let output = controller.update(&current, &target, 0.0, 0.02);
+
+        // Distance should be approximately 111km (110-112km acceptable)
+        assert!(
+            output.distance_m > 110_000.0 && output.distance_m < 112_000.0,
+            "Distance should be ~111km, got {}km",
+            output.distance_m / 1000.0
+        );
     }
 }

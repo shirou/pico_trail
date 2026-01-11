@@ -239,23 +239,4 @@ let heading_source = FusedHeadingSource::new(
 // Mode usage
 fn update(&mut self, dt: f32) -> Result<(), &'static str> {
     let gps = (self.gps_provider)().ok_or("No GPS")?;
-    let heading = self.heading_source.get_heading().ok_or("No heading")?;
-    let target = self.get_target()?;
-
-    let output = self.nav_controller.update(&gps, &target, heading, dt);
-    self.actuators.set_steering(output.steering);
-    self.actuators.set_throttle(output.throttle);
-    Ok(())
-}
 ```
-
-## Open Questions
-
-- [x] Which heading fusion strategy to use? → Simple speed-based switch (Option 1 from Analysis)
-- [ ] Should mode entry require AHRS healthy status? → Next step: Define in Guided/Auto mode requirements
-- [ ] Is BNO086 yaw in NED frame (0° = North)? → Method: Verify in hardware testing
-
-## External References
-
-- [ArduPilot EKF Source Selection](https://ardupilot.org/copter/docs/common-ekf-sources.html)
-- [ArduPilot Compass-less Operation](https://ardupilot.org/rover/docs/common-compassless.html)
