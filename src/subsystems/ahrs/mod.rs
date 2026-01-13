@@ -64,3 +64,23 @@ pub use external::Bno086ExternalAhrs;
 
 #[cfg(feature = "embassy")]
 pub use task::run_imu_task;
+
+/// Global AHRS state shared between AHRS task and other subsystems
+///
+/// This static provides thread-safe access to the current attitude estimate.
+/// The AHRS task writes to this state, and other subsystems (navigation,
+/// MAVLink telemetry) read from it.
+///
+/// # Usage
+///
+/// ```ignore
+/// use pico_trail::subsystems::ahrs::AHRS_STATE;
+///
+/// // In AHRS task: write attitude
+/// AHRS_STATE.update_euler(roll, pitch, yaw, timestamp_us);
+/// AHRS_STATE.set_healthy(true);
+///
+/// // In MAVLink task: read attitude
+/// system_state.update_attitude(&AHRS_STATE);
+/// ```
+pub static AHRS_STATE: SharedAhrsState = SharedAhrsState::new();

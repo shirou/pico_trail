@@ -21,7 +21,7 @@
 //! }
 //! ```
 
-use nalgebra::Quaternion;
+use nalgebra::{Quaternion, Vector3};
 
 /// Quaternion sensor error types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -144,6 +144,17 @@ pub trait QuaternionSensor {
     ///
     /// Returns 0 if no successful read has occurred.
     fn last_update_us(&self) -> u64;
+
+    /// Get angular rate from gyroscope (rad/s, sensor frame)
+    ///
+    /// Returns the most recent gyroscope reading if available.
+    /// Default implementation returns zero vector for sensors that don't
+    /// provide gyroscope data separately (e.g., INT-driven mode).
+    ///
+    /// This is used for PID D-term control in flight controllers.
+    fn angular_rate(&self) -> Vector3<f32> {
+        Vector3::zeros()
+    }
 }
 
 #[cfg(test)]

@@ -88,12 +88,8 @@ static HEAP: Heap = Heap::empty();
 #[cfg(feature = "pico2_w")]
 const HEAP_SIZE: usize = 16 * 1024;
 
-/// Global AHRS state for heading source integration
-///
-/// Updated by imu_task with DCM-processed attitude.
-/// Read by navigation_task via FusedHeadingSource for heading.
-#[cfg(feature = "pico2_w")]
-static AHRS_STATE: SharedAhrsState = SharedAhrsState::new();
+// Use global AHRS_STATE from pico_trail crate for sharing between tasks
+// This is defined in pico_trail::subsystems::ahrs::AHRS_STATE
 
 /// GPS position provider for FusedHeadingSource
 ///
@@ -138,14 +134,14 @@ use pico_trail::{
         transport_router::TransportRouter,
         vehicle::GroundRover,
     },
+    communication::shtp::ShtpI2c,
     core::traits::SharedState,
     devices::gps::GpsPosition,
-    devices::imu::mpu9250::{Mpu9250Config, Mpu9250Driver},
-    devices::traits::ImuSensor,
+    devices::imu::bno086::{Bno086DriverWithGpio, Bno086GpioConfig, EmbassyIntPin, EmbassyRstPin},
     libraries::{kinematics::DifferentialDrive, motor_driver::MotorGroup, RC_INPUT},
     parameters::wifi::WifiParams,
     platform::rp2350::{network::WifiConfig, Rp2350Flash},
-    subsystems::ahrs::SharedAhrsState,
+    subsystems::ahrs::Bno086ExternalAhrs,
     subsystems::navigation::{
         FusedHeadingSource, HeadingSource, NavigationController, SimpleNavigationController,
         NAV_OUTPUT,
@@ -282,32 +278,11 @@ async fn main(spawner: Spawner) {
         // GPS task will be spawned after WiFi connects (to avoid blocking DHCP)
         // Keep uart0 for later use
 
-        // Initialize I2C0 for MPU-9250 IMU (GPIO 4 = SDA, GPIO 5 = SCL)
-        pico_trail::log_info!("Initializing I2C0 for MPU-9250...");
-        let i2c0 = embassy_rp::i2c::I2c::new_async(
-            p.I2C0,
-            p.PIN_5, // SCL
-            p.PIN_4, // SDA
-            Irqs,
-            {
-                let mut config = embassy_rp::i2c::Config::default();
-                config.frequency = 400_000; // 400kHz for MPU-9250
-                config
-            },
-        );
-
-        // Initialize MPU-9250 driver
-        let imu = match Mpu9250Driver::new(i2c0, Mpu9250Config::default()).await {
-            Ok(driver) => {
-                pico_trail::log_info!("MPU-9250 initialized successfully");
-                Some(driver)
-            }
-            Err(e) => {
-                pico_trail::log_warn!("MPU-9250 initialization failed: {:?}", e);
-                pico_trail::log_warn!("IMU features will be disabled");
-                None
-            }
-        };
+        // BNO086 External AHRS will be initialized after WiFi (GPIO 4 = SDA, GPIO 5 = SCL)
+        // Keep I2C0 peripherals for later use
+        let i2c0_peripheral = p.I2C0;
+        let i2c0_scl = p.PIN_5;
+        let i2c0_sda = p.PIN_4;
 
         // Load WiFi configuration from parameters
         let wifi_config = WifiParams::from_store(param_handler.store());
@@ -411,10 +386,196 @@ async fn main(spawner: Spawner) {
                     // Spawn navigation task
                     spawner.spawn(navigation_task().unwrap());
 
-                    // Spawn IMU task if MPU-9250 was initialized successfully
-                    if let Some(imu_driver) = imu {
-                        spawner.spawn(imu_task(imu_driver).unwrap());
-                        pico_trail::log_info!("IMU task spawned");
+                    // =========================================================================
+                    // BNO086 Initialization with GPIO Driver
+                    // =========================================================================
+                    // Uses Bno086DriverWithGpio for INT-driven reads and RST recovery
+                    // Driver handles all GPIO operations internally
+
+                    use embassy_rp::gpio::{Input, Level, Output, Pull};
+
+                    // Pre-scan RST pulse to ensure BNO086 is in clean state
+                    // This is critical after Pico soft reset (BNO086 may be in bad state)
+                    // Uses Flex to properly release RST to high-Z (BNO086 RST must NOT be driven HIGH)
+                    pico_trail::log_info!("=== BNO086 Pre-Reset ===");
+                    {
+                        use embassy_rp::gpio::Flex;
+                        let mut rst = Flex::new(p.PIN_17);
+                        rst.set_as_output();
+                        rst.set_low();
+                        Timer::after(Duration::from_millis(100)).await;
+                        rst.set_as_input(); // Release to high-Z (not driven HIGH!)
+                        drop(rst);
+                        pico_trail::log_info!("  RST pulse complete, waiting for boot...");
+                        Timer::after(Duration::from_millis(1000)).await; // Full boot time
+                    }
+
+                    // I2C Bus Recovery (SCL toggle only)
+                    pico_trail::log_info!("=== I2C Bus Recovery ===");
+                    {
+                        let mut scl = Output::new(i2c0_scl, Level::High);
+                        let sda_out = Output::new(i2c0_sda, Level::High);
+
+                        Timer::after(Duration::from_millis(10)).await;
+
+                        drop(sda_out);
+                        let sda = Input::new(unsafe { hal::peripherals::PIN_4::steal() }, Pull::Up);
+                        Timer::after(Duration::from_micros(100)).await;
+
+                        if sda.is_low() {
+                            pico_trail::log_warn!(
+                                "  SDA stuck low, attempting SCL toggle recovery..."
+                            );
+
+                            // Toggle SCL up to 16 times to release stuck slave
+                            for i in 0..16 {
+                                scl.set_low();
+                                Timer::after(Duration::from_micros(50)).await;
+                                scl.set_high();
+                                Timer::after(Duration::from_micros(50)).await;
+
+                                if sda.is_high() {
+                                    pico_trail::log_info!(
+                                        "  SDA released after {} clock pulses",
+                                        i + 1
+                                    );
+                                    break;
+                                }
+                            }
+
+                            // Generate STOP condition
+                            drop(sda);
+                            let mut sda_out2 = Output::new(
+                                unsafe { hal::peripherals::PIN_4::steal() },
+                                Level::Low,
+                            );
+                            Timer::after(Duration::from_micros(50)).await;
+                            scl.set_high();
+                            Timer::after(Duration::from_micros(50)).await;
+                            sda_out2.set_high();
+                            Timer::after(Duration::from_micros(100)).await;
+
+                            drop(sda_out2);
+                            let sda_check =
+                                Input::new(unsafe { hal::peripherals::PIN_4::steal() }, Pull::Up);
+                            Timer::after(Duration::from_micros(100)).await;
+                            if sda_check.is_high() {
+                                pico_trail::log_info!("  Recovery complete, SDA is now HIGH");
+                            } else {
+                                pico_trail::log_warn!(
+                                    "  SDA still LOW - may need power cycle (RST not used)"
+                                );
+                            }
+                        } else {
+                            pico_trail::log_info!("  SDA is high, bus OK");
+                        }
+                    }
+
+                    // Small delay after recovery
+                    Timer::after(Duration::from_millis(10)).await;
+
+                    // Step 3: Initialize I2C at 50kHz (matching demo)
+                    pico_trail::log_info!("Initializing I2C0 (GPIO4=SDA, GPIO5=SCL, 5kHz)...");
+                    let pin_4 = unsafe { hal::peripherals::PIN_4::steal() };
+                    let pin_5 = unsafe { hal::peripherals::PIN_5::steal() };
+
+                    let i2c0 =
+                        embassy_rp::i2c::I2c::new_async(i2c0_peripheral, pin_5, pin_4, Irqs, {
+                            let mut config = embassy_rp::i2c::Config::default();
+                            // 5kHz for maximum I2C stability with BNO086
+                            // BNO086 has known I2C timing issues requiring very slow speeds
+                            // and adequate delays between transactions
+                            config.frequency = 5_000;
+                            config
+                        });
+
+                    Timer::after(Duration::from_millis(100)).await;
+
+                    // Step 4: Check for BNO086 at 0x4B (with retry)
+                    let mut found_addr: Option<u8> = None;
+                    use embedded_hal_async::i2c::I2c as I2cTrait;
+                    let mut i2c0 = i2c0;
+
+                    const BNO086_ADDR: u8 = 0x4B;
+                    pico_trail::log_info!("=== BNO086 Check (0x{:02X}) ===", BNO086_ADDR);
+
+                    for attempt in 1..=3_u8 {
+                        let mut buf = [0u8; 1];
+                        match embassy_time::with_timeout(
+                            Duration::from_millis(100),
+                            i2c0.read(BNO086_ADDR, &mut buf),
+                        )
+                        .await
+                        {
+                            Ok(Ok(_)) => {
+                                pico_trail::log_info!("  Found BNO086 at 0x{:02X}", BNO086_ADDR);
+                                found_addr = Some(BNO086_ADDR);
+                                break;
+                            }
+                            Ok(Err(_)) => {
+                                pico_trail::log_warn!("  Attempt {}/3: NACK", attempt);
+                            }
+                            Err(_) => {
+                                pico_trail::log_warn!("  Attempt {}/3: timeout", attempt);
+                            }
+                        }
+
+                        if attempt < 3 {
+                            Timer::after(Duration::from_millis(200)).await;
+                        }
+                    }
+
+                    if let Some(bno_addr) = found_addr {
+                        pico_trail::log_info!("Using BNO086 at address 0x{:02X}", bno_addr);
+
+                        // =========================================================================
+                        // Create BNO086 driver with GPIO support (INT/RST pins)
+                        // =========================================================================
+                        pico_trail::log_info!(
+                            "Initializing BNO086 with GPIO driver (INT-driven)..."
+                        );
+
+                        // Create SHTP I2C transport
+                        let transport = ShtpI2c::new(i2c0, bno_addr);
+
+                        // Create INT pin (GPIO22) - data ready signal
+                        let int_gpio = Input::new(p.PIN_22, Pull::Up);
+                        let int_pin = EmbassyIntPin::new(int_gpio);
+
+                        // Create RST pin (GPIO17) - hardware reset (uses Flex for high-Z release)
+                        // Note: PIN_17 was used for pre-scan reset, so we steal it here
+                        use embassy_rp::gpio::Flex;
+                        let rst_gpio = Flex::new(unsafe { hal::peripherals::PIN_17::steal() });
+                        let rst_pin = EmbassyRstPin::new(rst_gpio);
+
+                        // Create GPIO driver config
+                        let config = Bno086GpioConfig::default();
+
+                        // Create BNO086 driver with GPIO support
+                        let mut driver =
+                            Bno086DriverWithGpio::new(transport, int_pin, rst_pin, config);
+
+                        // Initialize driver - handles RST pulse and INT detection internally
+                        match driver.init().await {
+                            Ok(()) => {
+                                pico_trail::log_info!("BNO086 GPIO driver initialized!");
+
+                                // Create AHRS wrapper and spawn task
+                                let ahrs = Bno086ExternalAhrs::new(driver);
+                                spawner.spawn(ahrs_task(ahrs).unwrap());
+                                pico_trail::log_info!(
+                                    "AHRS task spawned (BNO086 External AHRS, INT-driven)"
+                                );
+                            }
+                            Err(e) => {
+                                pico_trail::log_error!("BNO086 init failed: {:?}", e);
+                                pico_trail::log_warn!("AHRS features will be disabled");
+                            }
+                        }
+                    } else {
+                        pico_trail::log_warn!("BNO086 not found on I2C bus!");
+                        pico_trail::log_warn!("AHRS features will be disabled");
+                        pico_trail::log_warn!("Check wiring: SDA=GPIO4, SCL=GPIO5");
                     }
                 }
                 Err(e) => {
@@ -687,6 +848,14 @@ async fn rover_mavlink_task(
 
         // Update telemetry streams (get latest state from command handler)
         let timestamp_us = Instant::now().as_micros();
+
+        // Update attitude from global AHRS state before sending telemetry
+        critical_section::with(|cs| {
+            let mut state =
+                pico_trail::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs);
+            state.update_attitude(&pico_trail::subsystems::ahrs::AHRS_STATE);
+        });
+
         let current_state = dispatcher.command_handler().state();
         let telemetry_messages = dispatcher.update_telemetry(&current_state, timestamp_us);
 
@@ -917,7 +1086,10 @@ async fn navigation_task() {
 
     // Create fused heading source with AHRS + GPS COG
     // Uses GPS COG when moving (>1.0 m/s), AHRS yaw when stationary
-    let heading_source = FusedHeadingSource::with_defaults(&AHRS_STATE, get_gps_position);
+    let heading_source = FusedHeadingSource::with_defaults(
+        &pico_trail::subsystems::ahrs::AHRS_STATE,
+        get_gps_position,
+    );
     pico_trail::log_info!("Heading source initialized (AHRS + GPS COG, threshold=1.0 m/s)");
 
     loop {
@@ -1149,75 +1321,96 @@ impl pico_trail::platform::traits::UartInterface for EmbassyBufferedUart {
     }
 }
 
-/// IMU task for reading MPU-9250 sensor data at 400Hz
+/// AHRS task for reading BNO086 attitude data at 100Hz
 ///
-/// Reads accelerometer, gyroscope, and magnetometer data from the MPU-9250,
-/// processes with DCM algorithm for attitude estimation, and updates AHRS_STATE.
+/// Reads quaternion orientation from the BNO086's on-chip sensor fusion and
+/// updates AHRS_STATE. The BNO086 performs 9-axis fusion internally at 400Hz,
+/// providing high-quality attitude estimation with minimal CPU overhead.
 ///
 /// The AHRS yaw is used by FusedHeadingSource for navigation when stationary.
 ///
+/// Uses Bno086DriverWithGpio for INT-driven reads and automatic RST recovery.
+///
 /// # Arguments
 ///
-/// * `imu` - Initialized MPU-9250 driver
+/// * `ahrs` - Initialized BNO086ExternalAhrs wrapper with GPIO driver
 #[cfg(feature = "pico2_w")]
 #[embassy_executor::task]
-async fn imu_task(
-    mut imu: Mpu9250Driver<
-        embassy_rp::i2c::I2c<'static, hal::peripherals::I2C0, embassy_rp::i2c::Async>,
+async fn ahrs_task(
+    mut ahrs: Bno086ExternalAhrs<
+        Bno086DriverWithGpio<
+            ShtpI2c<embassy_rp::i2c::I2c<'static, hal::peripherals::I2C0, embassy_rp::i2c::Async>>,
+            EmbassyIntPin<'static>,
+            EmbassyRstPin<'static>,
+        >,
     >,
 ) {
-    use embassy_time::{Duration, Ticker};
-    use pico_trail::subsystems::ahrs::{Dcm, DcmConfig};
+    use embassy_time::{Duration, Instant, Timer};
+    use pico_trail::subsystems::ahrs::Ahrs;
 
-    pico_trail::log_info!("IMU task started (400Hz with DCM)");
+    pico_trail::log_info!("AHRS task started (BNO086 External AHRS, 100Hz)");
 
-    // Initialize DCM for attitude estimation
-    let mut dcm = Dcm::new(DcmConfig::default());
-
-    let sample_rate_hz: u32 = 400;
-    let period_us = 1_000_000 / sample_rate_hz;
-    let dt = 1.0 / sample_rate_hz as f32;
-    let mut ticker = Ticker::every(Duration::from_micros(period_us as u64));
+    // Give BNO086 time to stabilize and start sending data
+    pico_trail::log_info!("  Waiting 1s for BNO086 to stabilize...");
+    Timer::after(Duration::from_secs(1)).await;
 
     let mut sample_count: u32 = 0;
-    const CONVERGENCE_SAMPLES: u32 = 2000; // 5 seconds at 400Hz
+    let mut error_count: u32 = 0;
+    const CONVERGENCE_SAMPLES: u32 = 100; // 1 second at 100Hz (BNO086 converges fast)
 
     loop {
-        ticker.next().await;
-
-        match imu.read_all().await {
-            Ok(reading) => {
+        // Read attitude from BNO086 via Ahrs trait
+        match ahrs.get_attitude().await {
+            Ok(state) => {
                 sample_count += 1;
 
-                // Update DCM with gyro and accel
-                dcm.update(reading.gyro, reading.accel, dt);
+                // Update shared AHRS state (global from pico_trail crate)
+                let timestamp_us = Instant::now().as_micros();
+                pico_trail::subsystems::ahrs::AHRS_STATE.update_euler(
+                    state.roll,
+                    state.pitch,
+                    state.yaw,
+                    timestamp_us,
+                );
 
-                // Get euler angles from DCM
-                let (roll, pitch, yaw) = dcm.get_euler_angles();
-
-                // Update shared AHRS state
-                let timestamp_us = reading.timestamp_us;
-                AHRS_STATE.update_euler(roll, pitch, yaw, timestamp_us);
+                // Also update angular rates for telemetry
+                {
+                    let mut shared_state = pico_trail::subsystems::ahrs::AHRS_STATE.read();
+                    shared_state.angular_rate = state.angular_rate;
+                    pico_trail::subsystems::ahrs::AHRS_STATE.write(shared_state);
+                }
 
                 // Mark as healthy after convergence
                 if sample_count == CONVERGENCE_SAMPLES {
-                    AHRS_STATE.set_healthy(true);
+                    pico_trail::subsystems::ahrs::AHRS_STATE.set_healthy(true);
                     pico_trail::log_info!("AHRS converged after {} samples", sample_count);
                 }
 
-                // Log every 400 samples (1 second at 400Hz)
-                if sample_count % 400 == 0 {
+                // Log every 100 samples (1 second at 100Hz)
+                if sample_count % 100 == 0 {
                     pico_trail::log_info!(
-                        "IMU: yaw={} roll={} pitch={}",
-                        yaw.to_degrees(),
-                        roll.to_degrees(),
-                        pitch.to_degrees()
+                        "AHRS: yaw={} roll={} pitch={} healthy={}",
+                        state.yaw.to_degrees(),
+                        state.roll.to_degrees(),
+                        state.pitch.to_degrees(),
+                        ahrs.is_healthy()
                     );
                 }
             }
             Err(e) => {
-                pico_trail::log_warn!("IMU read error: {:?}", e);
+                error_count += 1;
+                // Only log every 10th error to reduce spam
+                if error_count <= 3 || error_count % 10 == 0 {
+                    pico_trail::log_warn!("AHRS read error: {:?} (count={})", e, error_count);
+                }
+                // Longer delay after errors to let I2C bus recover
+                Timer::after(Duration::from_millis(100)).await;
+                continue;
             }
         }
+
+        // BNO086 outputs at 100Hz, so ~10ms between reads
+        // Slight delay to avoid polling too aggressively
+        Timer::after(Duration::from_millis(5)).await;
     }
 }

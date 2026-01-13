@@ -30,6 +30,27 @@ BUZZER 2 OUTPUT PULLDOWN        # Piezo buzzer (active low with pull-down)
 LED_WS2812 16 OUTPUT            # WS2812 RGB LED data line
 BATTERY_ADC 26 ADC              # Battery voltage monitoring (ADC0)
 
+# BNO086 External AHRS configuration
+# BNO086: 9-axis IMU with on-chip sensor fusion (100Hz quaternion output)
+# I2C Address: 0x4A (default) or 0x4B (SA0 pin high)
+#
+# Pin allocation:
+#   GPIO 4: I2C0 SDA (data line to BNO086)
+#   GPIO 5: I2C0 SCL (clock line to BNO086)
+#   GPIO 17: RST (active low reset)
+#   GPIO 22: INT (interrupt output from BNO086)
+#
+BNO086_SDA 4 I2C             # BNO086 I2C data line (I2C0)
+BNO086_SCL 5 I2C             # BNO086 I2C clock line (I2C0)
+BNO086_RST 17 OUTPUT         # BNO086 hardware reset (active low)
+BNO086_INT 22 INPUT PULLUP   # BNO086 interrupt (active low)
+#
+# Hardware requirements:
+#   - BNO086 module configured for I2C mode
+#   - I2C speed: 100kHz (Standard Mode)
+#   - RST pin allows hardware reset for I2C bus recovery
+#
+
 # UART configuration
 # UART0: GPIO 0 (TX), GPIO 1 (RX) at 9600 baud
 # Used for NEO-M8N GPS module communication

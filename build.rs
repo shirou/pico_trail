@@ -11,6 +11,7 @@ enum PinType {
     #[default]
     Output, // Digital output (default for actuators)
     Adc,   // Analog input
+    I2c,   // I2C peripheral pin (SDA/SCL)
 }
 
 /// Pull mode configuration
@@ -74,6 +75,7 @@ impl PinConfig {
                 "INPUT" => self.pin_type = PinType::Input,
                 "OUTPUT" => self.pin_type = PinType::Output,
                 "ADC" => self.pin_type = PinType::Adc,
+                "I2C" => self.pin_type = PinType::I2c,
 
                 // Pull mode modifiers
                 "PULLUP" => self.pull = PullMode::PullUp,
@@ -489,7 +491,8 @@ fn parse_hwdef_with_includes(
                 let pin_config = parse_pin_config(path, line_num, key, value_and_modifiers)?;
                 pins.insert(key.to_string(), pin_config);
             }
-            "BUZZER" | "LED_WS2812" | "BATTERY_ADC" => {
+            "BUZZER" | "LED_WS2812" | "BATTERY_ADC" | "BNO086_RST" | "BNO086_INT"
+            | "BNO086_SDA" | "BNO086_SCL" => {
                 let pin_config = parse_pin_config(path, line_num, key, value_and_modifiers)?;
                 pins.insert(key.to_string(), pin_config);
             }

@@ -108,25 +108,45 @@ where
         &mut self,
         packet: &mut ShtpPacket<N>,
     ) -> Result<(), ShtpError> {
-        // BNO08x I2C protocol requires reading the ENTIRE packet in ONE transaction
-        // Each I2C read starts from the beginning of the sensor's output buffer
-        // So we cannot read header first, then payload - we must read everything at once
+        // BNO08x I2C protocol requires reading the ENTIRE packet in ONE transaction.
+        // Each I2C read starts from the beginning of the sensor's output buffer.
+        // We CANNOT do two separate reads (header then payload) - sensor state changes.
+        //
+        // Strategy: Read max expected size in one transaction, parse header from buffer.
+        // Use 128 bytes as default (covers most packets), larger packets will be truncated
+        // but header will still be valid for determining if data exists.
 
-        // Read header + max payload in one transaction
-        // The packet buffer is [header (4 bytes)][payload (N bytes)]
-        let mut buf = [0u8; 132]; // 4 + 128 max payload
+        let mut buf = [0u8; 300]; // Read up to 300 bytes (BNO086 advertisement can be 284 bytes)
         let read_len = buf.len().min(HEADER_SIZE + N);
 
-        self.i2c
-            .read(self.address, &mut buf[..read_len])
-            .await
-            .map_err(|_| ShtpError::TransportError)?;
+        // I2C read with timeout to prevent hanging on bus errors
+        use embassy_futures::select::{select, Either};
+        use embassy_time::Timer;
+
+        let read_future = self.i2c.read(self.address, &mut buf[..read_len]);
+        let timeout_future = Timer::after_millis(1000); // 1 second timeout
+
+        match select(read_future, timeout_future).await {
+            Either::First(Ok(())) => {}
+            Either::First(Err(_e)) => {
+                #[cfg(feature = "pico2_w")]
+                crate::log_debug!(
+                    "SHTP I2C read error (addr=0x{:02X}, len={})",
+                    self.address,
+                    read_len
+                );
+                return Err(ShtpError::TransportError);
+            }
+            Either::Second(_) => {
+                #[cfg(feature = "pico2_w")]
+                crate::log_warn!("SHTP I2C read timeout (addr=0x{:02X})", self.address);
+                return Err(ShtpError::Timeout);
+            }
+        }
 
         // Check for "no data" response (length = 0 or all 0xFF)
-        // When INT is not connected, sensor may return empty data
         let raw_length = u16::from_le_bytes([buf[0], buf[1]]) & 0x7FFF;
         if raw_length == 0 || buf[0] == 0xFF {
-            // No data available - return empty packet indicator
             return Err(ShtpError::NoData);
         }
 
@@ -134,10 +154,12 @@ where
         let header: [u8; HEADER_SIZE] = [buf[0], buf[1], buf[2], buf[3]];
         let payload_len = packet.parse_header(&header)?;
 
-        // Copy payload from buffer to packet
-        if payload_len > 0 && payload_len <= N {
-            packet.payload[..payload_len]
-                .copy_from_slice(&buf[HEADER_SIZE..HEADER_SIZE + payload_len]);
+        // Copy payload from buffer to packet (handle buffer bounds)
+        let available_payload = buf.len().saturating_sub(HEADER_SIZE);
+        let copy_len = payload_len.min(N).min(available_payload);
+        if copy_len > 0 {
+            packet.payload[..copy_len].copy_from_slice(&buf[HEADER_SIZE..HEADER_SIZE + copy_len]);
+            packet.payload_len = copy_len;
         }
 
         // Update expected sequence number for this channel
@@ -156,7 +178,7 @@ where
         let header = packet.build_header();
 
         // Combine header and payload into single buffer for single I2C transaction
-        let mut buf = [0u8; 132]; // 4 + 128 max payload
+        let mut buf = [0u8; 300]; // 4 + 296 max payload for large packets
         buf[..HEADER_SIZE].copy_from_slice(&header);
 
         let total_len = HEADER_SIZE + packet.payload_len;
@@ -164,12 +186,22 @@ where
             buf[HEADER_SIZE..total_len].copy_from_slice(&packet.payload[..packet.payload_len]);
         }
 
-        self.i2c
-            .write(self.address, &buf[..total_len])
-            .await
-            .map_err(|_| ShtpError::TransportError)?;
+        // I2C write with timeout to prevent hanging on bus errors
+        use embassy_futures::select::{select, Either};
+        use embassy_time::Timer;
 
-        Ok(())
+        let write_future = self.i2c.write(self.address, &buf[..total_len]);
+        let timeout_future = Timer::after_millis(500); // 500ms timeout
+
+        match select(write_future, timeout_future).await {
+            Either::First(Ok(())) => Ok(()),
+            Either::First(Err(_)) => Err(ShtpError::TransportError),
+            Either::Second(_) => {
+                #[cfg(feature = "pico2_w")]
+                crate::log_warn!("SHTP I2C write timeout (addr=0x{:02X})", self.address);
+                Err(ShtpError::Timeout)
+            }
+        }
     }
 
     fn reset(&mut self) {

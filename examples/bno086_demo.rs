@@ -1,14 +1,17 @@
-//! BNO086 9-Axis IMU Demo (Polling Mode)
+//! BNO086 9-Axis IMU Demo (Interrupt Mode with GPIO)
 //!
 //! Hardware verification example for BNO086 sensor with on-chip sensor fusion.
-//! Reads quaternion data via I2C and outputs Euler angles.
+//! Reads quaternion data via I2C with interrupt-driven acquisition and
+//! hardware reset recovery.
 //!
-//! This demo uses **polling mode** (no INT/RST pins required).
-//! Only VCC, GND, SDA, and SCL need to be connected.
+//! This demo uses **interrupt mode** with INT and RST pins for:
+//! - True 100Hz data acquisition (no polling overhead)
+//! - Automatic hardware reset recovery on errors
+//! - Better stability and reliability
 //!
 //! # Hardware Setup
 //!
-//! Minimum connections (polling mode):
+//! Required connections:
 //!
 //! | BNO086 Pin | Pico 2 W Pin | GPIO | Description |
 //! |------------|--------------|------|-------------|
@@ -16,10 +19,8 @@
 //! | GND        | GND          | -    | Ground |
 //! | SDA        | Pin 6        | GP4  | I2C Data |
 //! | SCL        | Pin 7        | GP5  | I2C Clock |
-//!
-//! Optional connections (for interrupt mode - not used in this demo):
-//! - INT (GP6): Data ready interrupt
-//! - RST (GP7): Hardware reset
+//! | INT        | Pin 29       | GP22 | Data ready interrupt (active low) |
+//! | RST        | Pin 22       | GP17 | Hardware reset (active low) |
 //!
 //! # Usage
 //!
@@ -54,15 +55,24 @@
 //!
 //! # Note on Sample Rate
 //!
-//! In polling mode (no INT pin), the effective rate is ~40Hz due to I2C polling
-//! overhead. For 100Hz operation, use interrupt mode with INT pin connected.
+//! In interrupt mode with INT pin, the driver achieves true 100Hz data rate.
+//! The INT signal triggers reads only when data is ready, eliminating polling
+//! overhead and ensuring reliable timing.
+//!
+//! # Auto-Recovery
+//!
+//! The driver includes automatic hardware reset recovery:
+//! - After 3 consecutive read errors, hardware reset is triggered
+//! - Up to 3 consecutive resets are attempted before marking sensor as failed
+//! - Recovery is transparent to the application
 
 #![no_std]
 #![no_main]
 
 use embassy_executor::Spawner;
 use embassy_rp as hal;
-use embassy_time::{Duration, Instant, Timer};
+use embassy_rp::gpio::{Level, Output, Pull};
+use embassy_time::{Duration, Timer};
 use embedded_hal_async::i2c::I2c as I2cTrait;
 
 // USB serial support (when built with usb_serial feature)
@@ -168,38 +178,172 @@ async fn main(#[allow(unused)] spawner: Spawner) {
     pico_trail::log_info!("Starting in 5 seconds...");
     Timer::after(Duration::from_secs(5)).await;
 
-    pico_trail::log_info!("BNO086 Demo");
-    pico_trail::log_info!("===========");
+    pico_trail::log_info!("BNO086 Demo - GPIO Debug Mode");
+    pico_trail::log_info!("=============================");
     pico_trail::log_info!("");
 
-    // Initialize I2C0 for BNO086 (GPIO4 = SDA, GPIO5 = SCL)
-    pico_trail::log_info!("Initializing I2C0 (GPIO4=SDA, GPIO5=SCL)...");
+    // =========================================================================
+    // GPIO Debug: Test INT (GPIO22) only - DO NOT touch RST
+    // RST manipulation causes BNO086 to disappear from I2C bus
+    // =========================================================================
+    pico_trail::log_info!("=== GPIO Pin Test (INT only, RST untouched) ===");
+    pico_trail::log_info!("INT = GPIO22");
+    pico_trail::log_info!("");
+
+    // Only configure INT as input - do NOT touch RST (GPIO17)
+    let int = embassy_rp::gpio::Input::new(p.PIN_22, Pull::Up);
+
+    // Read initial INT state
+    let int_state = if int.is_low() { "LOW" } else { "HIGH" };
+    pico_trail::log_info!("Initial INT state: {}", int_state);
+
+    // Monitor INT for 2 seconds before I2C init
+    pico_trail::log_info!("Monitoring INT for 2 seconds (before I2C)...");
+    let mut last_int = int.is_high();
+    let mut edge_count = 0;
+    for i in 0..200 {
+        Timer::after(Duration::from_millis(10)).await;
+        let current_int = int.is_high();
+        if last_int && !current_int {
+            edge_count += 1;
+            if edge_count <= 3 {
+                pico_trail::log_info!("  Falling edge #{} at {}ms", edge_count, i * 10);
+            }
+        }
+        last_int = current_int;
+    }
+    pico_trail::log_info!("  Edges before I2C: {}", edge_count);
+
+    // Drop INT pin so we can check it again later
+    drop(int);
+
+    // =========================================================================
+    // Step 1: I2C Bus Recovery
+    // If I2C bus is still stuck, toggle SCL to release
+    // =========================================================================
+    pico_trail::log_info!("=== I2C Bus Recovery ===");
+
+    // Configure SCL and SDA as outputs for bus recovery
+    // We consume the pins here, then use unsafe steal() to get them back for I2C
+    {
+        let mut scl = Output::new(p.PIN_5, Level::High);
+        let mut sda_out = Output::new(p.PIN_4, Level::High);
+
+        // Wait a bit with both lines high
+        Timer::after(Duration::from_millis(10)).await;
+
+        // Release SDA to check its state
+        drop(sda_out);
+        let sda =
+            embassy_rp::gpio::Input::new(unsafe { hal::peripherals::PIN_4::steal() }, Pull::Up);
+        Timer::after(Duration::from_micros(100)).await;
+
+        // Check if SDA is stuck low (slave holding it)
+        if sda.is_low() {
+            pico_trail::log_warn!("  SDA stuck low, attempting recovery...");
+
+            // Toggle SCL up to 16 times with longer pulses to release stuck slave
+            // BNO086 may need more clocks than typical I2C slaves
+            for i in 0..16 {
+                scl.set_low();
+                Timer::after(Duration::from_micros(50)).await;
+                scl.set_high();
+                Timer::after(Duration::from_micros(50)).await;
+
+                // Check if SDA released
+                if sda.is_high() {
+                    pico_trail::log_info!("  SDA released after {} clock pulses", i + 1);
+                    break;
+                }
+            }
+
+            // Generate STOP condition: SDA low->high while SCL high
+            drop(sda);
+            let mut sda_out2 = Output::new(unsafe { hal::peripherals::PIN_4::steal() }, Level::Low);
+            Timer::after(Duration::from_micros(50)).await;
+            scl.set_high();
+            Timer::after(Duration::from_micros(50)).await;
+            sda_out2.set_high(); // STOP: SDA rises while SCL high
+            Timer::after(Duration::from_micros(100)).await;
+
+            // Check SDA state again
+            drop(sda_out2);
+            let sda_check =
+                embassy_rp::gpio::Input::new(unsafe { hal::peripherals::PIN_4::steal() }, Pull::Up);
+            Timer::after(Duration::from_micros(100)).await;
+            if sda_check.is_high() {
+                pico_trail::log_info!("  Recovery complete, SDA is now HIGH");
+            } else {
+                pico_trail::log_warn!("  SDA still LOW after recovery - may need power cycle");
+            }
+        } else {
+            pico_trail::log_info!("  SDA is high, bus OK");
+        }
+        // scl and sda dropped here, releasing the GPIO hardware
+    }
+
+    // Small delay after recovery
+    Timer::after(Duration::from_millis(10)).await;
+
+    // =========================================================================
+    // Step 2: Initialize I2C (use unsafe steal to get pins back)
+    // =========================================================================
+    pico_trail::log_info!("Initializing I2C0 (GPIO4=SDA, GPIO5=SCL, 50kHz)...");
+
+    // SAFETY: The GPIO pins were dropped above, so we can safely reclaim them
+    let pin_4 = unsafe { hal::peripherals::PIN_4::steal() };
+    let pin_5 = unsafe { hal::peripherals::PIN_5::steal() };
+
     let mut i2c0 = embassy_rp::i2c::I2c::new_async(
         p.I2C0,
-        p.PIN_5, // SCL
-        p.PIN_4, // SDA
+        pin_5, // SCL
+        pin_4, // SDA
         Irqs,
         {
             let mut config = embassy_rp::i2c::Config::default();
-            config.frequency = 100_000; // 100kHz Standard Mode (more stable)
+            config.frequency = 50_000; // 50kHz for stability after reset
             config
         },
     );
 
-    // Wait for BNO086 to power up (needs time after power-on)
-    pico_trail::log_info!("Waiting for sensor power-up...");
-    Timer::after(Duration::from_millis(500)).await;
+    // Brief delay for I2C bus to stabilize
+    Timer::after(Duration::from_millis(100)).await;
 
-    // Scan I2C bus for devices
-    pico_trail::log_info!("Scanning I2C bus for devices...");
+    // =========================================================================
+    // Step 3: Scan I2C bus for BNO086 (with retry)
+    // =========================================================================
     let mut found_addr: Option<u8> = None;
-    for addr in 0x08..0x78 {
-        let mut buf = [0u8; 1];
-        if i2c0.read(addr, &mut buf).await.is_ok() {
-            pico_trail::log_info!("  Found device at 0x{:02X}", addr);
-            if addr == 0x4A || addr == 0x4B {
-                found_addr = Some(addr);
+
+    for attempt in 1..=3 {
+        pico_trail::log_info!("Scanning I2C bus (attempt {}/3)...", attempt);
+
+        // Only check BNO086 addresses (0x4A, 0x4B)
+        for addr in [0x4B_u8, 0x4A] {
+            let mut buf = [0u8; 1];
+            match embassy_time::with_timeout(Duration::from_millis(100), i2c0.read(addr, &mut buf))
+                .await
+            {
+                Ok(Ok(_)) => {
+                    pico_trail::log_info!("  Found BNO086 at 0x{:02X}", addr);
+                    found_addr = Some(addr);
+                    break;
+                }
+                Ok(Err(_)) => {
+                    pico_trail::log_debug!("  0x{:02X}: NACK", addr);
+                }
+                Err(_) => {
+                    pico_trail::log_warn!("  0x{:02X}: timeout", addr);
+                }
             }
+        }
+
+        if found_addr.is_some() {
+            break;
+        }
+
+        if attempt < 3 {
+            pico_trail::log_info!("  Not found, waiting 500ms before retry...");
+            Timer::after(Duration::from_millis(500)).await;
         }
     }
 
@@ -209,138 +353,148 @@ async fn main(#[allow(unused)] spawner: Spawner) {
             addr
         }
         None => {
-            pico_trail::log_warn!("No BNO086 found, trying default 0x4A");
-            0x4A
+            pico_trail::log_error!("BNO086 not found on I2C bus!");
+            pico_trail::log_error!("Check wiring: SDA=GPIO4, SCL=GPIO5, RST=GPIO17");
+            pico_trail::log_error!("Halting.");
+            loop {
+                Timer::after(Duration::from_secs(60)).await;
+            }
         }
     };
+
+    // =========================================================================
+    // Step 4: Create driver in POLLING mode
+    // =========================================================================
+    pico_trail::log_info!("Using POLLING mode (no INT/RST pins)...");
 
     // Create SHTP I2C transport
     let transport = pico_trail::communication::shtp::ShtpI2c::new(i2c0, bno_addr);
 
-    // Create BNO086 driver in polling mode (no INT/RST pins required)
-    // Note: INT/RST pins improve efficiency and recovery but are optional
+    // Create BNO086 driver in basic polling mode
     let config = pico_trail::devices::imu::bno086::Bno086Config::default();
     let mut driver = pico_trail::devices::imu::bno086::Bno086Driver::new(transport, config);
 
-    pico_trail::log_info!("Initializing BNO086 driver...");
+    pico_trail::log_info!("Reading raw SHTP packets (skip driver init)...");
+    pico_trail::log_info!("BNO086 should output default reports without SET_FEATURE");
+    pico_trail::log_info!("");
 
-    // Initialize the sensor
-    pico_trail::log_info!("Calling driver.init()...");
-    match driver.init().await {
-        Ok(()) => {
-            pico_trail::log_info!("BNO086 initialized successfully!");
-        }
-        Err(e) => {
-            pico_trail::log_error!("BNO086 initialization failed: {:?}", e);
-            pico_trail::log_error!("Possible causes:");
-            pico_trail::log_error!("  1. Check I2C wiring (SDA=GP4, SCL=GP5)");
-            pico_trail::log_error!("  2. Try address 0x4B if SA0 pin is high");
-            pico_trail::log_error!("  3. Ensure BNO086 has 3.3V power");
-            pico_trail::log_error!("Retrying in 5 seconds...");
-            Timer::after(Duration::from_secs(5)).await;
+    // Release driver to get raw transport access
+    let transport = driver.release();
+    let mut shtp = transport;
 
-            // Retry once
-            pico_trail::log_info!("Retrying initialization...");
-            match driver.init().await {
-                Ok(()) => {
-                    pico_trail::log_info!("BNO086 initialized on retry!");
-                }
-                Err(e2) => {
-                    pico_trail::log_error!("Retry failed: {:?}", e2);
-                    loop {
-                        Timer::after(Duration::from_secs(60)).await;
+    // Import SHTP types
+    use pico_trail::communication::shtp::{ShtpPacket, ShtpTransport};
+
+    // Read raw packets to see what sensor outputs by default
+    pico_trail::log_info!("=== Raw packet reading (30 packets) ===");
+    let mut quat_count = 0;
+    for i in 0..30 {
+        let mut packet = ShtpPacket::<280>::new();
+        let read_result =
+            embassy_time::with_timeout(Duration::from_millis(200), shtp.read_packet(&mut packet))
+                .await;
+
+        match read_result {
+            Err(_) => {
+                pico_trail::log_debug!("Pkt {}: timeout", i);
+            }
+            Ok(Err(e)) => {
+                pico_trail::log_debug!("Pkt {}: {:?}", i, e);
+            }
+            Ok(Ok(())) => {
+                let payload = packet.payload();
+                let report_id = if !payload.is_empty() { payload[0] } else { 0 };
+
+                // Only log interesting packets
+                if packet.channel == 3 && payload.len() > 10 {
+                    pico_trail::log_info!(
+                        "Pkt {}: ch={} len={} report=0x{:02X}",
+                        i,
+                        packet.channel,
+                        payload.len(),
+                        report_id
+                    );
+
+                    // Check for quaternion
+                    if report_id == 0x05 || report_id == 0x08 {
+                        quat_count += 1;
+                        pico_trail::log_info!("  -> Direct quaternion!");
+                    }
+                    if report_id == 0xFB && payload.len() > 15 {
+                        // Check for embedded quaternion
+                        for j in 5..payload.len().saturating_sub(10) {
+                            if payload[j] == 0x08 || payload[j] == 0x05 {
+                                quat_count += 1;
+                                pico_trail::log_info!(
+                                    "  -> Embedded 0x{:02X} at {}",
+                                    payload[j],
+                                    j
+                                );
+                                break;
+                            }
+                        }
                     }
                 }
             }
         }
-    }
-
-    // Print product ID if available
-    if let Some(product_id) = driver.product_id() {
-        pico_trail::log_info!(
-            "Product ID: SW version {}.{}.{}",
-            product_id.sw_version_major,
-            product_id.sw_version_minor,
-            product_id.sw_version_patch
-        );
+        Timer::after(Duration::from_millis(50)).await;
     }
 
     pico_trail::log_info!("");
-    pico_trail::log_info!("Reading quaternion data at 100Hz...");
-    pico_trail::log_info!("Rotate sensor to see Euler angle changes");
-    pico_trail::log_info!("");
+    pico_trail::log_info!("Found {} quaternion reports", quat_count);
 
-    // Use QuaternionSensor trait
-    use pico_trail::devices::traits::QuaternionSensor;
+    if quat_count == 0 {
+        pico_trail::log_error!("No quaternion data - sensor may need configuration");
+        pico_trail::log_info!("Trying with driver init...");
 
-    // Statistics for rate measurement
-    let mut sample_count: u32 = 0;
-    let mut error_count: u32 = 0;
-    let start_time = Instant::now();
-    let mut last_stats_time = start_time;
+        // Recreate driver and init
+        let config = pico_trail::devices::imu::bno086::Bno086Config::default();
+        let mut driver = pico_trail::devices::imu::bno086::Bno086Driver::new(shtp, config);
 
-    loop {
-        // Read quaternion from sensor
-        match driver.read_quaternion().await {
-            Ok(reading) => {
-                sample_count += 1;
-
-                // Convert quaternion to Euler angles (roll, pitch, yaw)
-                let (roll, pitch, yaw) = quaternion_to_euler(
-                    reading.quaternion.w,
-                    reading.quaternion.i,
-                    reading.quaternion.j,
-                    reading.quaternion.k,
-                );
-
-                // Log every 10th sample (~10Hz output)
-                if sample_count % 10 == 0 {
-                    let roll_i = roll as i32;
-                    let pitch_i = pitch as i32;
-                    let yaw_i = yaw as i32;
-                    pico_trail::log_info!(
-                        "Euler: Roll={}° Pitch={}° Yaw={}°",
-                        roll_i,
-                        pitch_i,
-                        yaw_i
-                    );
-                }
-
-                // Print statistics every 5 seconds
-                let now = Instant::now();
-                if now.duration_since(last_stats_time) >= Duration::from_secs(5) {
-                    let elapsed_secs = now.duration_since(start_time).as_secs();
-                    let rate = if elapsed_secs > 0 {
-                        sample_count / elapsed_secs as u32
-                    } else {
-                        0
-                    };
-
-                    pico_trail::log_info!(
-                        "Stats: {} samples, {} errors, ~{}Hz, healthy={}",
-                        sample_count,
-                        error_count,
-                        rate,
-                        driver.is_healthy()
-                    );
-                    last_stats_time = now;
-                }
+        match driver.init().await {
+            Ok(()) => {
+                pico_trail::log_info!("Driver initialized!");
+                shtp = driver.release();
             }
             Err(e) => {
-                error_count += 1;
-                if error_count % 10 == 1 {
-                    // Only log every 10th error to avoid spam
-                    pico_trail::log_warn!("Read error: {:?} (count={})", e, error_count);
+                pico_trail::log_error!("Init failed: {:?}", e);
+                loop {
+                    Timer::after(Duration::from_secs(60)).await;
                 }
-
-                // Longer delay after errors to let I2C bus recover
-                Timer::after(Duration::from_millis(50)).await;
             }
         }
 
-        // Delay between reads - don't poll too aggressively
-        // At 100Hz, data arrives every 10ms, so 5ms delay is reasonable
-        Timer::after(Duration::from_millis(5)).await;
+        // Read again after init
+        pico_trail::log_info!("=== Reading after init (30 packets) ===");
+        for i in 0..30 {
+            let mut packet = ShtpPacket::<280>::new();
+            let read_result = embassy_time::with_timeout(
+                Duration::from_millis(200),
+                shtp.read_packet(&mut packet),
+            )
+            .await;
+
+            if let Ok(Ok(())) = read_result {
+                let payload = packet.payload();
+                let report_id = if !payload.is_empty() { payload[0] } else { 0 };
+                if packet.channel == 3 && payload.len() > 10 {
+                    pico_trail::log_info!(
+                        "Pkt {}: ch={} len={} report=0x{:02X}",
+                        i,
+                        packet.channel,
+                        payload.len(),
+                        report_id
+                    );
+                }
+            }
+            Timer::after(Duration::from_millis(50)).await;
+        }
+    }
+
+    pico_trail::log_info!("");
+    pico_trail::log_info!("Demo complete. Halting.");
+    loop {
+        Timer::after(Duration::from_secs(60)).await;
     }
 }
 

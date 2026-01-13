@@ -48,6 +48,10 @@ async fn delay_ms(_ms: u64) {
     // No-op for host tests
 }
 
+/// Timeout duration for I2C operations (milliseconds)
+#[cfg(feature = "embassy")]
+const I2C_TIMEOUT_MS: u64 = 100;
+
 /// Get current timestamp in microseconds
 #[cfg(feature = "embassy")]
 fn timestamp_us() -> u64 {
@@ -160,7 +164,79 @@ where
         }
     }
 
-    /// Initialize the BNO086 sensor
+    /// Initialize the BNO086 sensor (passive mode - uses default reports)
+    ///
+    /// This is the **recommended** initialization method based on empirical testing.
+    /// BNO086 outputs Game Rotation Vector (0x08) by default without any SET_FEATURE
+    /// commands. This method simply waits for the first quaternion data.
+    ///
+    /// **Key findings (AN-srhcj):**
+    /// - DO NOT pulse RST at startup - causes instability
+    /// - BNO086 outputs 0xFB batched reports with embedded 0x08 by default
+    /// - SET_FEATURE commands can cause sensor to stop responding
+    ///
+    /// This method:
+    /// 1. Resets transport state
+    /// 2. Waits for sensor boot (200ms)
+    /// 3. Reads packets until first quaternion is found
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Quaternion data received, sensor ready
+    /// * `Err(QuaternionError)` - Timeout waiting for data
+    pub async fn init_passive(&mut self) -> Result<(), QuaternionError> {
+        // Reset transport state
+        self.transport.reset();
+
+        // Wait for sensor boot - BNO086 needs time after power-on
+        delay_ms(200).await;
+
+        #[cfg(feature = "pico2_w")]
+        crate::log_info!("BNO086: Waiting for default quaternion data...");
+
+        // Read packets until we get quaternion data
+        // BNO086 outputs 0xFB batched reports containing 0x08 by default
+        let mut got_quaternion = false;
+        #[allow(unused_variables)]
+        for attempt in 0..50 {
+            // Try for 5 seconds (50 * 100ms max per read)
+            match self.read_and_process().await {
+                Ok(true) => {
+                    #[cfg(feature = "pico2_w")]
+                    crate::log_info!(
+                        "BNO086: Got quaternion after {} attempts (passive mode)",
+                        attempt + 1
+                    );
+                    got_quaternion = true;
+                    break;
+                }
+                Ok(false) => {
+                    // No quaternion yet, wait and retry
+                    delay_ms(50).await;
+                }
+                Err(_) => {
+                    // Error - wait and retry
+                    delay_ms(100).await;
+                }
+            }
+        }
+
+        if got_quaternion {
+            self.initialized = true;
+            self.healthy = true;
+            self.error_count = 0;
+            Ok(())
+        } else {
+            #[cfg(feature = "pico2_w")]
+            crate::log_warn!("BNO086: Timeout waiting for quaternion data");
+            Err(QuaternionError::Timeout)
+        }
+    }
+
+    /// Initialize the BNO086 sensor (active mode - sends SET_FEATURE commands)
+    ///
+    /// **Warning:** Based on empirical testing, this method may cause the sensor
+    /// to stop responding. Use `init_passive()` instead for reliable operation.
     ///
     /// This method:
     /// 1. Waits for sensor boot (100ms)
@@ -176,22 +252,33 @@ where
         // Reset transport state
         self.transport.reset();
 
+        #[cfg(feature = "pico2_w")]
+        crate::log_info!("BNO086 init: waiting for sensor boot...");
+
         // Wait for sensor boot
         delay_ms(100).await;
 
         // Read and discard initial packets (clear buffer)
+        #[cfg(feature = "pico2_w")]
+        crate::log_info!("BNO086 init: clearing buffer...");
         self.clear_buffer().await;
 
         // Request Product ID
+        #[cfg(feature = "pico2_w")]
+        crate::log_info!("BNO086 init: requesting product ID...");
         self.request_product_id().await?;
 
         // Wait for response
         delay_ms(10).await;
 
         // Read Product ID response
+        #[cfg(feature = "pico2_w")]
+        crate::log_info!("BNO086 init: reading product ID...");
         self.read_product_id().await?;
 
         // Configure Rotation Vector report
+        #[cfg(feature = "pico2_w")]
+        crate::log_info!("BNO086 init: configuring rotation vector...");
         self.configure_rotation_vector().await?;
 
         // Wait for sensor to start generating reports
@@ -205,23 +292,36 @@ where
         let mut got_data = false;
         #[allow(unused_variables)]
         for attempt in 0..30 {
-            let mut packet = ShtpPacket::<128>::new();
-            if self.transport.read_packet(&mut packet).await.is_ok()
-                && packet.channel == ShtpChannel::InputReport as u8
-            {
-                let payload = packet.payload();
-                if !payload.is_empty() {
-                    let report_id = payload[0];
-                    // Check for quaternion data (direct or in batched report)
-                    if report_id == 0x05 || report_id == 0x08 || report_id == 0xFB {
-                        #[cfg(feature = "pico2_w")]
-                        crate::log_info!(
-                            "Got first data (report 0x{:02X}) after {} attempts",
-                            report_id,
-                            attempt + 1
-                        );
-                        got_data = true;
-                        break;
+            let mut packet = ShtpPacket::<280>::new();
+
+            // Use timeout to prevent hanging
+            #[cfg(feature = "embassy")]
+            let read_result = embassy_time::with_timeout(
+                embassy_time::Duration::from_millis(I2C_TIMEOUT_MS),
+                self.transport.read_packet(&mut packet),
+            )
+            .await;
+
+            #[cfg(not(feature = "embassy"))]
+            let read_result: Result<Result<(), ShtpError>, ()> =
+                Ok(self.transport.read_packet(&mut packet).await);
+
+            if let Ok(Ok(())) = read_result {
+                if packet.channel == ShtpChannel::InputReport as u8 {
+                    let payload = packet.payload();
+                    if !payload.is_empty() {
+                        let report_id = payload[0];
+                        // Check for quaternion data (direct or in batched report)
+                        if report_id == 0x05 || report_id == 0x08 || report_id == 0xFB {
+                            #[cfg(feature = "pico2_w")]
+                            crate::log_info!(
+                                "Got first data (report 0x{:02X}) after {} attempts",
+                                report_id,
+                                attempt + 1
+                            );
+                            got_data = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -242,10 +342,23 @@ where
 
     /// Clear the sensor's output buffer by reading packets
     async fn clear_buffer(&mut self) {
-        let mut packet = ShtpPacket::<128>::new();
+        let mut packet = ShtpPacket::<280>::new();
 
         for _ in 0..MAX_INIT_PACKETS {
-            if self.transport.read_packet(&mut packet).await.is_err() {
+            // Use timeout to prevent hanging
+            #[cfg(feature = "embassy")]
+            let read_result = embassy_time::with_timeout(
+                embassy_time::Duration::from_millis(I2C_TIMEOUT_MS),
+                self.transport.read_packet(&mut packet),
+            )
+            .await;
+
+            #[cfg(not(feature = "embassy"))]
+            let read_result: Result<Result<(), ShtpError>, ()> =
+                Ok(self.transport.read_packet(&mut packet).await);
+
+            // Break on error or timeout
+            if read_result.is_err() || matches!(read_result, Ok(Err(_))) {
                 break;
             }
             // Small delay between reads
@@ -261,32 +374,62 @@ where
             .set_payload(&payload)
             .map_err(|_| QuaternionError::ProtocolError)?;
 
-        self.transport
-            .write_packet(&packet)
-            .await
-            .map_err(|_| QuaternionError::I2cError)?;
+        // Use timeout to prevent hanging on I2C write
+        #[cfg(feature = "embassy")]
+        let write_result = embassy_time::with_timeout(
+            embassy_time::Duration::from_millis(I2C_TIMEOUT_MS),
+            self.transport.write_packet(&packet),
+        )
+        .await;
 
-        Ok(())
+        #[cfg(not(feature = "embassy"))]
+        let write_result: Result<Result<(), ShtpError>, ()> =
+            Ok(self.transport.write_packet(&packet).await);
+
+        match write_result {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(_)) => Err(QuaternionError::I2cError),
+            Err(_) => {
+                #[cfg(feature = "pico2_w")]
+                crate::log_warn!("Product ID request timeout");
+                Err(QuaternionError::Timeout)
+            }
+        }
     }
 
     /// Read and parse Product ID response
     async fn read_product_id(&mut self) -> Result<(), QuaternionError> {
-        let mut packet = ShtpPacket::<128>::new();
+        let mut packet = ShtpPacket::<280>::new();
 
         // Try to read product ID response (may need multiple reads)
+        // Use timeout to prevent hanging on I2C clock stretching
         for _ in 0..MAX_INIT_PACKETS {
-            match self.transport.read_packet(&mut packet).await {
-                Ok(()) => {
+            #[cfg(feature = "embassy")]
+            let read_result = embassy_time::with_timeout(
+                embassy_time::Duration::from_millis(I2C_TIMEOUT_MS),
+                self.transport.read_packet(&mut packet),
+            )
+            .await;
+
+            #[cfg(not(feature = "embassy"))]
+            let read_result: Result<Result<(), ShtpError>, ()> =
+                Ok(self.transport.read_packet(&mut packet).await);
+
+            match read_result {
+                Ok(Ok(())) => {
                     if let Some(response) = ProductIdResponse::parse(packet.payload()) {
                         self.product_id = Some(response);
                         return Ok(());
                     }
                 }
-                Err(ShtpError::TransportError) => {
+                Ok(Err(ShtpError::TransportError)) => {
                     return Err(QuaternionError::I2cError);
                 }
-                Err(_) => {
+                Ok(Err(_)) => {
                     // Continue trying
+                }
+                Err(_) => {
+                    // Timeout - continue trying
                 }
             }
             delay_ms(5).await;
@@ -318,10 +461,27 @@ where
             .set_payload(&payload)
             .map_err(|_| QuaternionError::ProtocolError)?;
 
-        self.transport
-            .write_packet(&packet)
-            .await
-            .map_err(|_| QuaternionError::I2cError)?;
+        // Use timeout to prevent hanging on I2C write
+        #[cfg(feature = "embassy")]
+        let write_result = embassy_time::with_timeout(
+            embassy_time::Duration::from_millis(I2C_TIMEOUT_MS),
+            self.transport.write_packet(&packet),
+        )
+        .await;
+
+        #[cfg(not(feature = "embassy"))]
+        let write_result: Result<Result<(), ShtpError>, ()> =
+            Ok(self.transport.write_packet(&packet).await);
+
+        match write_result {
+            Ok(Ok(())) => {}
+            Ok(Err(_)) => return Err(QuaternionError::I2cError),
+            Err(_) => {
+                #[cfg(feature = "pico2_w")]
+                crate::log_warn!("Game Rotation Vector config timeout");
+                return Err(QuaternionError::Timeout);
+            }
+        }
 
         // Wait for command to be processed
         delay_ms(50).await;
@@ -344,10 +504,27 @@ where
             .set_payload(&gyro_payload)
             .map_err(|_| QuaternionError::ProtocolError)?;
 
-        self.transport
-            .write_packet(&packet)
-            .await
-            .map_err(|_| QuaternionError::I2cError)?;
+        // Use timeout to prevent hanging on I2C write
+        #[cfg(feature = "embassy")]
+        let write_result2 = embassy_time::with_timeout(
+            embassy_time::Duration::from_millis(I2C_TIMEOUT_MS),
+            self.transport.write_packet(&packet),
+        )
+        .await;
+
+        #[cfg(not(feature = "embassy"))]
+        let write_result2: Result<Result<(), ShtpError>, ()> =
+            Ok(self.transport.write_packet(&packet).await);
+
+        match write_result2 {
+            Ok(Ok(())) => {}
+            Ok(Err(_)) => return Err(QuaternionError::I2cError),
+            Err(_) => {
+                #[cfg(feature = "pico2_w")]
+                crate::log_warn!("Gyroscope Calibrated config timeout");
+                return Err(QuaternionError::Timeout);
+            }
+        }
 
         #[cfg(feature = "pico2_w")]
         crate::log_info!("Feature commands sent, waiting for responses...");
@@ -356,29 +533,56 @@ where
         delay_ms(100).await;
 
         // Read responses to see if we get Feature Responses (0xFC)
-        let mut packet = ShtpPacket::<128>::new();
+        // Use timeout to prevent hanging on I2C clock stretching
+        let mut packet = ShtpPacket::<280>::new();
         let mut got_response = false;
-        for _ in 0..10 {
-            if self.transport.read_packet(&mut packet).await.is_ok() {
-                let payload_data = packet.payload();
-                let report_id = if !payload_data.is_empty() {
-                    payload_data[0]
-                } else {
-                    0
-                };
+        #[allow(unused_variables)]
+        for i in 0..10 {
+            #[cfg(feature = "embassy")]
+            let read_result = embassy_time::with_timeout(
+                embassy_time::Duration::from_millis(I2C_TIMEOUT_MS),
+                self.transport.read_packet(&mut packet),
+            )
+            .await;
 
-                #[cfg(feature = "pico2_w")]
-                crate::log_debug!(
-                    "Response: ch={} len={} report_id=0x{:02X}",
-                    packet.channel,
-                    payload_data.len(),
-                    report_id
-                );
+            #[cfg(not(feature = "embassy"))]
+            let read_result: Result<Result<(), ShtpError>, ()> =
+                Ok(self.transport.read_packet(&mut packet).await);
 
-                // 0xFC is Get Feature Response - confirms feature is enabled
-                if report_id == ReportId::GetFeatureResponse as u8 {
-                    got_response = true;
+            match read_result {
+                Ok(Ok(())) => {
+                    let payload_data = packet.payload();
+                    let report_id = if !payload_data.is_empty() {
+                        payload_data[0]
+                    } else {
+                        0
+                    };
+
+                    #[cfg(feature = "pico2_w")]
+                    crate::log_debug!(
+                        "Response {}: ch={} len={} report_id=0x{:02X}",
+                        i,
+                        packet.channel,
+                        payload_data.len(),
+                        report_id
+                    );
+
+                    // 0xFC is Get Feature Response - confirms feature is enabled
+                    if report_id == ReportId::GetFeatureResponse as u8 {
+                        got_response = true;
+                    }
                 }
+                Ok(Err(_)) => {
+                    // Read error, continue
+                }
+                #[cfg(feature = "embassy")]
+                Err(_) => {
+                    // Timeout - I2C may be stuck
+                    #[cfg(feature = "pico2_w")]
+                    crate::log_warn!("Response {}: I2C timeout", i);
+                }
+                #[cfg(not(feature = "embassy"))]
+                Err(_) => {}
             }
             delay_ms(20).await;
         }
@@ -402,9 +606,27 @@ where
     /// This is the polling-mode read function. In Phase 3, this will be
     /// replaced with interrupt-driven reading.
     async fn read_and_process(&mut self) -> Result<bool, QuaternionError> {
-        let mut packet = ShtpPacket::<128>::new();
+        let mut packet = ShtpPacket::<280>::new();
 
-        match self.transport.read_packet(&mut packet).await {
+        // Use timeout to prevent hanging on I2C clock stretching
+        #[cfg(feature = "embassy")]
+        let transport_result = embassy_time::with_timeout(
+            embassy_time::Duration::from_millis(I2C_TIMEOUT_MS),
+            self.transport.read_packet(&mut packet),
+        )
+        .await;
+
+        #[cfg(not(feature = "embassy"))]
+        let transport_result: Result<Result<(), ShtpError>, ()> =
+            Ok(self.transport.read_packet(&mut packet).await);
+
+        // Handle timeout as NoData
+        let read_result = match transport_result {
+            Ok(result) => result,
+            Err(_) => return Ok(false), // Timeout - treat as no data
+        };
+
+        match read_result {
             Ok(()) => {
                 // Check if this is a sensor report
                 if packet.channel == ShtpChannel::InputReport as u8 {
@@ -425,6 +647,17 @@ where
                         // 0x05 = Rotation Vector, 0x08 = Game Rotation Vector (direct)
                         if report_id == 0x05 || report_id == 0x08 {
                             if let Some(report) = RotationVectorReport::parse_any(payload) {
+                                // Debug: log raw Q14 values to verify data is changing
+                                #[cfg(feature = "pico2_w")]
+                                crate::log_debug!(
+                                    "Q14 direct: i={} j={} k={} w={} seq={}",
+                                    report.q_i,
+                                    report.q_j,
+                                    report.q_k,
+                                    report.q_real,
+                                    report.sequence
+                                );
+
                                 self.last_quaternion = report.to_quaternion();
                                 self.last_accuracy = report.accuracy_radians();
                                 self.last_update_us = timestamp_us();
@@ -489,6 +722,17 @@ where
                                     if let Some(report) =
                                         RotationVectorReport::parse_any(&payload[offset..])
                                     {
+                                        // Debug: log raw Q14 values to verify data is changing
+                                        #[cfg(feature = "pico2_w")]
+                                        crate::log_debug!(
+                                            "Q14 raw: i={} j={} k={} w={} seq={}",
+                                            report.q_i,
+                                            report.q_j,
+                                            report.q_k,
+                                            report.q_real,
+                                            report.sequence
+                                        );
+
                                         self.last_quaternion = report.to_quaternion();
                                         self.last_accuracy = report.accuracy_radians();
                                         self.last_update_us = timestamp_us();
@@ -630,6 +874,10 @@ where
 
     fn last_update_us(&self) -> u64 {
         self.last_update_us
+    }
+
+    fn angular_rate(&self) -> nalgebra::Vector3<f32> {
+        self.last_angular_rate
     }
 }
 

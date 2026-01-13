@@ -58,6 +58,21 @@ fn degrees_to_cdeg(degrees: f32) -> u16 {
     (degrees * 100.0).clamp(0.0, 35999.0) as u16
 }
 
+/// Convert radians to centidegrees for MAVLink heading
+/// Normalizes negative angles to 0-360 range
+fn radians_to_cdeg(radians: f32) -> u16 {
+    let degrees = radians * 180.0 / core::f32::consts::PI;
+    // Normalize to 0-360 range
+    let normalized = if degrees < 0.0 {
+        degrees + 360.0
+    } else if degrees >= 360.0 {
+        degrees - 360.0
+    } else {
+        degrees
+    };
+    (normalized * 100.0).clamp(0.0, 35999.0) as u16
+}
+
 /// Convert device GPS fix type to MAVLink GPS fix type
 fn convert_gps_fix_type(fix_type: DeviceGpsFixType) -> GpsFixType {
     match fix_type {
@@ -307,21 +322,34 @@ impl<V: VehicleType> TelemetryStreamer<V> {
     ///
     /// Builds GLOBAL_POSITION_INT message with position and velocity data.
     /// Velocity components (vx, vy) are computed from speed and COG.
+    /// Heading (hdg) is from AHRS yaw when available, otherwise from GPS COG.
     /// Returns zeros if no GPS fix is available.
     fn build_global_position_int(&self, state: &SystemState) -> Option<MavMessage> {
-        let (lat, lon, alt, vx, vy, vz, hdg) = match state.gps_position {
+        // Get heading from AHRS if healthy, otherwise fall back to GPS COG
+        let hdg = if state.attitude.healthy {
+            radians_to_cdeg(state.attitude.yaw)
+        } else {
+            // Fall back to GPS COG if AHRS is not available
+            state
+                .gps_position
+                .and_then(|pos| pos.course_over_ground)
+                .map(degrees_to_cdeg)
+                .unwrap_or(u16::MAX)
+        };
+
+        let (lat, lon, alt, vx, vy, vz) = match state.gps_position {
             Some(pos) => {
                 // Compute velocity components from speed and COG
-                let (vx, vy, hdg) = match pos.course_over_ground {
+                let (vx, vy) = match pos.course_over_ground {
                     Some(cog) => {
                         // Convert COG to radians for sin/cos
                         let cog_rad = cog * core::f32::consts::PI / 180.0;
                         // vx = North velocity, vy = East velocity
                         let vx = pos.speed * cog_rad.cos();
                         let vy = pos.speed * cog_rad.sin();
-                        (mps_to_cms_i16(vx), mps_to_cms_i16(vy), degrees_to_cdeg(cog))
+                        (mps_to_cms_i16(vx), mps_to_cms_i16(vy))
                     }
-                    None => (0, 0, u16::MAX), // COG not available from GPS
+                    None => (0, 0),
                 };
 
                 (
@@ -331,10 +359,9 @@ impl<V: VehicleType> TelemetryStreamer<V> {
                     vx,
                     vy,
                     0i16, // vz (vertical rate) not available from GPS
-                    hdg,
                 )
             }
-            None => (0, 0, 0, 0, 0, 0, u16::MAX),
+            None => (0, 0, 0, 0, 0, 0),
         };
 
         Some(MavMessage::GLOBAL_POSITION_INT(GLOBAL_POSITION_INT_DATA {
@@ -845,6 +872,32 @@ mod tests {
     }
 
     #[test]
+    fn test_radians_to_cdeg_typical() {
+        use core::f32::consts::PI;
+
+        // North (0 rad)
+        assert_eq!(radians_to_cdeg(0.0), 0);
+        // East (PI/2 rad = 90 deg)
+        assert_eq!(radians_to_cdeg(PI / 2.0), 9000);
+        // South (PI rad = 180 deg)
+        assert_eq!(radians_to_cdeg(PI), 18000);
+        // West (3*PI/2 rad = 270 deg)
+        assert_eq!(radians_to_cdeg(3.0 * PI / 2.0), 27000);
+    }
+
+    #[test]
+    fn test_radians_to_cdeg_negative() {
+        use core::f32::consts::PI;
+
+        // -90 degrees (-PI/2 rad) should normalize to 270 degrees
+        assert_eq!(radians_to_cdeg(-PI / 2.0), 27000);
+        // -180 degrees (-PI rad) should normalize to 180 degrees
+        assert_eq!(radians_to_cdeg(-PI), 18000);
+        // -45 degrees should normalize to 315 degrees
+        assert_eq!(radians_to_cdeg(-PI / 4.0), 31500);
+    }
+
+    #[test]
     fn test_convert_gps_fix_type() {
         use crate::devices::gps::GpsFixType as DeviceGpsFixType;
 
@@ -943,7 +996,7 @@ mod tests {
     #[test]
     fn test_build_global_position_int_no_gps() {
         let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
-        let state = SystemState::new(); // No GPS data
+        let state = SystemState::new(); // No GPS data, no AHRS
 
         let msg = streamer.build_global_position_int(&state).unwrap();
         if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
@@ -953,7 +1006,7 @@ mod tests {
             assert_eq!(data.vx, 0);
             assert_eq!(data.vy, 0);
             assert_eq!(data.vz, 0);
-            assert_eq!(data.hdg, u16::MAX); // Unknown heading
+            assert_eq!(data.hdg, u16::MAX); // Unknown heading (no AHRS, no GPS COG)
         } else {
             panic!("Expected GLOBAL_POSITION_INT message");
         }
@@ -978,6 +1031,15 @@ mod tests {
         };
         state.update_gps(position, 1000000);
 
+        // Set AHRS heading to east (90 degrees = PI/2 radians)
+        state.update_attitude_direct(
+            0.0,                                // roll
+            0.0,                                // pitch
+            core::f32::consts::PI / 2.0,        // yaw = 90 degrees
+            0.0, 0.0, 0.0,                      // angular rates
+            1000000,                            // timestamp
+        );
+
         let msg = streamer.build_global_position_int(&state).unwrap();
         if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
             // Allow small float precision error in degE7 conversion
@@ -989,7 +1051,7 @@ mod tests {
             assert!(data.vx.abs() < 10); // Nearly 0
             assert!((data.vy - 1000).abs() < 10); // Nearly 1000 cm/s
             assert_eq!(data.vz, 0); // No vertical velocity
-            assert_eq!(data.hdg, 9000); // 90 degrees in cdeg
+            assert_eq!(data.hdg, 9000); // 90 degrees from AHRS
         } else {
             panic!("Expected GLOBAL_POSITION_INT message");
         }
@@ -1014,25 +1076,32 @@ mod tests {
         };
         state.update_gps(position, 1000000);
 
+        // Set AHRS heading to north (0 degrees = 0 radians)
+        state.update_attitude_direct(
+            0.0, 0.0, 0.0,  // roll, pitch, yaw
+            0.0, 0.0, 0.0,  // angular rates
+            1000000,        // timestamp
+        );
+
         let msg = streamer.build_global_position_int(&state).unwrap();
         if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
             // Heading north (0 deg): vx ≈ 1000 cm/s, vy ≈ 0
             assert!((data.vx - 1000).abs() < 10); // Nearly 1000 cm/s
             assert!(data.vy.abs() < 10); // Nearly 0
-            assert_eq!(data.hdg, 0); // 0 degrees
+            assert_eq!(data.hdg, 0); // 0 degrees from AHRS
         } else {
             panic!("Expected GLOBAL_POSITION_INT message");
         }
     }
 
     #[test]
-    fn test_build_global_position_int_no_cog() {
+    fn test_build_global_position_int_no_cog_no_ahrs() {
         use crate::devices::gps::{GpsFixType as DeviceGpsFixType, GpsPosition};
 
         let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let mut state = SystemState::new();
 
-        // Set GPS position without COG
+        // Set GPS position without COG, and AHRS not healthy
         let position = GpsPosition {
             latitude: 48.1173,
             longitude: 11.5166,
@@ -1043,14 +1112,81 @@ mod tests {
             satellites: 4,
         };
         state.update_gps(position, 1000000);
+        // AHRS is not healthy by default
 
         let msg = streamer.build_global_position_int(&state).unwrap();
         if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
             // Without COG, velocity components should be 0
             assert_eq!(data.vx, 0);
             assert_eq!(data.vy, 0);
-            // Heading should be unknown
+            // Heading should be unknown (no AHRS, no GPS COG)
             assert_eq!(data.hdg, u16::MAX);
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_global_position_int_ahrs_fallback_to_gps_cog() {
+        use crate::devices::gps::{GpsFixType as DeviceGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
+        let mut state = SystemState::new();
+
+        // Set GPS position with COG, but AHRS not healthy
+        let position = GpsPosition {
+            latitude: 48.1173,
+            longitude: 11.5166,
+            altitude: 100.0,
+            speed: 5.0,
+            course_over_ground: Some(45.0), // NE direction
+            fix_type: DeviceGpsFixType::Fix3D,
+            satellites: 6,
+        };
+        state.update_gps(position, 1000000);
+        // AHRS is not healthy by default
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            // Heading should fall back to GPS COG (45 degrees)
+            assert_eq!(data.hdg, 4500);
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_global_position_int_ahrs_negative_yaw() {
+        use crate::devices::gps::{GpsFixType as DeviceGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
+        let mut state = SystemState::new();
+
+        // Set GPS position
+        let position = GpsPosition {
+            latitude: 48.1173,
+            longitude: 11.5166,
+            altitude: 100.0,
+            speed: 5.0,
+            course_over_ground: Some(0.0),
+            fix_type: DeviceGpsFixType::Fix3D,
+            satellites: 6,
+        };
+        state.update_gps(position, 1000000);
+
+        // Set AHRS heading to west (-90 degrees = -PI/2 radians)
+        // Should normalize to 270 degrees
+        state.update_attitude_direct(
+            0.0, 0.0,
+            -core::f32::consts::PI / 2.0,  // yaw = -90 degrees
+            0.0, 0.0, 0.0,
+            1000000,
+        );
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            // -90 degrees should normalize to 270 degrees = 27000 cdeg
+            assert_eq!(data.hdg, 27000);
         } else {
             panic!("Expected GLOBAL_POSITION_INT message");
         }

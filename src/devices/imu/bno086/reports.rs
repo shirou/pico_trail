@@ -348,21 +348,21 @@ impl GyroscopeReport {
 
     /// Convert to angular velocity vector in NED frame (rad/s)
     ///
-    /// Applies coordinate transformation from BNO086's Android-style frame
+    /// Applies coordinate transformation from BNO086's ENU frame
     /// to NED (North-East-Down) frame used in flight control.
     ///
-    /// BNO086 (Android): X=right, Y=up, Z=out (of screen)
-    /// NED: X=north/forward, Y=east/right, Z=down
+    /// BNO086 (ENU): X=East(right), Y=North(forward), Z=Up
+    /// NED: X=North/forward, Y=East/right, Z=Down
     ///
     /// When sensor is mounted with chip facing up:
-    /// - NED X (roll rate) = BNO Y (forward rotation)
-    /// - NED Y (pitch rate) = BNO X (right rotation)
-    /// - NED Z (yaw rate) = -BNO Z (down rotation, inverted)
+    /// - NED X (roll rate, around North) = ENU Y (rotation around North)
+    /// - NED Y (pitch rate, around East) = -ENU X (rotation around East, negated)
+    /// - NED Z (yaw rate, around Down) = -ENU Z (rotation around Up, inverted)
     pub fn to_angular_velocity_ned(&self) -> Vector3<f32> {
         let sensor = self.to_angular_velocity();
-        // Transform from Android frame to NED frame
+        // Transform from ENU frame to NED frame
         // This assumes standard mounting (sensor chip facing up)
-        Vector3::new(sensor.y, sensor.x, -sensor.z)
+        Vector3::new(sensor.y, -sensor.x, -sensor.z)
     }
 
     /// Get status accuracy level (0-3)
@@ -717,21 +717,21 @@ mod tests {
     #[test]
     fn test_gyroscope_report_to_angular_velocity_ned() {
         // Test NED frame conversion
-        // Sensor frame: X=1.0, Y=0.5, Z=-1.0
-        // NED frame: X=Y_sensor=0.5, Y=X_sensor=1.0, Z=-Z_sensor=1.0
+        // ENU frame: X=East(1.0), Y=North(0.5), Z=Up(-1.0)
+        // NED frame: X=Y_enu=0.5, Y=-X_enu=-1.0, Z=-Z_enu=1.0
         let report = GyroscopeReport {
             sequence: 0,
             status: 3,
-            gyro_x: 512,  // 1.0 rad/s
-            gyro_y: 256,  // 0.5 rad/s
-            gyro_z: -512, // -1.0 rad/s
+            gyro_x: 512,  // 1.0 rad/s (around East)
+            gyro_y: 256,  // 0.5 rad/s (around North)
+            gyro_z: -512, // -1.0 rad/s (around Up)
         };
 
         let v_ned = report.to_angular_velocity_ned();
 
-        assert!((v_ned.x - 0.5).abs() < 0.001); // NED X = sensor Y
-        assert!((v_ned.y - 1.0).abs() < 0.001); // NED Y = sensor X
-        assert!((v_ned.z - 1.0).abs() < 0.001); // NED Z = -sensor Z
+        assert!((v_ned.x - 0.5).abs() < 0.001); // NED X (roll) = Y_enu = 0.5
+        assert!((v_ned.y + 1.0).abs() < 0.001); // NED Y (pitch) = -X_enu = -1.0
+        assert!((v_ned.z - 1.0).abs() < 0.001); // NED Z (yaw) = -Z_enu = 1.0
     }
 
     #[test]

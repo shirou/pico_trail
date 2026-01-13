@@ -93,6 +93,11 @@ async fn mavlink_task_impl<R, W, F>(
 
         // Send telemetry at regular intervals
         if last_telemetry.elapsed() >= telemetry_interval {
+            // Update attitude from AHRS before sending telemetry
+            context
+                .state
+                .update_attitude(&crate::subsystems::ahrs::AHRS_STATE);
+
             let timestamp_us = Instant::now().as_micros();
             let telemetry_msgs = context
                 .dispatcher

@@ -20,7 +20,8 @@ use nalgebra::Quaternion;
 
 use super::gpio::{IntPin, RstPin};
 use super::reports::{
-    build_product_id_request, build_set_feature_command, ProductIdResponse, RotationVectorReport,
+    build_product_id_request, build_set_feature_command_for, ProductIdResponse, ReportId,
+    RotationVectorReport,
 };
 
 /// Maximum consecutive resets before giving up
@@ -33,10 +34,12 @@ const MAX_ERRORS_BEFORE_RESET: u32 = 3;
 const INT_TIMEOUT_MS: u64 = 500;
 
 /// Reset pulse duration in milliseconds
-const RESET_PULSE_MS: u64 = 20;
+/// BNO086 requires minimum 10ms reset pulse, using 100ms for reliability
+const RESET_PULSE_MS: u64 = 100;
 
 /// Post-reset boot wait in milliseconds
-const POST_RESET_BOOT_MS: u64 = 100;
+/// BNO086 boot time is ~650ms per datasheet, using 1000ms for safety
+const POST_RESET_BOOT_MS: u64 = 1000;
 
 /// Maximum packets to read during initialization
 const MAX_INIT_PACKETS: usize = 10;
@@ -236,26 +239,54 @@ where
     /// Initialize the BNO086 sensor
     ///
     /// Performs hardware reset, waits for boot, and configures Rotation Vector output.
+    /// Retries initialization up to MAX_CONSECUTIVE_RESETS times on failure.
     ///
     /// # Returns
     ///
     /// * `Ok(())` - Initialization successful
-    /// * `Err(QuaternionError)` - Initialization failed
+    /// * `Err(QuaternionError)` - Initialization failed after all retries
     pub async fn init(&mut self) -> Result<(), QuaternionError> {
+        for attempt in 0..MAX_CONSECUTIVE_RESETS {
+            if attempt > 0 {
+                crate::log_info!(
+                    "BNO086: Init retry attempt {}/{}",
+                    attempt + 1,
+                    MAX_CONSECUTIVE_RESETS
+                );
+            }
+
+            match self.init_internal().await {
+                Ok(()) => {
+                    // Initialization successful
+                    self.state = DriverState::Running;
+                    self.error_count = 0;
+                    self.reset_count = 0;
+                    crate::log_info!("BNO086: Initialized successfully");
+                    return Ok(());
+                }
+                Err(_e) => {
+                    crate::log_warn!("BNO086: Init attempt {} failed: {:?}", attempt + 1, _e);
+                    // Wait before retry
+                    delay_ms(500).await;
+                }
+            }
+        }
+
+        crate::log_error!("BNO086: All init attempts failed");
+        self.state = DriverState::Failed;
+        Err(QuaternionError::NotInitialized)
+    }
+
+    /// Internal initialization logic (called by init with retry wrapper)
+    async fn init_internal(&mut self) -> Result<(), QuaternionError> {
         // Perform hardware reset
         self.hardware_reset().await;
 
         // Wait for INT signal (boot complete)
-        match with_timeout(
-            self.config.int_timeout_ms,
-            self.int_pin.wait_for_falling_edge(),
-        )
-        .await
-        {
-            Ok(_) => {}
-            Err(_) => {
-                crate::log_warn!("BNO086: No INT after reset, continuing anyway");
-            }
+        // Use wait_for_int() which checks is_low() first - handles case where
+        // INT is already LOW after MCU reset (BNO086 was not reset)
+        if self.wait_for_int().await.is_err() {
+            crate::log_warn!("BNO086: No INT after reset, continuing anyway");
         }
 
         // Reset transport state
@@ -264,31 +295,27 @@ where
         // Wait additional boot time
         delay_ms(POST_RESET_BOOT_MS).await;
 
-        // Clear buffer
-        self.clear_buffer().await;
+        // Clear buffer with retry
+        self.clear_buffer_with_retry().await?;
+
+        // Additional delay after clearing buffer for I2C stability
+        delay_ms(50).await;
 
         // Request and read Product ID
         self.request_product_id().await?;
-        delay_ms(10).await;
+        delay_ms(50).await;
         self.read_product_id().await?;
 
         // Configure Rotation Vector report
         self.configure_rotation_vector().await?;
         delay_ms(50).await;
 
-        // Initialization successful
-        self.state = DriverState::Running;
-        self.error_count = 0;
-        self.reset_count = 0;
-
-        crate::log_info!("BNO086: Initialized successfully");
-
         Ok(())
     }
 
     /// Perform hardware reset using RST pin
     ///
-    /// Asserts RST low for 20ms, then releases.
+    /// Asserts RST low for 100ms, then releases and waits for boot.
     pub async fn hardware_reset(&mut self) {
         crate::log_debug!("BNO086: Hardware reset");
 
@@ -305,11 +332,20 @@ where
 
     /// Wait for INT signal with timeout
     ///
+    /// First checks if INT is already LOW (data ready). If not, waits for
+    /// falling edge with timeout.
+    ///
     /// # Returns
     ///
-    /// * `Ok(())` - INT signal received
+    /// * `Ok(())` - INT signal received (data ready)
     /// * `Err(QuaternionError::Timeout)` - Timeout waiting for INT
     async fn wait_for_int(&mut self) -> Result<(), QuaternionError> {
+        // First check if INT is already LOW (data is already ready)
+        if self.int_pin.is_low() {
+            return Ok(());
+        }
+
+        // Wait for falling edge with timeout
         match with_timeout(
             self.config.int_timeout_ms,
             self.int_pin.wait_for_falling_edge(),
@@ -437,38 +473,107 @@ where
         self.transport.reset();
 
         // Wait for INT (boot complete)
-        let _ = with_timeout(
-            self.config.int_timeout_ms,
-            self.int_pin.wait_for_falling_edge(),
-        )
-        .await;
+        // Check is_low() first to handle case where INT is already asserted
+        if !self.int_pin.is_low() {
+            let _ = with_timeout(
+                self.config.int_timeout_ms,
+                self.int_pin.wait_for_falling_edge(),
+            )
+            .await;
+        }
+
+        // Additional delay for I2C bus stabilization after boot
+        delay_ms(100).await;
 
         // Clear buffer
         self.clear_buffer().await;
 
         // Configure Rotation Vector report
         self.configure_rotation_vector().await?;
-        delay_ms(50).await;
+        delay_ms(100).await;
 
         Ok(())
     }
 
-    /// Clear sensor's output buffer
+    /// Clear sensor's output buffer with retry on I2C errors
+    ///
+    /// Wait for INT before each read to ensure sensor is ready.
+    /// Retries on I2C errors instead of immediately failing.
+    async fn clear_buffer_with_retry(&mut self) -> Result<(), QuaternionError> {
+        let mut packet = ShtpPacket::<280>::new();
+        let mut consecutive_errors = 0;
+        const MAX_CONSECUTIVE_ERRORS: u32 = 5;
+
+        for _i in 0..MAX_INIT_PACKETS {
+            // Wait for INT or timeout before reading
+            // Check is_low() first to handle case where INT is already asserted
+            if !self.int_pin.is_low() {
+                let _ = with_timeout(200, self.int_pin.wait_for_falling_edge()).await;
+            }
+
+            match self.transport.read_packet(&mut packet).await {
+                Ok(()) => {
+                    consecutive_errors = 0;
+                    crate::log_trace!("BNO086: clear_buffer read OK");
+                }
+                Err(ShtpError::NoData) => {
+                    // No more data to read, success
+                    crate::log_debug!("BNO086: clear_buffer complete");
+                    return Ok(());
+                }
+                Err(_e) => {
+                    consecutive_errors += 1;
+                    crate::log_debug!(
+                        "BNO086: clear_buffer error {:?} ({}/{})",
+                        _e,
+                        consecutive_errors,
+                        MAX_CONSECUTIVE_ERRORS
+                    );
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                        crate::log_warn!("BNO086: clear_buffer too many errors");
+                        return Err(QuaternionError::I2cError);
+                    }
+                    // Wait longer on error before retry
+                    delay_ms(50).await;
+                    continue;
+                }
+            }
+            // Delay between successful reads
+            delay_ms(20).await;
+        }
+
+        Ok(())
+    }
+
+    /// Clear sensor's output buffer (simple version for recovery)
+    ///
+    /// Used during recovery where we don't want to fail on errors.
     async fn clear_buffer(&mut self) {
-        let mut packet = ShtpPacket::<128>::new();
+        let mut packet = ShtpPacket::<280>::new();
 
         for _ in 0..MAX_INIT_PACKETS {
-            if self.transport.read_packet(&mut packet).await.is_err() {
-                break;
+            // Wait for INT or timeout before reading
+            // Check is_low() first to handle case where INT is already asserted
+            if !self.int_pin.is_low() {
+                let _ = with_timeout(200, self.int_pin.wait_for_falling_edge()).await;
             }
-            delay_ms(1).await;
+
+            match self.transport.read_packet(&mut packet).await {
+                Ok(()) => {}
+                Err(ShtpError::NoData) => break,
+                Err(_) => {
+                    delay_ms(50).await;
+                    continue;
+                }
+            }
+            delay_ms(20).await;
         }
     }
 
     /// Send Product ID request
     async fn request_product_id(&mut self) -> Result<(), QuaternionError> {
         let payload = build_product_id_request();
-        let mut packet = ShtpPacket::<128>::with_header(ShtpChannel::Control, 0);
+        let mut packet = ShtpPacket::<280>::with_header(ShtpChannel::Control, 0);
         packet
             .set_payload(&payload)
             .map_err(|_| QuaternionError::ProtocolError)?;
@@ -482,10 +587,18 @@ where
     }
 
     /// Read Product ID response
+    ///
+    /// Wait for INT before each read and use longer delays for I2C stability.
     async fn read_product_id(&mut self) -> Result<(), QuaternionError> {
-        let mut packet = ShtpPacket::<128>::new();
+        let mut packet = ShtpPacket::<280>::new();
 
         for _ in 0..MAX_INIT_PACKETS {
+            // Wait for INT or timeout before reading
+            // Check is_low() first to handle case where INT is already asserted
+            if !self.int_pin.is_low() {
+                let _ = with_timeout(100, self.int_pin.wait_for_falling_edge()).await;
+            }
+
             match self.transport.read_packet(&mut packet).await {
                 Ok(()) => {
                     if let Some(response) = ProductIdResponse::parse(packet.payload()) {
@@ -500,21 +613,31 @@ where
                     }
                 }
                 Err(ShtpError::TransportError) => {
-                    return Err(QuaternionError::I2cError);
+                    // Log and retry instead of immediate failure
+                    crate::log_debug!("BNO086: Product ID read transport error, retrying...");
                 }
                 Err(_) => {}
             }
-            delay_ms(5).await;
+            // Increased delay for I2C stability (was 5ms)
+            delay_ms(20).await;
         }
 
         // Product ID not critical, continue anyway
         Ok(())
     }
 
-    /// Configure Rotation Vector report at specified rate
+    /// Configure Game Rotation Vector report at specified rate
+    ///
+    /// Uses Game Rotation Vector (0x08) which is more commonly available
+    /// on BNO086 without magnetometer calibration.
     async fn configure_rotation_vector(&mut self) -> Result<(), QuaternionError> {
-        let payload = build_set_feature_command(self.config.report_interval_us);
-        let mut packet = ShtpPacket::<128>::with_header(ShtpChannel::Control, 0);
+        // Use Game Rotation Vector (0x08) - more reliable than Rotation Vector (0x05)
+        // because it doesn't require magnetometer calibration
+        let payload = build_set_feature_command_for(
+            ReportId::GameRotationVector as u8,
+            self.config.report_interval_us,
+        );
+        let mut packet = ShtpPacket::<280>::with_header(ShtpChannel::Control, 0);
         packet
             .set_payload(&payload)
             .map_err(|_| QuaternionError::ProtocolError)?;
@@ -524,21 +647,93 @@ where
             .await
             .map_err(|_| QuaternionError::I2cError)?;
 
+        crate::log_debug!(
+            "BNO086: Configured Game Rotation Vector at {}us interval",
+            self.config.report_interval_us
+        );
+
         Ok(())
     }
 
     /// Read and process a single packet
+    ///
+    /// Accepts both direct reports (0x05, 0x08) and batched reports (0xFB)
     async fn read_and_process(&mut self) -> Result<bool, QuaternionError> {
-        let mut packet = ShtpPacket::<128>::new();
+        let mut packet = ShtpPacket::<280>::new();
 
         match self.transport.read_packet(&mut packet).await {
             Ok(()) => {
                 if packet.channel == ShtpChannel::InputReport as u8 {
-                    if let Some(report) = RotationVectorReport::parse(packet.payload()) {
-                        self.last_quaternion = report.to_quaternion();
-                        self.last_accuracy = report.accuracy_radians();
-                        self.last_update_us = timestamp_us();
-                        return Ok(true);
+                    let payload = packet.payload();
+                    if payload.is_empty() {
+                        return Ok(false);
+                    }
+
+                    let report_id = payload[0];
+
+                    // Direct reports: 0x05 (Rotation Vector) or 0x08 (Game Rotation Vector)
+                    if report_id == 0x05 || report_id == 0x08 {
+                        if let Some(report) = RotationVectorReport::parse_any(payload) {
+                            self.last_quaternion = report.to_quaternion();
+                            self.last_accuracy = report.accuracy_radians();
+                            self.last_update_us = timestamp_us();
+                            return Ok(true);
+                        }
+                    }
+
+                    // 0xFB = Base Timestamp Reference - contains batched reports
+                    // Format: [0xFB][4-byte timestamp][report][2-byte delta][report]...
+                    if report_id == 0xFB && payload.len() > 7 {
+                        let mut offset = 5; // Skip 0xFB + 4-byte timestamp
+                        let mut first_report = true;
+                        let mut got_quaternion = false;
+
+                        while offset < payload.len() {
+                            // Skip 2-byte time delta (except for first report)
+                            if !first_report {
+                                offset += 2;
+                                if offset >= payload.len() {
+                                    break;
+                                }
+                            }
+                            first_report = false;
+
+                            let embedded_id = payload[offset];
+                            let report_size = match embedded_id {
+                                0x01 => 10, // Accelerometer
+                                0x02 => 10, // Gyroscope Calibrated
+                                0x03 => 10, // Magnetometer
+                                0x04 => 10, // Linear Acceleration
+                                0x05 => 14, // Rotation Vector (with accuracy)
+                                0x08 => 12, // Game Rotation Vector (no accuracy)
+                                _ => {
+                                    offset += 1;
+                                    continue;
+                                }
+                            };
+
+                            if offset + report_size > payload.len() {
+                                break;
+                            }
+
+                            // Parse quaternion reports (0x05 or 0x08)
+                            if embedded_id == 0x05 || embedded_id == 0x08 {
+                                if let Some(report) =
+                                    RotationVectorReport::parse_any(&payload[offset..])
+                                {
+                                    self.last_quaternion = report.to_quaternion();
+                                    self.last_accuracy = report.accuracy_radians();
+                                    self.last_update_us = timestamp_us();
+                                    got_quaternion = true;
+                                }
+                            }
+
+                            offset += report_size;
+                        }
+
+                        if got_quaternion {
+                            return Ok(true);
+                        }
                     }
                 }
                 Ok(false)

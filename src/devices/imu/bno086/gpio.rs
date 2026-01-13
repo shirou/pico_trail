@@ -102,30 +102,47 @@ impl IntPin for EmbassyIntPin<'_> {
     }
 }
 
-/// RST pin implementation using Embassy GPIO
+/// RST pin implementation using Embassy GPIO Flex
+///
+/// Uses Flex pin to properly handle BNO086 RST requirements:
+/// - Assert reset: Drive pin LOW
+/// - Release reset: Switch to high-Z (input mode with pull-up)
+///
+/// The BNO086 RST pin must NOT be actively driven HIGH - it must be
+/// released to high-Z and allowed to float up via external pull-up.
 #[cfg(feature = "pico2_w")]
 pub struct EmbassyRstPin<'d> {
-    pin: embassy_rp::gpio::Output<'d>,
+    pin: embassy_rp::gpio::Flex<'d>,
 }
 
 #[cfg(feature = "pico2_w")]
 impl<'d> EmbassyRstPin<'d> {
-    /// Create RST pin from Embassy GPIO output
+    /// Create RST pin from Embassy GPIO Flex
     ///
-    /// The pin should be initialized high (reset not asserted).
-    pub fn new(pin: embassy_rp::gpio::Output<'d>) -> Self {
-        Self { pin }
+    /// The pin starts in high-Z (input) mode with pull-up enabled.
+    /// This allows the external pull-up to keep RST high.
+    pub fn new(pin: embassy_rp::gpio::Flex<'d>) -> Self {
+        let mut rst = Self { pin };
+        // Start in high-Z mode (input with pull-up)
+        rst.pin.set_as_input();
+        rst.pin.set_pull(embassy_rp::gpio::Pull::Up);
+        rst
     }
 }
 
 #[cfg(feature = "pico2_w")]
 impl RstPin for EmbassyRstPin<'_> {
     fn set_low(&mut self) {
+        // Switch to output and drive LOW
+        self.pin.set_as_output();
         self.pin.set_low();
     }
 
     fn set_high(&mut self) {
-        self.pin.set_high();
+        // Release to high-Z (input mode with pull-up)
+        // External pull-up will bring the line HIGH
+        self.pin.set_as_input();
+        self.pin.set_pull(embassy_rp::gpio::Pull::Up);
     }
 }
 

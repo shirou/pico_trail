@@ -2,6 +2,12 @@
 //!
 //! This module provides async I2C support for RP2350 using Embassy's `embassy-rp` crate.
 //!
+//! # I2C Bus Recovery
+//!
+//! If the MCU resets while a sensor is mid-I2C-transaction, the sensor may hold SDA low,
+//! preventing further communication. Use `recover_i2c_bus()` before initializing the I2C
+//! peripheral to release the bus.
+//!
 //! # Example
 //!
 //! ```no_run
@@ -133,3 +139,72 @@ fn map_embassy_error(error: embassy_rp::i2c::Error) -> PlatformError {
         }
     }
 }
+
+/// I2C Bus Recovery Pattern
+///
+/// Recovers from stuck I2C bus state caused by MCU reset during I2C transaction.
+///
+/// When the MCU resets while a sensor is mid-I2C-transaction, the sensor may hold
+/// SDA low, preventing further communication. Recovery procedure:
+///
+/// 1. Configure SCL as output (high), SDA as input with pull-up
+/// 2. Check if SDA is stuck low
+/// 3. Toggle SCL up to 16 times with 50µs pulses to release the slave
+/// 4. Generate STOP condition (SDA low→high while SCL high)
+/// 5. Drop GPIO pins and use `unsafe { PIN_X::steal() }` to reclaim for I2C
+///
+/// **Example (inline in your code):**
+///
+/// ```ignore
+/// use embassy_rp::gpio::{Input, Level, Output, Pull};
+/// use embassy_time::{Duration, Timer};
+///
+/// // I2C Bus Recovery - call BEFORE initializing I2C peripheral
+/// {
+///     let mut scl = Output::new(p.PIN_5, Level::High);
+///     Timer::after(Duration::from_millis(10)).await;
+///
+///     let sda = Input::new(p.PIN_4, Pull::Up);
+///     Timer::after(Duration::from_micros(100)).await;
+///
+///     if sda.is_low() {
+///         log_warn!("I2C: SDA stuck low, attempting recovery...");
+///
+///         for i in 0..16 {
+///             scl.set_low();
+///             Timer::after(Duration::from_micros(50)).await;
+///             scl.set_high();
+///             Timer::after(Duration::from_micros(50)).await;
+///
+///             if sda.is_high() {
+///                 log_info!("I2C: SDA released after {} pulses", i + 1);
+///                 break;
+///             }
+///         }
+///
+///         // Generate STOP condition
+///         drop(sda);
+///         let mut sda_out = Output::new(
+///             unsafe { hal::peripherals::PIN_4::steal() },
+///             Level::Low
+///         );
+///         Timer::after(Duration::from_micros(50)).await;
+///         scl.set_high();
+///         Timer::after(Duration::from_micros(50)).await;
+///         sda_out.set_high(); // STOP: SDA rises while SCL high
+///         Timer::after(Duration::from_micros(100)).await;
+///     } else {
+///         log_info!("I2C: Bus OK");
+///     }
+///     // scl and sda dropped here
+/// }
+///
+/// // Reclaim pins for I2C peripheral
+/// Timer::after(Duration::from_millis(10)).await;
+/// let pin_4 = unsafe { hal::peripherals::PIN_4::steal() };
+/// let pin_5 = unsafe { hal::peripherals::PIN_5::steal() };
+/// let i2c = embassy_rp::i2c::I2c::new_async(p.I2C0, pin_5, pin_4, Irqs, config);
+/// ```
+///
+/// Based on empirical findings from BNO086 integration (AN-srhcj).
+const _I2C_RECOVERY_DOC: () = ();

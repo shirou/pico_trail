@@ -1,13 +1,23 @@
 //! BNO086 External AHRS Implementation
 //!
-//! Wraps the BNO086 driver to provide the unified `Ahrs` trait interface.
-//! The BNO086 has on-chip sensor fusion (ARM Cortex-M0+) that outputs
-//! quaternion orientation directly, eliminating the need for software EKF.
+//! Wraps any `QuaternionSensor` driver (BNO086, BNO085, etc.) to provide
+//! the unified `Ahrs` trait interface. This includes `Bno086Driver` (polling)
+//! and `Bno086DriverWithGpio` (INT-driven).
 //!
-//! ## Coordinate Frame
+//! ## Coordinate Frame Conversion
 //!
-//! The BNO086 outputs in Android-style coordinate system (X=right, Y=up, Z=out).
-//! This implementation converts to NED (North-East-Down) frame used in flight control.
+//! The BNO086 outputs in ENU coordinate system:
+//! - X = East (Right when facing North)
+//! - Y = North (Forward)
+//! - Z = Up
+//!
+//! This implementation converts to NED (North-East-Down) frame used in MAVLink/ArduPilot:
+//! - X = Forward (North)
+//! - Y = Right (East)
+//! - Z = Down
+//!
+//! Conversion formula for quaternion: q_ned = (w, y_enu, -x_enu, -z_enu)
+//! Conversion formula for angular rate: gyro_ned = (y_enu, -x_enu, -z_enu)
 //!
 //! ## Requirements
 //!
@@ -21,23 +31,27 @@
 //! use pico_trail::subsystems::ahrs::Ahrs;
 //! use pico_trail::devices::imu::bno086::Bno086Driver;
 //!
+//! // With basic polling driver
 //! let driver = Bno086Driver::new(transport, config);
 //! driver.init().await?;
-//!
 //! let mut ahrs = Bno086ExternalAhrs::new(driver);
+//!
+//! // Or with GPIO driver (INT-driven, recommended)
+//! let driver = Bno086DriverWithGpio::new(transport, int_pin, rst_pin, config);
+//! driver.init().await?;
+//! let mut ahrs = Bno086ExternalAhrs::new(driver);
+//!
 //! let state = ahrs.get_attitude().await?;
 //! ```
 
-use crate::communication::shtp::ShtpTransport;
-use crate::devices::imu::bno086::Bno086Driver;
 use crate::devices::traits::QuaternionSensor;
 use crate::subsystems::ahrs::{Ahrs, AhrsError, AhrsState, AhrsType};
 
 /// BNO086 External AHRS wrapper
 ///
-/// Provides the `Ahrs` trait implementation for BNO086 sensors.
-/// The BNO086's on-chip fusion runs at 400Hz internally, providing
-/// high-quality quaternion output with minimal CPU overhead.
+/// Provides the `Ahrs` trait implementation for any `QuaternionSensor`.
+/// Works with `Bno086Driver` (polling mode) or `Bno086DriverWithGpio`
+/// (INT-driven mode, recommended for reliable operation).
 ///
 /// ## Features
 ///
@@ -45,25 +59,29 @@ use crate::subsystems::ahrs::{Ahrs, AhrsError, AhrsState, AhrsType};
 /// - 100Hz quaternion and gyroscope output
 /// - Angular rate in NED frame for PID D-term
 /// - Accuracy estimate from sensor
-pub struct Bno086ExternalAhrs<T: ShtpTransport> {
-    /// Underlying BNO086 driver
-    driver: Bno086Driver<T>,
+///
+/// ## Type Parameter
+///
+/// * `D` - Any driver implementing `QuaternionSensor` trait
+pub struct Bno086ExternalAhrs<D: QuaternionSensor> {
+    /// Underlying quaternion sensor driver
+    driver: D,
     /// Last AHRS state (cached)
     last_state: Option<AhrsState>,
 }
 
-impl<T: ShtpTransport> Bno086ExternalAhrs<T> {
+impl<D: QuaternionSensor> Bno086ExternalAhrs<D> {
     /// Create a new BNO086 External AHRS
     ///
     /// # Arguments
     ///
-    /// * `driver` - Initialized BNO086 driver
+    /// * `driver` - Initialized driver implementing `QuaternionSensor`
     ///
     /// # Note
     ///
     /// The driver must be initialized (`driver.init().await?`) before
     /// creating the ExternalAhrs wrapper.
-    pub fn new(driver: Bno086Driver<T>) -> Self {
+    pub fn new(driver: D) -> Self {
         Self {
             driver,
             last_state: None,
@@ -71,31 +89,82 @@ impl<T: ShtpTransport> Bno086ExternalAhrs<T> {
     }
 
     /// Get reference to underlying driver
-    pub fn driver(&self) -> &Bno086Driver<T> {
+    pub fn driver(&self) -> &D {
         &self.driver
     }
 
     /// Get mutable reference to underlying driver
-    pub fn driver_mut(&mut self) -> &mut Bno086Driver<T> {
+    pub fn driver_mut(&mut self) -> &mut D {
         &mut self.driver
     }
 
     /// Consume the wrapper and return the underlying driver
-    pub fn into_driver(self) -> Bno086Driver<T> {
+    pub fn into_driver(self) -> D {
         self.driver
     }
 }
 
-impl<T: ShtpTransport> Ahrs for Bno086ExternalAhrs<T> {
+impl<D: QuaternionSensor> Ahrs for Bno086ExternalAhrs<D> {
     async fn get_attitude(&mut self) -> Result<AhrsState, AhrsError> {
-        // Read quaternion from BNO086
+        // Read quaternion from BNO086 (Android frame)
         let reading = self.driver.read_quaternion().await?;
 
-        // Get angular rate (already in NED frame from driver)
-        let angular_rate = self.driver.angular_rate();
+        // Convert quaternion from ENU to NED frame
+        // BNO086 ENU frame: X=East(right), Y=North(forward), Z=Up
+        // NED frame: X=North(forward), Y=East(right), Z=Down
+        //
+        // Axis mapping:
+        // NED_X (North) = ENU_Y (North)
+        // NED_Y (East)  = ENU_X (East), but negated to fix pitch direction
+        // NED_Z (Down)  = -ENU_Z (Up inverted)
+        //
+        // Quaternion transformation: q_ned = (w, y, -x, -z) from q_enu = (w, x, y, z)
+        let q_enu = reading.quaternion;
+        let q_ned = nalgebra::Quaternion::new(
+            q_enu.w,  // w unchanged
+            q_enu.j,  // x_ned = y_enu (North)
+            -q_enu.i, // y_ned = -x_enu (East, negated for pitch direction)
+            -q_enu.k, // z_ned = -z_enu (Down)
+        );
 
-        // Build AhrsState with quaternion and angular rate
-        let state = AhrsState::from_quaternion_reading(&reading).with_angular_rate(angular_rate);
+        // Create modified reading with NED quaternion
+        let reading_ned = crate::devices::traits::QuaternionReading {
+            quaternion: q_ned,
+            accuracy_rad: reading.accuracy_rad,
+            timestamp_us: reading.timestamp_us,
+        };
+
+        // Get angular rate and convert to NED frame
+        // ENU gyro: x=around East, y=around North, z=around Up
+        // NED gyro: x=roll(around North), y=pitch(around East), z=yaw(around Down)
+        //
+        // NED roll (around North)  = ENU gyro_y (around North)
+        // NED pitch (around East)  = -ENU gyro_x (around East, negated)
+        // NED yaw (around Down)    = -ENU gyro_z (around Up, inverted)
+        let gyro_enu = self.driver.angular_rate();
+        let gyro_ned = nalgebra::Vector3::new(
+            gyro_enu.y,  // X_ned (roll) = Y_enu
+            -gyro_enu.x, // Y_ned (pitch) = -X_enu
+            -gyro_enu.z, // Z_ned (yaw) = -Z_enu
+        );
+
+        // Build AhrsState with NED quaternion and angular rate
+        let state = AhrsState::from_quaternion_reading(&reading_ned).with_angular_rate(gyro_ned);
+
+        // Debug: log ENU→NED conversion to verify attitude extraction
+        #[cfg(feature = "pico2_w")]
+        crate::log_debug!(
+            "ENU q=({},{},{},{}) -> NED q=({},{},{},{}) -> pitch={}deg",
+            q_enu.w,
+            q_enu.i,
+            q_enu.j,
+            q_enu.k,
+            q_ned.w,
+            q_ned.i,
+            q_ned.j,
+            q_ned.k,
+            state.pitch.to_degrees()
+        );
 
         self.last_state = Some(state);
         Ok(state)
@@ -114,6 +183,7 @@ impl<T: ShtpTransport> Ahrs for Bno086ExternalAhrs<T> {
 mod tests {
     use super::*;
     use crate::communication::shtp::{ShtpError, ShtpPacket, ShtpTransport};
+    use crate::devices::imu::bno086::{Bno086Config, Bno086Driver};
 
     /// Mock transport for testing
     struct MockTransport;
@@ -138,8 +208,6 @@ mod tests {
 
     #[test]
     fn test_bno086_external_ahrs_new() {
-        use crate::devices::imu::bno086::Bno086Config;
-
         let transport = MockTransport;
         let driver = Bno086Driver::new(transport, Bno086Config::default());
         let ahrs = Bno086ExternalAhrs::new(driver);
@@ -151,14 +219,12 @@ mod tests {
 
     #[test]
     fn test_bno086_external_ahrs_driver_access() {
-        use crate::devices::imu::bno086::Bno086Config;
-
         let transport = MockTransport;
         let driver = Bno086Driver::new(transport, Bno086Config::default());
         let ahrs = Bno086ExternalAhrs::new(driver);
 
-        // Can access driver
-        assert!(!ahrs.driver().is_initialized());
+        // Can access driver (is_healthy is false because not initialized)
+        assert!(!ahrs.driver().is_healthy());
 
         // Can get driver back
         let _driver = ahrs.into_driver();
