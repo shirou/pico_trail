@@ -1033,11 +1033,13 @@ mod tests {
 
         // Set AHRS heading to east (90 degrees = PI/2 radians)
         state.update_attitude_direct(
-            0.0,                                // roll
-            0.0,                                // pitch
-            core::f32::consts::PI / 2.0,        // yaw = 90 degrees
-            0.0, 0.0, 0.0,                      // angular rates
-            1000000,                            // timestamp
+            0.0,                         // roll
+            0.0,                         // pitch
+            core::f32::consts::PI / 2.0, // yaw = 90 degrees
+            0.0,
+            0.0,
+            0.0,     // angular rates
+            1000000, // timestamp
         );
 
         let msg = streamer.build_global_position_int(&state).unwrap();
@@ -1078,9 +1080,9 @@ mod tests {
 
         // Set AHRS heading to north (0 degrees = 0 radians)
         state.update_attitude_direct(
-            0.0, 0.0, 0.0,  // roll, pitch, yaw
-            0.0, 0.0, 0.0,  // angular rates
-            1000000,        // timestamp
+            0.0, 0.0, 0.0, // roll, pitch, yaw
+            0.0, 0.0, 0.0,     // angular rates
+            1000000, // timestamp
         );
 
         let msg = streamer.build_global_position_int(&state).unwrap();
@@ -1177,9 +1179,12 @@ mod tests {
         // Set AHRS heading to west (-90 degrees = -PI/2 radians)
         // Should normalize to 270 degrees
         state.update_attitude_direct(
-            0.0, 0.0,
-            -core::f32::consts::PI / 2.0,  // yaw = -90 degrees
-            0.0, 0.0, 0.0,
+            0.0,
+            0.0,
+            -core::f32::consts::PI / 2.0, // yaw = -90 degrees
+            0.0,
+            0.0,
+            0.0,
             1000000,
         );
 

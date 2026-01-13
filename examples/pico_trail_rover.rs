@@ -1032,30 +1032,60 @@ async fn usb_task(
 /// Reads NMEA data from UART0 (GPS module) and updates global SYSTEM_STATE.
 /// Uses BufferedUart wrapped in EmbassyBufferedUart adapter.
 ///
-/// Initializes NEO-M8N with UBX commands to enable GGA/RMC/VTG output.
+/// Initializes NEO-M8N with UBX commands following NeoGPS timing:
+/// - 1 second startup delay for module stabilization
+/// - 250ms delay between each UBX command
+/// - Disables unnecessary NMEA messages (GLL, GSA, GSV, ZDA)
+/// - Enables GGA, RMC, VTG on UART1
 #[cfg(feature = "pico2_w")]
 #[embassy_executor::task]
 async fn gps_task(uart: embassy_rp::uart::BufferedUart) {
-    use pico_trail::devices::gps::{init::ublox, GpsDriver};
+    use embassy_time::{Duration, Timer};
+    use pico_trail::devices::gps::init::ublox::ubx_commands;
+    use pico_trail::devices::gps::GpsDriver;
     use pico_trail::devices::gps_operation::GpsOperation;
 
     pico_trail::log_info!("GPS task started");
 
     // Create GPS driver with Embassy BufferedUart adapter
-    let gps_uart = EmbassyBufferedUart::new(uart);
-    let mut gps = GpsDriver::new(gps_uart);
+    let mut gps_uart = EmbassyBufferedUart::new(uart);
 
-    // Initialize u-blox NEO-M8N to enable GGA/RMC/VTG NMEA messages
-    // This is required if the module's factory defaults don't output GGA
-    if ublox::initialize(gps.uart_mut()).is_err() {
-        pico_trail::log_warn!("Failed to send UBX init commands");
-    } else {
-        pico_trail::log_info!("GPS UBX initialization sent (GGA/RMC/VTG enabled)");
-    }
+    // Wait for GPS module to stabilize after power-on (NeoGPS uses 1 second)
+    // NEO-M8 needs time before accepting UBX commands reliably
+    Timer::after(Duration::from_millis(1000)).await;
 
-    // Short delay for module to process configuration
-    embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
+    // Configure u-blox NEO-M8N with delays between commands (NeoGPS: 250ms)
+    // This follows the pattern from NeoGPS ubloxRate.ino
+    const CMD_DELAY: Duration = Duration::from_millis(250);
 
+    pico_trail::log_info!("GPS: Sending UBX configuration...");
+
+    // Disable unnecessary NMEA messages first (reduces UART bandwidth)
+    let _ = ubx_commands::send_ubx(&mut gps_uart, &ubx_commands::DISABLE_GLL);
+    Timer::after(CMD_DELAY).await;
+
+    let _ = ubx_commands::send_ubx(&mut gps_uart, &ubx_commands::DISABLE_GSA);
+    Timer::after(CMD_DELAY).await;
+
+    let _ = ubx_commands::send_ubx(&mut gps_uart, &ubx_commands::DISABLE_GSV);
+    Timer::after(CMD_DELAY).await;
+
+    let _ = ubx_commands::send_ubx(&mut gps_uart, &ubx_commands::DISABLE_ZDA);
+    Timer::after(CMD_DELAY).await;
+
+    // Enable required messages on UART1
+    let _ = ubx_commands::send_ubx(&mut gps_uart, &ubx_commands::ENABLE_GGA);
+    Timer::after(CMD_DELAY).await;
+
+    let _ = ubx_commands::send_ubx(&mut gps_uart, &ubx_commands::ENABLE_RMC);
+    Timer::after(CMD_DELAY).await;
+
+    let _ = ubx_commands::send_ubx(&mut gps_uart, &ubx_commands::ENABLE_VTG);
+    Timer::after(CMD_DELAY).await;
+
+    pico_trail::log_info!("GPS UBX initialization complete (GGA/RMC/VTG enabled)");
+
+    let gps = GpsDriver::new(gps_uart);
     let mut operation = GpsOperation::new(gps);
 
     // Run the GPS polling loop
