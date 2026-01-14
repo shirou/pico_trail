@@ -86,6 +86,9 @@ impl ParamHandler {
         // Register fence parameters with defaults
         let _ = crate::parameters::FenceParams::register_defaults(&mut store);
 
+        // Register compass parameters with defaults (required by Mission Planner)
+        let _ = crate::parameters::CompassParams::register_defaults(&mut store);
+
         // Register board pin parameters with hwdef defaults
         let _ = crate::parameters::BoardParams::register_defaults(&mut store);
 
@@ -440,6 +443,7 @@ mod tests {
         // - Battery: 3 (BATT_ARM_VOLT, BATT_CRT_VOLT, BATT_FS_CRT_ACT)
         // - Failsafe: 3 (FS_ACTION, FS_TIMEOUT, FS_GCS_ENABLE)
         // - Fence: 2 (FENCE_AUTOENABLE, FENCE_ACTION)
+        // - Compass: 3 (COMPASS_OFS_X, COMPASS_OFS_Y, COMPASS_OFS_Z)
         // - Board: 11 (PIN_M1_IN1, PIN_M1_IN2, PIN_M2_IN1, PIN_M2_IN2, PIN_M3_IN1, PIN_M3_IN2,
         //             PIN_M4_IN1, PIN_M4_IN2, PIN_BUZZER, PIN_LED, PIN_BATTERY_ADC)
         //   Note: Board pins only registered when pico2_w feature enabled
@@ -448,18 +452,18 @@ mod tests {
 
         #[cfg(feature = "pico2_w")]
         {
-            // With pico2_w: 6 + 4 + 1 + 5 + 3 + 3 + 2 + 11 = 35 total
-            // Minus 2 String types = 34 sendable
-            // Minus 1 hidden = 34 visible (NET_PASS is both String and hidden)
-            assert_eq!(handler.count(), 34);
+            // With pico2_w: 6 + 4 + 1 + 5 + 3 + 3 + 2 + 3 + 11 = 38 total
+            // Minus 2 String types = 37 sendable
+            // Minus 1 hidden = 37 visible (NET_PASS is both String and hidden)
+            assert_eq!(handler.count(), 37);
         }
 
         #[cfg(not(feature = "pico2_w"))]
         {
-            // Without pico2_w: 6 + 4 + 1 + 5 + 4 + 3 + 2 = 25 total
-            // Minus 2 String types = 24 sendable
-            // Minus 1 hidden = 24 visible (NET_PASS is both String and hidden)
-            assert_eq!(handler.count(), 24);
+            // Without pico2_w: 6 + 4 + 1 + 5 + 3 + 3 + 2 + 3 = 27 total
+            // Minus 2 String types = 27 sendable
+            // Minus 1 hidden = 27 visible (NET_PASS is both String and hidden)
+            assert_eq!(handler.count(), 27);
         }
     }
 
@@ -478,14 +482,14 @@ mod tests {
         // Should return all non-String parameters except NET_PASS (hidden)
         // NET_SSID (String) and NET_PASS (String, hidden) cannot be sent via MAVLink
         // Count: 4 WiFi (DHCP, IP, NETMASK, GATEWAY) + 4 SR + 1 SYSID
-        //        + 5 Arming + 4 Battery + 3 Failsafe + 2 Fence + 11 Board (if pico2_w)
+        //        + 5 Arming + 3 Battery + 3 Failsafe + 2 Fence + 3 Compass + 11 Board (if pico2_w)
         // Note: NET_PASS is hidden, so even if it weren't String, it wouldn't appear
 
         #[cfg(feature = "pico2_w")]
-        assert_eq!(messages.len(), 34); // With board pins
+        assert_eq!(messages.len(), 37); // With board pins
 
         #[cfg(not(feature = "pico2_w"))]
-        assert_eq!(messages.len(), 23); // Without board pins
+        assert_eq!(messages.len(), 26); // Without board pins
 
         // Verify NET_PASS is not in the list
         for msg in &messages {

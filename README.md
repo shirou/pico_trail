@@ -223,6 +223,10 @@ See [docs/architecture.md](docs/architecture.md) for complete details.
 - **Complementary Filter**: Accelerometer + gyroscope fusion
 - **Compass Integration**: Heading correction from magnetometer
 
+### Compass Calibration
+
+Compass calibration is supported via Mission Planner. **Only "Large Vehicle" mode is available** - standard "Onboard Mag Calibration" is not supported due to resource constraints on the microcontroller.
+
 ## Communication
 
 ### MAVLink Protocol

@@ -17,7 +17,9 @@
   - [FR-a1cuu-runtime-parameters](FR-a1cuu-runtime-parameters.md)
   - [FR-e2urj-large-vehicle-magcal](FR-e2urj-large-vehicle-magcal.md)
   - [FR-eutkf-concurrent-transports](FR-eutkf-concurrent-transports.md)
+  - [FR-m4gcl-compass-calibration-capability](FR-m4gcl-compass-calibration-capability.md)
   - [FR-obwjs-position-target-command-handler](FR-obwjs-position-target-command-handler.md)
+  - [FR-v8fmy-fixed-mag-cal-yaw-handler](FR-v8fmy-fixed-mag-cal-yaw-handler.md)
   - [FR-ydttj-udp-network-transport](FR-ydttj-udp-network-transport.md)
   - [FR-zwsr5-gcs-loss-failsafe](FR-zwsr5-gcs-loss-failsafe.md)
 

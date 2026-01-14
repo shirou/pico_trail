@@ -165,6 +165,9 @@ impl<V: VehicleType> CommandHandler<V> {
                 // Camera not supported - silently return unsupported to avoid log spam
                 (MavResult::MAV_RESULT_UNSUPPORTED, false, Vec::new())
             }
+            MavCmd::MAV_CMD_FIXED_MAG_CAL_YAW => {
+                (self.handle_fixed_mag_cal_yaw(cmd), false, Vec::new())
+            }
             _ => {
                 crate::log_warn!("Unsupported command: {}", cmd.command as u32);
                 (MavResult::MAV_RESULT_UNSUPPORTED, false, Vec::new())
@@ -511,6 +514,85 @@ impl<V: VehicleType> CommandHandler<V> {
         }
     }
 
+    /// Handle MAV_CMD_FIXED_MAG_CAL_YAW command (Large Vehicle MagCal)
+    ///
+    /// Mission Planner sends this command for compass calibration on large vehicles
+    /// that cannot be rotated. Requires valid 3D GPS fix to determine true heading.
+    ///
+    /// # Parameters
+    /// - param1: Yaw angle in degrees (0-360, magnetic north = 0)
+    /// - param2: CompassMask (bitmask of compasses to calibrate)
+    /// - param3: Latitude (optional)
+    /// - param4: Longitude (optional)
+    ///
+    /// # Returns
+    /// - MAV_RESULT_ACCEPTED if GPS fix is valid (>= 3D fix)
+    /// - MAV_RESULT_DENIED if no GPS fix available
+    fn handle_fixed_mag_cal_yaw(&mut self, cmd: &COMMAND_LONG_DATA) -> MavResult {
+        use crate::communication::mavlink::state::SYSTEM_STATE;
+        use crate::devices::gps::GpsFixType;
+
+        // param1 is the true yaw heading in degrees (what direction vehicle is actually pointing)
+        let true_yaw_degrees = cmd.param1;
+
+        // Get GPS state and current AHRS yaw
+        let (gps_state, current_ahrs_yaw) = critical_section::with(|cs| {
+            let state = SYSTEM_STATE.borrow_ref(cs);
+            (state.gps_position, state.attitude.yaw)
+        });
+
+        match gps_state {
+            Some(gps) if gps.fix_type == GpsFixType::Fix3D => {
+                // Convert true yaw from degrees to radians
+                let true_yaw_rad = true_yaw_degrees.to_radians();
+
+                // Calculate offset: true_heading - ahrs_reading
+                // This offset will be added to AHRS yaw to get corrected heading
+                let yaw_offset = true_yaw_rad - current_ahrs_yaw;
+
+                // Normalize offset to [-PI, PI]
+                let yaw_offset = Self::normalize_angle(yaw_offset);
+
+                // Store the offset in SystemState
+                critical_section::with(|cs| {
+                    let mut state = SYSTEM_STATE.borrow_ref_mut(cs);
+                    state.compass_yaw_offset = yaw_offset;
+                });
+
+                crate::log_info!(
+                    "MagCal: true={} deg, AHRS={} deg, offset={} deg",
+                    true_yaw_degrees,
+                    current_ahrs_yaw.to_degrees(),
+                    yaw_offset.to_degrees()
+                );
+                status_notifier::send_info("MagCal: Calibrated");
+                MavResult::MAV_RESULT_ACCEPTED
+            }
+            Some(_gps) => {
+                crate::log_warn!("MagCal: Denied - need 3D GPS fix");
+                status_notifier::send_warning("MagCal: Need 3D GPS fix");
+                MavResult::MAV_RESULT_DENIED
+            }
+            None => {
+                crate::log_warn!("MagCal: Denied - No GPS fix");
+                status_notifier::send_warning("MagCal: No GPS fix");
+                MavResult::MAV_RESULT_DENIED
+            }
+        }
+    }
+
+    /// Normalize angle to [-PI, PI] range
+    fn normalize_angle(angle: f32) -> f32 {
+        let mut result = angle;
+        while result > core::f32::consts::PI {
+            result -= 2.0 * core::f32::consts::PI;
+        }
+        while result < -core::f32::consts::PI {
+            result += 2.0 * core::f32::consts::PI;
+        }
+        result
+    }
+
     /// Handle COMMAND_INT message from GCS
     ///
     /// COMMAND_INT is preferred over COMMAND_LONG for commands with position data
@@ -700,7 +782,8 @@ impl<V: VehicleType> CommandHandler<V> {
             | MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_COMMAND_INT
             | MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_PARAM_ENCODE_BYTEWISE
             | MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MAVLINK2
-            | MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_SET_POSITION_TARGET_GLOBAL_INT;
+            | MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_SET_POSITION_TARGET_GLOBAL_INT
+            | MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_COMPASS_CALIBRATION;
 
         // Firmware version: major.minor.patch.type encoded as 4 bytes
         // Version 0.1.0 with FIRMWARE_VERSION_TYPE_DEV (0)
@@ -1292,5 +1375,104 @@ mod tests {
         assert_eq!(ack.result, MavResult::MAV_RESULT_UNSUPPORTED);
         // No extra messages for unsupported commands
         assert!(messages.is_empty());
+    }
+
+    #[test]
+    fn test_autopilot_version_has_compass_calibration_capability() {
+        let msg = TestHandler::create_autopilot_version_message();
+
+        // Check that COMPASS_CALIBRATION capability is set (value 4096 = 0x1000)
+        assert!(
+            msg.capabilities
+                .contains(MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_COMPASS_CALIBRATION),
+            "AUTOPILOT_VERSION should include COMPASS_CALIBRATION capability"
+        );
+    }
+
+    // Helper to create MAV_CMD_FIXED_MAG_CAL_YAW command
+    fn create_fixed_mag_cal_yaw_cmd(yaw_degrees: f32) -> COMMAND_LONG_DATA {
+        COMMAND_LONG_DATA {
+            target_system: 1,
+            target_component: 1,
+            command: MavCmd::MAV_CMD_FIXED_MAG_CAL_YAW,
+            confirmation: 0,
+            param1: yaw_degrees, // Yaw angle in degrees
+            param2: 0.0,         // CompassMask
+            param3: 0.0,         // Latitude (optional)
+            param4: 0.0,         // Longitude (optional)
+            param5: 0.0,
+            param6: 0.0,
+            param7: 0.0,
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_fixed_mag_cal_yaw_accepted_with_3d_gps() {
+        use crate::devices::gps::{GpsFixType, GpsPosition};
+
+        let mut state = SystemState::new();
+        state.gps_position = Some(GpsPosition {
+            latitude: 35.6762,
+            longitude: 139.6503,
+            altitude: 50.0,
+            speed: 0.0,
+            course_over_ground: None,
+            fix_type: GpsFixType::Fix3D,
+            satellites: 10,
+        });
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = create_fixed_mag_cal_yaw_cmd(90.0); // 90 degrees
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_FIXED_MAG_CAL_YAW);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_fixed_mag_cal_yaw_denied_without_gps() {
+        let state = SystemState::new(); // No GPS fix
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = create_fixed_mag_cal_yaw_cmd(180.0);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_FIXED_MAG_CAL_YAW);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_fixed_mag_cal_yaw_denied_with_2d_gps() {
+        use crate::devices::gps::{GpsFixType, GpsPosition};
+
+        let mut state = SystemState::new();
+        state.gps_position = Some(GpsPosition {
+            latitude: 35.6762,
+            longitude: 139.6503,
+            altitude: 0.0,
+            speed: 0.0,
+            course_over_ground: None,
+            fix_type: GpsFixType::Fix2D, // Only 2D fix
+            satellites: 4,
+        });
+        critical_section::with(|cs| {
+            *crate::communication::mavlink::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = create_fixed_mag_cal_yaw_cmd(270.0);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_FIXED_MAG_CAL_YAW);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
     }
 }

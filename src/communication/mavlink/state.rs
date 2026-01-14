@@ -471,6 +471,10 @@ pub struct SystemState {
     /// Minimum battery voltage to arm (BATT_ARM_VOLT parameter)
     /// Default: 10.5V. Set to 0 to disable battery voltage check.
     pub battery_arm_volt: f32,
+    /// Compass yaw offset in radians (from Large Vehicle MagCal)
+    /// Applied to AHRS yaw when reporting heading in telemetry.
+    /// Set by MAV_CMD_FIXED_MAG_CAL_YAW command.
+    pub compass_yaw_offset: f32,
 }
 
 impl Default for SystemState {
@@ -488,6 +492,7 @@ impl Default for SystemState {
             arming_checks: 0xFFFF, // All checks enabled by default
             battery_volt_mult: 3.95,
             battery_arm_volt: 10.5,
+            compass_yaw_offset: 0.0,
         }
     }
 }
@@ -508,6 +513,7 @@ impl SystemState {
             arming_checks: 0xFFFF, // All checks enabled by default
             battery_volt_mult: 3.95,
             battery_arm_volt: 10.5,
+            compass_yaw_offset: 0.0,
         }
     }
 
@@ -557,6 +563,7 @@ impl SystemState {
             arming_checks: arming_params.check_bitmask as u16,
             battery_volt_mult: battery_params.volt_mult,
             battery_arm_volt: battery_params.arm_voltage,
+            compass_yaw_offset: 0.0,
         }
     }
 

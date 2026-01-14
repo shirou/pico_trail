@@ -73,6 +73,18 @@ fn radians_to_cdeg(radians: f32) -> u16 {
     (normalized * 100.0).clamp(0.0, 35999.0) as u16
 }
 
+/// Normalize yaw angle to [-PI, PI] range
+fn normalize_yaw(yaw: f32) -> f32 {
+    let mut result = yaw;
+    while result > core::f32::consts::PI {
+        result -= 2.0 * core::f32::consts::PI;
+    }
+    while result < -core::f32::consts::PI {
+        result += 2.0 * core::f32::consts::PI;
+    }
+    result
+}
+
 /// Convert device GPS fix type to MAVLink GPS fix type
 fn convert_gps_fix_type(fix_type: DeviceGpsFixType) -> GpsFixType {
     match fix_type {
@@ -266,12 +278,16 @@ impl<V: VehicleType> TelemetryStreamer<V> {
     ///
     /// Returns roll, pitch, yaw and angular rates from AHRS.
     /// All angles are in radians, angular rates in rad/s.
+    /// Yaw is corrected by compass_yaw_offset from Large Vehicle MagCal.
     fn build_attitude(&self, state: &SystemState) -> Option<MavMessage> {
+        // Apply compass calibration offset to yaw
+        let corrected_yaw = normalize_yaw(state.attitude.yaw + state.compass_yaw_offset);
+
         Some(MavMessage::ATTITUDE(ATTITUDE_DATA {
             time_boot_ms: (state.uptime_us / 1000) as u32,
             roll: state.attitude.roll,
             pitch: state.attitude.pitch,
-            yaw: state.attitude.yaw,
+            yaw: corrected_yaw,
             rollspeed: state.attitude.rollspeed,
             pitchspeed: state.attitude.pitchspeed,
             yawspeed: state.attitude.yawspeed,
@@ -322,12 +338,14 @@ impl<V: VehicleType> TelemetryStreamer<V> {
     ///
     /// Builds GLOBAL_POSITION_INT message with position and velocity data.
     /// Velocity components (vx, vy) are computed from speed and COG.
-    /// Heading (hdg) is from AHRS yaw when available, otherwise from GPS COG.
+    /// Heading (hdg) is from AHRS yaw (with compass offset) when available, otherwise from GPS COG.
     /// Returns zeros if no GPS fix is available.
     fn build_global_position_int(&self, state: &SystemState) -> Option<MavMessage> {
         // Get heading from AHRS if healthy, otherwise fall back to GPS COG
+        // Apply compass calibration offset to AHRS yaw
         let hdg = if state.attitude.healthy {
-            radians_to_cdeg(state.attitude.yaw)
+            let corrected_yaw = state.attitude.yaw + state.compass_yaw_offset;
+            radians_to_cdeg(corrected_yaw)
         } else {
             // Fall back to GPS COG if AHRS is not available
             state
@@ -384,10 +402,27 @@ impl<V: VehicleType> TelemetryStreamer<V> {
         // Convert current to 10mA units (centi-amps)
         let current_battery = (state.battery.current * 100.0) as i16;
 
+        // Report sensors present on this vehicle
+        // BNO086 provides: 3D accelerometer, 3D gyro, 3D magnetometer
+        // GPS provides: GPS
+        let sensors_present = MavSysStatusSensor::MAV_SYS_STATUS_SENSOR_3D_GYRO
+            | MavSysStatusSensor::MAV_SYS_STATUS_SENSOR_3D_ACCEL
+            | MavSysStatusSensor::MAV_SYS_STATUS_SENSOR_3D_MAG
+            | MavSysStatusSensor::MAV_SYS_STATUS_SENSOR_GPS
+            | MavSysStatusSensor::MAV_SYS_STATUS_AHRS
+            | MavSysStatusSensor::MAV_SYS_STATUS_SENSOR_BATTERY;
+
+        // All present sensors are enabled
+        let sensors_enabled = sensors_present;
+
+        // Report health based on actual sensor state
+        // For now, report all as healthy (future: check actual sensor status)
+        let sensors_health = sensors_present;
+
         Some(MavMessage::SYS_STATUS(SYS_STATUS_DATA {
-            onboard_control_sensors_present: MavSysStatusSensor::empty(),
-            onboard_control_sensors_enabled: MavSysStatusSensor::empty(),
-            onboard_control_sensors_health: MavSysStatusSensor::empty(),
+            onboard_control_sensors_present: sensors_present,
+            onboard_control_sensors_enabled: sensors_enabled,
+            onboard_control_sensors_health: sensors_health,
             load: (state.cpu_load * 10.0) as u16, // 0.1% units
             voltage_battery,
             current_battery,
