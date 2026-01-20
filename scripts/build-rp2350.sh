@@ -51,21 +51,21 @@ done
 
 # If no examples specified, find all examples
 if [[ ${#EXAMPLES[@]} -eq 0 ]]; then
-  if [[ -d "examples" ]]; then
-    mapfile -t EXAMPLES < <(find examples -name "*.rs" -type f | sed 's|examples/||; s|\.rs$||')
+  if [[ -d "crates/firmware/examples" ]]; then
+    mapfile -t EXAMPLES < <(find crates/firmware/examples -name "*.rs" -type f | sed 's|crates/firmware/examples/||; s|\.rs$||')
   else
-    echo "Error: examples directory not found"
+    echo "Error: crates/firmware/examples directory not found"
     exit 1
   fi
 fi
 
 # Build configuration
 TARGET="thumbv8m.main-none-eabihf"
-FEATURES="pico2_w"
 
 # Add extra features from environment variable if set
+FEATURES_FLAG=""
 if [[ -n "${EXTRA_FEATURES:-}" ]]; then
-  FEATURES="${FEATURES},${EXTRA_FEATURES}"
+  FEATURES_FLAG="--features ${EXTRA_FEATURES}"
   echo "Extra features enabled: ${EXTRA_FEATURES}"
 fi
 
@@ -80,15 +80,15 @@ fi
 
 echo "Building examples for RP2350 (${BUILD_MODE} mode)..."
 echo "Target: ${TARGET}"
-echo "Features: ${FEATURES}"
 echo ""
 
 # Build and convert each example
 for example in "${EXAMPLES[@]}"; do
   echo "Building example: ${example}"
 
-  # Build the example
-  cargo build --target "$TARGET" --example "$example" --features "$FEATURES" $BUILD_FLAG
+  # Build the example from firmware crate
+  # shellcheck disable=SC2086
+  cargo build -p pico_trail_firmware --target "$TARGET" --example "$example" $FEATURES_FLAG $BUILD_FLAG
 
   # Check if ELF file exists
   ELF_PATH="${TARGET_DIR}/${example}"

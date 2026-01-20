@@ -79,7 +79,7 @@ ArduPilot uses `hwdef.dat` files for compile-time pin configuration. This projec
 - **Default values**: Loaded from `boards/*.hwdef` at build time
 - **Usage**: Production uses hwdef files, development/testing can override via Mission Planner
 - **Safety**: Pin changes require reboot and validation before hardware use
-- **Documentation**: See `src/parameters/board.rs` for implementation details
+- **Documentation**: See `crates/firmware/src/parameters/board.rs` for implementation details
 
 ### Verification Commands
 

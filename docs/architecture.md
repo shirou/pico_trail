@@ -66,99 +66,106 @@ This strategy provides:
 
 ## Directory Structure
 
+pico_trail uses a Cargo workspace with two crates for clean separation:
+
 ```
-src/
-├── platform/              # Level 1: Platform abstraction
-│   ├── mod.rs            # Core platform traits
-│   ├── traits/           # Peripheral trait definitions
-│   │   ├── uart.rs       # UART interface
-│   │   ├── i2c.rs        # I2C interface
-│   │   ├── spi.rs        # SPI interface
-│   │   ├── pwm.rs        # PWM interface
-│   │   ├── timer.rs      # Timer interface
-│   │   ├── storage.rs    # Flash/EEPROM interface
-│   │   └── gpio.rs       # GPIO for LED/Buzzer
-│   ├── pico_w/           # RP2040 (Cortex-M0+) implementation
-│   │   ├── mod.rs
-│   │   └── hal_adapter.rs
-│   └── pico2_w/          # RP2350 (Cortex-M33) implementation
-│       ├── mod.rs
-│       └── hal_adapter.rs
-│
-├── devices/              # Level 2: Device abstraction
-│   ├── traits/           # Device trait definitions
-│   │   ├── gps.rs       # GPS sensor trait
-│   │   ├── imu.rs       # IMU sensor trait
-│   │   ├── motor.rs     # Motor controller trait
-│   │   └── servo.rs     # Servo controller trait
-│   ├── gps.rs           # UART GPS driver (legacy)
-│   ├── gps_i2c.rs       # I2C/DDC GPS driver (NEO-M8N)
-│   ├── gps_operation.rs # GPS polling, validation, error recovery
-│   ├── imu/             # IMU implementations
-│   │   ├── mod.rs
-│   │   ├── mpu6050.rs   # MPU6050 driver
-│   │   └── bno055.rs    # BNO055 driver (future)
-│   ├── motor/           # Motor/ESC drivers
-│   └── servo/           # Servo drivers
-│
-├── subsystems/          # Level 3: Functional subsystems
-│   ├── ahrs/            # Attitude & Heading Reference System
-│   │   ├── mod.rs
-│   │   ├── dcm.rs       # Direction Cosine Matrix
-│   │   └── ekf_simple.rs # Simplified EKF (full EKF too heavy)
-│   ├── control/         # Control algorithms
-│   │   ├── pid.rs       # PID controller
-│   │   ├── attitude.rs  # Attitude control
-│   │   └── throttle.rs  # Throttle/speed control
-│   ├── navigation/      # Navigation subsystem
-│   │   ├── waypoint.rs  # Waypoint management
-│   │   ├── heading.rs   # Heading control
-│   │   ├── scurve.rs    # S-Curve path planning (primary)
-│   │   ├── position_control.rs # Position controller
-│   │   ├── l1_controller.rs # L1 path following (legacy/fallback)
-│   │   └── path.rs      # Path representation
-│   └── communication/   # Communication protocols
-│       ├── mavlink/     # MAVLink implementation
+crates/
+├── core/                  # Pure no_std business logic (platform-independent)
+│   └── src/
+│       ├── traits/        # Time source, platform abstractions
+│       │   └── mod.rs     # TimeSource trait, MockTime
+│       ├── kinematics/    # Differential drive math
 │       │   ├── mod.rs
-│       │   ├── messages.rs # Message encoding/decoding
-│       │   ├── params.rs   # Parameter protocol
-│       │   └── mission.rs  # Mission upload/download
-│       └── telemetry.rs # Telemetry streaming
+│       │   └── differential_drive.rs
+│       ├── parameters/    # Parameter types
+│       │   ├── mod.rs
+│       │   ├── block.rs   # Parameter block structures
+│       │   ├── crc.rs     # CRC32 calculation
+│       │   └── registry.rs # ParamType, ParamValue, RegistryError
+│       ├── arming/        # Arming error types
+│       │   ├── mod.rs
+│       │   └── error.rs   # ArmingError enum
+│       ├── scheduler/     # Task scheduling types
+│       │   ├── mod.rs
+│       │   ├── types.rs   # TaskMetadata, Priority
+│       │   ├── stats.rs   # Scheduler statistics
+│       │   └── registry.rs # Task registry
+│       ├── navigation/    # Navigation types
+│       │   ├── mod.rs
+│       │   └── types.rs   # PositionTarget, NavigationOutput
+│       ├── ahrs/          # AHRS calibration
+│       │   ├── mod.rs
+│       │   └── calibration.rs # Pure calibration math
+│       ├── mission/       # Mission types
+│       │   └── mod.rs     # Waypoint, MissionStorage
+│       ├── mode/          # Mode abstractions
+│       │   ├── mod.rs     # Mode trait
+│       │   ├── types.rs   # AutoState, GuidedState, RtlState
+│       │   └── navigation.rs # haversine_distance_bearing, normalize_angle
+│       ├── rc/            # RC input processing
+│       │   └── mod.rs     # normalize_channel, RcInput
+│       ├── servo/         # Servo output
+│       │   └── mod.rs     # normalized_to_pulse, ActuatorInterface trait
+│       └── motor/         # Motor driver
+│           └── mod.rs     # Motor trait, HBridgeMotor, MotorGroup
 │
-├── libraries/          # Level 4: Common vehicle libraries
-│   ├── rc_channel/     # RC input processing (vehicle-agnostic)
-│   │   └── mod.rs      # RcInput, RC_INPUT global, normalization
-│   └── srv_channel/    # Servo/actuator output (vehicle-agnostic)
-│       └── mod.rs      # ActuatorInterface, Actuators, calibration
-│
-├── rover/              # Level 5: Rover vehicle implementation
-│   ├── mod.rs          # Module root
-│   ├── mode/           # Control mode implementations
-│   │   ├── mod.rs      # Mode trait definition
-│   │   ├── manual.rs   # Manual mode (RC pass-through)
-│   │   ├── circle.rs   # Circle mode (autonomous orbit)
-│   │   └── loiter.rs   # Loiter mode (position hold)
-│   └── mode_manager.rs # Mode lifecycle management
-│
-├── boat/               # Level 5: Boat vehicle implementation (future)
-│   └── mod.rs
-│
-├── copter/             # Level 5: Copter vehicle implementation (future)
-│   └── mod.rs
-│
-├── core/              # Cross-cutting concerns
-│   ├── scheduler.rs   # Task scheduler
-│   ├── parameters.rs  # Parameter system
-│   ├── logger.rs      # Data logging
-│   ├── storage.rs     # Persistent storage
-│   ├── safety.rs      # Failsafe & geofence
-│   ├── calibration.rs # Sensor calibration
-│   ├── state.rs       # System state machine
-│   ├── notify.rs      # Notification system
-│   ├── config.rs      # Configuration management
-│   └── error.rs       # Error definitions
-│
-└── lib.rs            # Library root
+└── firmware/              # Embassy/RP2350 binary (platform-specific)
+    └── src/
+        ├── platform/      # Level 1: Platform abstraction
+        │   ├── mod.rs     # Core platform traits
+        │   ├── traits/    # Peripheral trait definitions
+        │   │   ├── uart.rs, i2c.rs, spi.rs, pwm.rs
+        │   │   ├── timer.rs, gpio.rs, flash.rs
+        │   │   └── board.rs, platform.rs
+        │   ├── rp2350/    # RP2350 (Cortex-M33) implementation
+        │   └── mock/      # Mock implementation for tests
+        │
+        ├── devices/       # Level 2: Device drivers
+        │   ├── traits/    # Device trait definitions
+        │   │   ├── imu.rs, quaternion.rs, raw_imu.rs
+        │   ├── gps.rs     # GPS driver
+        │   └── imu/       # IMU implementations (BNO086, ICM20948, MPU9250)
+        │
+        ├── subsystems/    # Level 3: Functional subsystems
+        │   ├── ahrs/      # AHRS (DCM, external IMU integration)
+        │   └── navigation/ # Navigation controller
+        │
+        ├── communication/ # Communication protocols
+        │   ├── mavlink/   # MAVLink implementation
+        │   │   ├── handlers/   # Message handlers
+        │   │   ├── transport/  # UART, UDP transport
+        │   │   ├── vehicle/    # Vehicle type adapters
+        │   │   └── parser.rs, writer.rs, dispatcher.rs
+        │   └── shtp/      # Sensor Hub Transport Protocol
+        │
+        ├── libraries/     # Common vehicle libraries
+        │   ├── rc_channel/    # RC input (Embassy state wrapper)
+        │   ├── srv_channel/   # Servo output (PWM backend)
+        │   ├── motor_driver/  # Motor driver (H-bridge with logging)
+        │   └── kinematics/    # Re-exports from core
+        │
+        ├── rover/         # Rover vehicle implementation
+        │   ├── mode/      # Control mode implementations
+        │   │   ├── manual.rs, circle.rs, loiter.rs
+        │   │   ├── auto.rs, guided.rs, rtl.rs, smartrtl.rs
+        │   └── mode_manager.rs
+        │
+        ├── parameters/    # ArduPilot parameter definitions
+        │   ├── arming.rs, battery.rs, board.rs
+        │   ├── circle.rs, compass.rs, failsafe.rs
+        │   ├── fence.rs, loiter.rs, storage.rs, wifi.rs
+        │
+        ├── core/          # Cross-cutting concerns
+        │   ├── logging.rs     # defmt-based logging
+        │   ├── log_buffer.rs  # Log buffer
+        │   ├── log_router.rs  # Log routing
+        │   ├── traits/        # Sync, time traits
+        │   ├── mission/       # Mission state (Embassy mutex)
+        │   ├── parameters/    # Registry, storage, saver
+        │   ├── arming/        # Arming tasks
+        │   └── scheduler/     # Scheduler tasks, monitor
+        │
+        └── lib.rs         # Library root (re-exports pico_trail_core)
 ```
 
 ## Core Systems
@@ -262,7 +269,7 @@ Critical safety systems:
 
 ### Platform Abstraction Layer
 
-The platform abstraction layer provides zero-cost hardware independence through Rust traits and compile-time dispatch. All platform-specific code is isolated to `src/platform/` per NFR-nmmu0.
+The platform abstraction layer provides zero-cost hardware independence through Rust traits and compile-time dispatch. All platform-specific code is isolated to `crates/firmware/src/platform/` per NFR-nmmu0.
 
 **Architecture**:
 
@@ -278,7 +285,7 @@ HAL Crates (rp235x-hal, rp2040-hal)
 
 **Key Features**:
 
-- **Zero HAL Imports**: No HAL imports outside `src/platform/`
+- **Zero HAL Imports**: No HAL imports outside `crates/firmware/src/platform/`
 - **Mock Testing**: Complete mock implementations for unit tests
 - **Compile-time Dispatch**: Zero-cost abstractions via trait monomorphization
 - **CI Enforcement**: Automated checks prevent HAL leakage
@@ -349,10 +356,10 @@ impl<U: UartInterface> GpsDriver<U> {
 
 To add support for a new hardware platform:
 
-1. **Create Platform Module**: `src/platform/<platform_name>/`
+1. **Create Platform Module**: `crates/firmware/src/platform/<platform_name>/`
 
    ```rust
-   // src/platform/<platform_name>/mod.rs
+   // crates/firmware/src/platform/<platform_name>/mod.rs
    #[cfg(feature = "<platform_name>")]
    pub mod uart;
    pub mod i2c;
@@ -363,7 +370,7 @@ To add support for a new hardware platform:
 2. **Implement Peripheral Traits**: Each peripheral (UART, I2C, etc.) must implement the corresponding trait
 
    ```rust
-   // src/platform/<platform_name>/uart.rs
+   // crates/firmware/src/platform/<platform_name>/uart.rs
    use crate::platform::traits::UartInterface;
 
    pub struct MyPlatformUart { /* HAL wrapper */ }
@@ -379,7 +386,7 @@ To add support for a new hardware platform:
 3. **Implement Platform Trait**: Create the root platform struct
 
    ```rust
-   // src/platform/<platform_name>/platform.rs
+   // crates/firmware/src/platform/<platform_name>/platform.rs
    use crate::platform::traits::Platform;
 
    pub struct MyPlatform { /* peripheral state */ }
@@ -398,14 +405,14 @@ To add support for a new hardware platform:
    }
    ```
 
-4. **Add Feature Flag**: Update `Cargo.toml`
+4. **Add Feature Flag**: Update `crates/firmware/Cargo.toml`
 
    ```toml
    [features]
    my_platform = ["<hal-crate>", "cortex-m", ...]
    ```
 
-5. **Update Platform Module**: Add feature gate in `src/platform/mod.rs`
+5. **Update Platform Module**: Add feature gate in `crates/firmware/src/platform/mod.rs`
    ```rust
    #[cfg(feature = "my_platform")]
    pub mod my_platform;
@@ -413,7 +420,7 @@ To add support for a new hardware platform:
 
 **Requirements**:
 
-- All HAL imports must stay within `src/platform/<platform_name>/`
+- All HAL imports must stay within `crates/firmware/src/platform/<platform_name>/`
 - Implement all platform traits completely
 - Provide platform-specific initialization sequence
 - Document peripheral pin mappings and configuration
@@ -460,7 +467,7 @@ The I2C0 bus provides a shared communication channel for multiple sensors, addre
 │   - Async polling (1-10 Hz)              │
 │   - NMEA validation                      │
 │   - Error recovery (3 retries)           │
-│   (src/devices/gps_operation.rs)         │
+│   (crates/firmware/src/devices/gps.rs)   │
 └────────────────┬─────────────────────────┘
                  │ I2cInterface
 ┌────────────────▼─────────────────────────┐
@@ -468,14 +475,13 @@ The I2C0 bus provides a shared communication channel for multiple sensors, addre
 │   - DDC protocol (reg 0xFF, 0xFD)        │
 │   - NMEA sentence buffering              │
 │   - Checksum validation                  │
-│   (src/devices/gps_i2c.rs)               │
+│   (crates/firmware/src/devices/gps.rs)   │
 └────────────────┬─────────────────────────┘
                  │ I2cInterface trait
 ┌────────────────▼─────────────────────────┐
 │   I2C Platform Abstraction               │
-│   - RP2350: src/platform/rp2350/i2c.rs   │
-│   - RP2040: src/platform/rp2040/i2c.rs   │
-│   - Mock: src/platform/mock/i2c.rs       │
+│   - RP2350: crates/firmware/src/platform/rp2350/i2c.rs │
+│   - Mock: crates/firmware/src/platform/mock/i2c.rs     │
 └────────────────┬─────────────────────────┘
                  │ embassy-rp I2C HAL
 ┌────────────────▼─────────────────────────┐
@@ -494,7 +500,7 @@ The NEO-M8N GPS module supports I2C/DDC interface as an alternative to UART:
 
 **GPS Operation**:
 
-The GPS Operation manager (`src/devices/gps_operation.rs`) handles polling, validation, and error recovery:
+The GPS Operation manager (`crates/firmware/src/devices/gps.rs`) handles polling, validation, and error recovery:
 
 - **Polling Rates**: Configurable 1Hz, 5Hz, or 10Hz via Embassy Ticker
 - **NMEA Parsing**: Uses `nmea0183` crate for sentence parsing and validation
@@ -625,7 +631,7 @@ Telemetry rates are configurable via MAVLink parameters:
 | Mission Protocol    | ✅ Complete | 21    |
 | Hardware Validation | 🚧 Pending  | -     |
 
-**Location**: `src/communication/mavlink/`
+**Location**: `crates/firmware/src/communication/mavlink/`
 
 For detailed usage guide, see [MAVLink Documentation](mavlink.md).
 
@@ -672,22 +678,30 @@ The vehicle layer implements vehicle-specific control logic following ArduPilot'
 ### Module Structure
 
 ```
-src/
-├── libraries/              # Common libraries (vehicle-agnostic)
-│   ├── rc_channel/        # RC input processing
-│   │   └── mod.rs         # RcInput, RC_INPUT global, normalization
-│   └── srv_channel/       # Servo/actuator output
-│       └── mod.rs         # ActuatorInterface, Actuators, calibration
+crates/
+├── core/                   # Pure no_std business logic
+│   └── src/
+│       ├── rc/            # RC normalization (normalize_channel, RcInput)
+│       ├── servo/         # Servo output (normalized_to_pulse, ActuatorInterface)
+│       ├── motor/         # Motor traits (Motor, HBridgeMotor, MotorGroup)
+│       └── mode/          # Mode trait and state types
 │
-├── rover/                  # Rover vehicle implementation
-│   ├── mod.rs             # Module root
-│   ├── mode/              # Control mode implementations
-│   │   ├── mod.rs         # Mode trait definition
-│   │   └── manual.rs      # Manual mode (RC pass-through)
-│   └── mode_manager.rs    # Mode lifecycle management
-│
-└── core/scheduler/tasks/
-    └── control.rs         # Control loop task (50 Hz, vehicle-agnostic)
+└── firmware/               # Embassy/RP2350 binary
+    └── src/
+        ├── libraries/     # Common libraries (vehicle-agnostic)
+        │   ├── rc_channel/    # RC input (Embassy state wrapper)
+        │   ├── srv_channel/   # Servo output (PWM backend)
+        │   └── motor_driver/  # Motor driver (H-bridge with logging)
+        │
+        ├── rover/         # Rover vehicle implementation
+        │   ├── mod.rs     # Module root
+        │   ├── mode/      # Control mode implementations
+        │   │   ├── mod.rs # Mode trait definition
+        │   │   └── manual.rs # Manual mode (RC pass-through)
+        │   └── mode_manager.rs
+        │
+        └── core/scheduler/tasks/
+            └── control.rs # Control loop task (50 Hz, vehicle-agnostic)
 ```
 
 **Design Rationale**:
@@ -698,7 +712,7 @@ src/
 
 ### RC Input Processing
 
-**Source**: `src/libraries/rc_channel/mod.rs`
+**Source**: `crates/firmware/src/libraries/rc_channel/mod.rs` (wraps `pico_trail_core::rc`)
 
 RC input is processed from MAVLink RC_CHANNELS messages sent by ground control stations (Mission Planner, QGroundControl).
 
@@ -725,7 +739,7 @@ RC input is processed from MAVLink RC_CHANNELS messages sent by ground control s
 
 ### Actuator Abstraction
 
-**Source**: `src/libraries/srv_channel/mod.rs`
+**Source**: `crates/firmware/src/libraries/srv_channel/mod.rs` (wraps `pico_trail_core::servo`)
 
 Actuator abstraction provides normalized commands (-1.0 to +1.0) with automatic PWM conversion and safety enforcement.
 
@@ -759,7 +773,7 @@ Platform PWM: pwm.set_duty_cycle(0.0875)
 
 ### Control Mode Framework
 
-**Source**: `src/rover/mode/mod.rs`, `src/rover/mode_manager.rs`
+**Source**: `crates/firmware/src/rover/mode/mod.rs`, `crates/firmware/src/rover/mode_manager.rs`
 
 The control mode framework uses trait-based polymorphism for extensible mode implementations.
 
@@ -781,7 +795,7 @@ pub trait Mode {
 - Executes active mode at 50 Hz
 - Reverts to Manual fallback on mode entry failure
 
-**Control Loop Task** (`src/core/scheduler/tasks/control.rs`):
+**Control Loop Task** (`crates/firmware/src/core/scheduler/tasks/control.rs`):
 
 - Vehicle-agnostic Embassy task (reusable for Boat, Copter)
 - Runs at 50 Hz (20ms period)
@@ -791,7 +805,7 @@ pub trait Mode {
 
 ### Manual Mode
 
-**Source**: `src/rover/mode/manual.rs`
+**Source**: `crates/firmware/src/rover/mode/manual.rs`
 
 Manual mode provides direct RC pass-through control with no stabilization.
 
@@ -811,7 +825,7 @@ Manual mode provides direct RC pass-through control with no stabilization.
 
 ### Circle Mode
 
-**Source**: `src/rover/mode/circle.rs`
+**Source**: `crates/firmware/src/rover/mode/circle.rs`
 
 Circle mode provides autonomous circular orbit around a center point. Uses hybrid approach with continuous circle generator feeding look-ahead targets to the SimpleNavigationController.
 
@@ -832,7 +846,7 @@ Circle mode provides autonomous circular orbit around a center point. Uses hybri
 
 ### Loiter Mode
 
-**Source**: `src/rover/mode/loiter.rs`
+**Source**: `crates/firmware/src/rover/mode/loiter.rs`
 
 Loiter mode provides position holding for ground rovers with two behavior types.
 
@@ -877,7 +891,7 @@ Loiter mode provides position holding for ground rovers with two behavior types.
 
 - `RC_CHANNELS`: 18-channel RC input from ground control station
 - Update rate: 5-10 Hz (configurable in Mission Planner/QGC)
-- Handler: `src/communication/mavlink/handlers/rc_input.rs`
+- Handler: `crates/firmware/src/communication/mavlink/handlers/rc_input.rs`
 
 ### Performance Characteristics
 

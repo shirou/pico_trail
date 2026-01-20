@@ -1,0 +1,380 @@
+//! RC input state and processing
+//!
+//! This module handles RC input from MAVLink RC_CHANNELS messages, including:
+//! - Channel normalization (0-65535 → -1.0 to +1.0)
+//! - Timeout detection (1 second threshold)
+//! - RC status tracking (Active, Lost, NeverConnected)
+//!
+//! # Design
+//!
+//! This module is pure `no_std` with no feature gates. Platform-specific
+//! global state (e.g., Embassy mutex wrappers) belongs in the firmware crate.
+
+/// RC timeout threshold (1 second in microseconds)
+pub const RC_TIMEOUT_US: u64 = 1_000_000;
+
+/// RC input state
+///
+/// Manages RC channel values, timeout detection, and connection status.
+/// This struct is platform-agnostic and can be wrapped in a platform-specific
+/// synchronization primitive (e.g., Embassy Mutex) by the firmware crate.
+#[derive(Debug, Clone)]
+pub struct RcInput {
+    /// Channel values (normalized -1.0 to +1.0)
+    pub channels: [f32; 18],
+    /// Number of active channels
+    pub channel_count: u8,
+    /// Last update timestamp (microseconds)
+    pub last_update_us: u64,
+    /// RC connection status
+    pub status: RcStatus,
+}
+
+/// RC connection status
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RcStatus {
+    /// RC input active, recent message received
+    Active,
+    /// RC input lost, timeout exceeded
+    Lost,
+    /// RC never connected
+    NeverConnected,
+}
+
+impl Default for RcInput {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RcInput {
+    /// Create new RC input state
+    pub const fn new() -> Self {
+        Self {
+            channels: [0.0; 18],
+            channel_count: 0,
+            last_update_us: 0,
+            status: RcStatus::NeverConnected,
+        }
+    }
+
+    /// Update from MAVLink RC_CHANNELS message
+    ///
+    /// # Arguments
+    ///
+    /// * `raw_channels` - Raw channel values (0-65535)
+    /// * `channel_count` - Number of active channels
+    /// * `current_time_us` - Current timestamp in microseconds
+    pub fn update_from_mavlink(
+        &mut self,
+        raw_channels: &[u16],
+        channel_count: u8,
+        current_time_us: u64,
+    ) {
+        // Normalize channels
+        let count = core::cmp::min(raw_channels.len(), 18);
+        for (i, &raw_value) in raw_channels.iter().enumerate().take(count) {
+            self.channels[i] = normalize_channel(raw_value);
+        }
+
+        self.channel_count = channel_count;
+        self.last_update_us = current_time_us;
+        self.status = RcStatus::Active;
+    }
+
+    /// Update from MAVLink RC_CHANNELS_OVERRIDE message (PWM format)
+    ///
+    /// # Arguments
+    ///
+    /// * `raw_channels` - Raw PWM channel values (1000-2000, or 65535 to ignore)
+    /// * `channel_count` - Number of active channels
+    /// * `current_time_us` - Current timestamp in microseconds
+    pub fn update_from_pwm(
+        &mut self,
+        raw_channels: &[u16],
+        channel_count: u8,
+        current_time_us: u64,
+    ) {
+        // Normalize PWM channels
+        let count = core::cmp::min(raw_channels.len(), 18);
+        for (i, &raw_value) in raw_channels.iter().enumerate().take(count) {
+            // Only update if not 65535 (ignore value)
+            if raw_value != 65535 {
+                // Channel 3 (index 2) is throttle - use inverted normalization
+                // so joystick up (1000) = forward (+1.0)
+                if i == 2 {
+                    self.channels[i] = normalize_pwm_channel_inverted(raw_value);
+                } else {
+                    self.channels[i] = normalize_pwm_channel(raw_value);
+                }
+            }
+        }
+
+        self.channel_count = channel_count;
+        self.last_update_us = current_time_us;
+        self.status = RcStatus::Active;
+    }
+
+    /// Get channel value (1-indexed, like MAVLink)
+    ///
+    /// # Arguments
+    ///
+    /// * `channel` - Channel number (1-18)
+    ///
+    /// # Returns
+    ///
+    /// Normalized channel value (-1.0 to +1.0), or 0.0 if out of range
+    pub fn get_channel(&self, channel: usize) -> f32 {
+        if (1..=18).contains(&channel) {
+            self.channels[channel - 1]
+        } else {
+            0.0
+        }
+    }
+
+    /// Check timeout (call at 50 Hz from vehicle task)
+    ///
+    /// # Arguments
+    ///
+    /// * `current_time_us` - Current timestamp in microseconds
+    pub fn check_timeout(&mut self, current_time_us: u64) {
+        if self.status == RcStatus::Active {
+            let elapsed_us = current_time_us.saturating_sub(self.last_update_us);
+            if elapsed_us > RC_TIMEOUT_US {
+                self.status = RcStatus::Lost;
+                // Zero all channels on timeout
+                self.channels.fill(0.0);
+            }
+        }
+    }
+
+    /// Check if RC is active
+    pub fn is_active(&self) -> bool {
+        self.status == RcStatus::Active
+    }
+
+    /// Check if RC is lost
+    pub fn is_lost(&self) -> bool {
+        self.status == RcStatus::Lost || self.status == RcStatus::NeverConnected
+    }
+}
+
+/// Normalize channel (0-65535 → -1.0 to +1.0)
+///
+/// # MAVLink RC_CHANNELS specification
+///
+/// - 0 = minimum (-1.0)
+/// - 32768 = center (0.0)
+/// - 65535 = maximum (+1.0)
+///
+/// # Arguments
+///
+/// * `raw` - Raw channel value (0-65535)
+///
+/// # Returns
+///
+/// Normalized value (-1.0 to +1.0)
+pub fn normalize_channel(raw: u16) -> f32 {
+    // Convert 0-65535 to -1.0 to +1.0
+    // Formula: (raw - 32768) / 32768.0
+    let centered = raw as i32 - 32768;
+    centered as f32 / 32768.0
+}
+
+/// Normalize PWM channel (1000-2000 → -1.0 to +1.0)
+///
+/// # MAVLink RC_CHANNELS_OVERRIDE specification
+///
+/// - 1000 = minimum (-1.0)
+/// - 1500 = center (0.0)
+/// - 2000 = maximum (+1.0)
+/// - 65535 = ignore/no change
+///
+/// # Arguments
+///
+/// * `raw` - Raw PWM value (1000-2000, or 65535 for ignore)
+///
+/// # Returns
+///
+/// Normalized value (-1.0 to +1.0), or 0.0 if ignored
+pub fn normalize_pwm_channel(raw: u16) -> f32 {
+    // 65535 means "ignore this channel"
+    if raw == 65535 {
+        return 0.0;
+    }
+
+    // Clamp to valid PWM range
+    let clamped = raw.clamp(1000, 2000);
+
+    // Convert 1000-2000 to -1.0 to +1.0
+    // Formula: (raw - 1500) / 500.0
+    let centered = clamped as i32 - 1500;
+    centered as f32 / 500.0
+}
+
+/// Normalize PWM channel with inverted direction (1000-2000 → +1.0 to -1.0)
+///
+/// Used for throttle channels where joystick up (1000) should be forward (+1.0)
+///
+/// # MAVLink RC_CHANNELS_OVERRIDE specification
+///
+/// - 1000 = maximum (+1.0) - joystick up
+/// - 1500 = center (0.0)
+/// - 2000 = minimum (-1.0) - joystick down
+/// - 65535 = ignore/no change
+///
+/// # Arguments
+///
+/// * `raw` - Raw PWM value (1000-2000, or 65535 for ignore)
+///
+/// # Returns
+///
+/// Normalized value (-1.0 to +1.0), or 0.0 if ignored
+pub fn normalize_pwm_channel_inverted(raw: u16) -> f32 {
+    // 65535 means "ignore this channel"
+    if raw == 65535 {
+        return 0.0;
+    }
+
+    // Clamp to valid PWM range
+    let clamped = raw.clamp(1000, 2000);
+
+    // Convert 1000-2000 to +1.0 to -1.0 (inverted)
+    // Formula: (1500 - raw) / 500.0
+    let centered = 1500 - clamped as i32;
+    centered as f32 / 500.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_channel_boundaries() {
+        // Minimum
+        assert!((normalize_channel(0) - (-1.0)).abs() < 0.001);
+
+        // Center
+        assert_eq!(normalize_channel(32768), 0.0);
+
+        // Maximum (floating point precision)
+        assert!((normalize_channel(65535) - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_normalize_channel_intermediate() {
+        // Quarter negative
+        let val = normalize_channel(16384);
+        assert!((val - (-0.5)).abs() < 0.01);
+
+        // Quarter positive
+        let val = normalize_channel(49152);
+        assert!((val - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_normalize_pwm_channel() {
+        // Minimum
+        assert!((normalize_pwm_channel(1000) - (-1.0)).abs() < 0.001);
+
+        // Center
+        assert_eq!(normalize_pwm_channel(1500), 0.0);
+
+        // Maximum
+        assert!((normalize_pwm_channel(2000) - 1.0).abs() < 0.001);
+
+        // Ignore value
+        assert_eq!(normalize_pwm_channel(65535), 0.0);
+    }
+
+    #[test]
+    fn test_normalize_pwm_channel_inverted() {
+        // Minimum (joystick up = forward)
+        assert!((normalize_pwm_channel_inverted(1000) - 1.0).abs() < 0.001);
+
+        // Center
+        assert_eq!(normalize_pwm_channel_inverted(1500), 0.0);
+
+        // Maximum (joystick down = reverse)
+        assert!((normalize_pwm_channel_inverted(2000) - (-1.0)).abs() < 0.001);
+
+        // Ignore value
+        assert_eq!(normalize_pwm_channel_inverted(65535), 0.0);
+    }
+
+    #[test]
+    fn test_update_from_mavlink() {
+        let mut rc = RcInput::new();
+        assert_eq!(rc.status, RcStatus::NeverConnected);
+
+        // Update with RC data
+        let channels = [32768, 40000, 25000]; // Center, +25%, -25%
+        rc.update_from_mavlink(&channels, 3, 1000);
+
+        assert_eq!(rc.status, RcStatus::Active);
+        assert_eq!(rc.channel_count, 3);
+        assert_eq!(rc.last_update_us, 1000);
+
+        // Check normalized values
+        assert!((rc.channels[0] - 0.0).abs() < 0.01); // Center
+        assert!(rc.channels[1] > 0.0); // Positive
+        assert!(rc.channels[2] < 0.0); // Negative
+    }
+
+    #[test]
+    fn test_get_channel() {
+        let mut rc = RcInput::new();
+        let channels = [16384, 32768, 49152]; // -50%, 0%, +50%
+        rc.update_from_mavlink(&channels, 3, 1000);
+
+        // 1-indexed access
+        assert!(rc.get_channel(1) < 0.0);
+        assert_eq!(rc.get_channel(2), 0.0);
+        assert!(rc.get_channel(3) > 0.0);
+
+        // Out of range
+        assert_eq!(rc.get_channel(0), 0.0);
+        assert_eq!(rc.get_channel(19), 0.0);
+    }
+
+    #[test]
+    fn test_timeout_detection() {
+        let mut rc = RcInput::new();
+
+        // Initial update at timestamp 1_000_000 (1 second)
+        let channels = [32768; 18];
+        rc.update_from_mavlink(&channels, 18, 1_000_000);
+        assert_eq!(rc.status, RcStatus::Active);
+
+        // Check timeout before threshold (0.5 seconds later)
+        rc.check_timeout(1_500_000);
+        assert_eq!(rc.status, RcStatus::Active);
+
+        // Check timeout after threshold (1.5 seconds later = 2.5 seconds total)
+        rc.check_timeout(2_500_000);
+        assert_eq!(rc.status, RcStatus::Lost);
+
+        // Verify channels zeroed
+        assert!(rc.channels.iter().all(|&ch| ch == 0.0));
+    }
+
+    #[test]
+    fn test_is_active_is_lost() {
+        let mut rc = RcInput::new();
+
+        // Initially never connected
+        assert!(!rc.is_active());
+        assert!(rc.is_lost());
+
+        // After update, active
+        let channels = [32768; 18];
+        rc.update_from_mavlink(&channels, 18, 1_000_000);
+        assert!(rc.is_active());
+        assert!(!rc.is_lost());
+
+        // After timeout, lost
+        rc.check_timeout(2_500_000);
+        assert!(!rc.is_active());
+        assert!(rc.is_lost());
+    }
+}

@@ -1,0 +1,41 @@
+[package]
+name = "pico_trail_core"
+version = "0.1.0"
+edition = "2021"
+authors = ["shirou <shirou.faw@gmail.com>"]
+license = "Apache-2.0"
+description = "Pure no_std business logic for pico_trail autopilot"
+repository = "https://github.com/shirou/pico_trail"
+keywords = ["embedded", "autopilot", "no-std", "rover"]
+categories = ["embedded", "no-std"]
+
+[lib]
+# Enable standard test harness for host testing
+harness = true
+
+[dependencies]
+# Pure no_std math dependencies
+nalgebra = { version = "0.34", default-features = false, features = ["libm"] }
+micromath = "2.1"
+libm = "0.2"
+
+# no_std collections
+heapless = "0.9"
+
+# Bitflags for state management
+bitflags = "2.10"
+
+# CRC32 for parameter block validation
+crc = "3.2"
+
+# Critical section for thread-safe global state access (scheduler stats)
+critical-section = "1.2"
+
+[dev-dependencies]
+# Host test dependencies - enable std feature for critical-section
+critical-section = { version = "1.2", features = ["std"] }
+# Serial test execution for tests with shared mutable state
+serial_test = "3.2"
+
+[features]
+default = []

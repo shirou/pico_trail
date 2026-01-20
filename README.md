@@ -134,21 +134,42 @@ See [WiFi Configuration Guide](docs/wifi-configuration.md) for detailed setup in
 ### 3. Run Tests
 
 ```bash
-# Run unit tests
-cargo test --lib --quiet
+# Run core crate unit tests (pure no_std logic)
+cargo test -p pico_trail_core --lib --quiet
 ```
 
 ## Development
 
 ### Project Structure
 
+pico_trail uses a Cargo workspace with two crates:
+
 ```
-src/
-├── platform/          # Hardware abstraction layer (UART, I2C, SPI, PWM)
-├── devices/           # Device drivers (GPS, IMU, Motor, Servo)
-├── subsystems/        # Functional subsystems (AHRS, Control, Navigation)
-├── vehicle/           # Vehicle logic and flight modes
-└── core/              # Cross-cutting concerns (Scheduler, Parameters, Logger)
+crates/
+├── core/              # Pure no_std business logic (platform-independent)
+│   └── src/
+│       ├── traits/    # Time, platform abstractions
+│       ├── kinematics/# Differential drive math
+│       ├── parameters/# Parameter types and CRC
+│       ├── arming/    # Arming error types
+│       ├── scheduler/ # Task scheduling types
+│       ├── navigation/# Navigation types
+│       ├── ahrs/      # Calibration math
+│       ├── mission/   # Waypoint and mission storage
+│       ├── mode/      # Mode trait and state types
+│       ├── rc/        # RC normalization functions
+│       ├── servo/     # Servo PWM conversion
+│       └── motor/     # Motor driver traits
+│
+└── firmware/          # Embassy/RP2350 binary (platform-specific)
+    └── src/
+        ├── platform/  # Hardware abstraction layer (UART, I2C, SPI, PWM)
+        ├── devices/   # Device drivers (GPS, IMU, Motor, Servo)
+        ├── subsystems/# Functional subsystems (AHRS, Navigation)
+        ├── rover/     # Rover vehicle modes
+        ├── communication/ # MAVLink protocol
+        ├── parameters/# ArduPilot parameter definitions
+        └── core/      # Logging, parameter saver, arming tasks
 ```
 
 See [docs/architecture.md](docs/architecture.md) for detailed architecture documentation.
@@ -162,9 +183,10 @@ This project follows the Traceable Development Lifecycle (TDL), inspired by [kop
 When finishing any Rust coding task, always run:
 
 ```bash
-cargo fmt                                        # Auto-format code
-cargo clippy --all-targets -- -D warnings        # Lint with strict warnings
-cargo test --lib --quiet                         # Run unit tests
+cargo fmt                                           # Auto-format code
+cargo clippy -p pico_trail_core -- -D warnings      # Lint core crate
+cargo test -p pico_trail_core --lib --quiet         # Run unit tests
+./scripts/build-rp2350.sh pico_trail_rover          # Verify embedded build
 ```
 
 #### Documentation
@@ -299,7 +321,8 @@ Standard "Write" mission upload does not work correctly with Mission Planner. Th
 
 Contributions are welcome! Please ensure:
 
-- All code passes `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --lib --quiet`
+- All code passes `cargo fmt`, `cargo clippy -p pico_trail_core -- -D warnings`, and `cargo test -p pico_trail_core --lib --quiet`
+- Embedded build passes: `./scripts/build-rp2350.sh pico_trail_rover`
 - Documentation is written in English
 - Changes follow the TDL process (see [docs/tdl.md](docs/tdl.md))
 - Traceability is maintained (`bun scripts/trace-status.ts --check`)

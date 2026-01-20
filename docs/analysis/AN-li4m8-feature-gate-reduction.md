@@ -17,6 +17,7 @@
   - [ADR-3ciu6-trait-based-async-abstraction](../adr/ADR-3ciu6-trait-based-async-abstraction.md)
 - Related Tasks:
   - [T-d9rim-trait-based-async-abstraction](../tasks/T-d9rim-trait-based-async-abstraction/README.md)
+  - [T-3n2ej-workspace-separation](../tasks/T-3n2ej-workspace-separation/README.md)
 
 ## Executive Summary
 

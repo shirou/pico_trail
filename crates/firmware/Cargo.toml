@@ -1,0 +1,132 @@
+[package]
+name = "pico_trail_firmware"
+version = "0.1.0"
+edition = "2021"
+authors = ["shirou <shirou.faw@gmail.com>"]
+license = "Apache-2.0"
+description = "Embassy firmware for pico_trail autopilot on RP2350/Pico 2 W"
+repository = "https://github.com/shirou/pico_trail"
+keywords = ["embedded", "autopilot", "raspberry-pi-pico", "embassy"]
+categories = ["embedded", "no-std"]
+
+[lib]
+
+[dependencies]
+# Core business logic (workspace dependency)
+pico_trail_core = { path = "../core" }
+
+# Cortex-M dependencies (always enabled for RP2350)
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+defmt = "1.0.1"
+defmt-rtt = "1.0.1"
+panic-probe = { version = "1.0", features = ["print-defmt"] }
+panic-halt = "1.0"
+
+# Embassy async framework (always enabled)
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", features = ["arch-cortex-m", "executor-thread"] }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", features = ["tick-hz-1_000_000"] }
+embassy-rp = { git = "https://github.com/embassy-rs/embassy", features = ["time-driver", "rp235xa", "critical-section-impl", "binary-info"] }
+embassy-usb = { git = "https://github.com/embassy-rs/embassy" }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy", features = ["tcp", "udp", "dhcpv4", "dns"] }
+
+# WiFi driver for Pico W/2W (CYW43439)
+cyw43 = { git = "https://github.com/embassy-rs/embassy", features = ["firmware-logs"] }
+cyw43-pio = { git = "https://github.com/embassy-rs/embassy" }
+
+# Static cell for embassy static variables
+static_cell = "2.1.1"
+
+# Embassy embedded HAL utilities (for shared I2C bus, etc.)
+embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy" }
+
+# heapless for no_std collections (required for parameter storage)
+heapless = "0.9"
+
+# Heap allocator for no_std (required for Box in mode manager)
+embedded-alloc = "0.6"
+
+# Synchronization primitives
+critical-section = "1.2"
+
+# CRC calculation for Flash parameter storage (no_std compatible)
+crc = { version = "3.4", default-features = false }
+
+# Bitflags for parameter flags
+bitflags = "2.10"
+
+# MAVLink 2.0 protocol
+mavlink = { version = "0.16.2", default-features = false, features = ["embedded", "common", "emit-extensions"] }
+embedded-io = "0.6"
+embedded-io-async = "0.6"
+
+# AHRS subsystem dependencies
+nalgebra = { version = "0.34", default-features = false, features = ["libm"] }
+micromath = "2.1"
+
+# Math functions for no_std
+libm = "0.2"
+
+# GPS NMEA parser
+nmea0183 = { version = "0.6", default-features = false }
+
+# Platform HALs (always enabled for RP2350)
+rp235x-hal = "0.3.0"
+embedded-hal = { version = "0.2.7", features = ["unproven"] }
+embedded-hal-1 = { package = "embedded-hal", version = "1.0" }
+embedded-hal-async = "1.0"
+embedded-hal-nb = "1.0"
+nb = "1.1.0"
+fugit = "0.3.7"
+
+[dev-dependencies]
+defmt-test = "0.3"
+
+[target.'cfg(not(target_arch = "arm"))'.dev-dependencies]
+critical-section = { version = "1.2", features = ["std"] }
+serial_test = "3.2"
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[build-dependencies]
+tempfile = "3.23"
+
+[features]
+# Default features enable all Embassy/RP2350 functionality
+# No need to pass --features pico2_w anymore
+default = ["pico2_w"]
+
+# Embassy async runtime (always enabled, kept for cfg compatibility)
+embassy = ["embassy-executor", "embassy-time"]
+
+# Embassy executor (always enabled, kept for cfg compatibility)
+embassy-executor = []
+
+# Embassy time (always enabled, kept for cfg compatibility)
+embassy-time = []
+
+# RP2350/Pico 2 W platform (always enabled, kept for cfg compatibility)
+pico2_w = ["embassy", "rover", "gps-ublox", "defmt"]
+
+# defmt logging (always enabled, kept for cfg compatibility)
+defmt = []
+
+# Mock implementations (for host tests, cfg gate compatibility)
+mock = []
+
+# Vehicle type features
+rover = []
+
+# GPS vendor initialization features
+gps-ublox = []
+
+# USB serial debug output
+usb_serial = []
+
+# Examples build by default (no required-features needed)
+[[example]]
+name = "pico_trail_rover"
+
+[[example]]
+name = "bno086_demo"
