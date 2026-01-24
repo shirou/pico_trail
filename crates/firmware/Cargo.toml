@@ -127,6 +127,3 @@ usb_serial = []
 # Examples build by default (no required-features needed)
 [[example]]
 name = "pico_trail_rover"
-
-[[example]]
-name = "bno086_demo"

@@ -299,14 +299,16 @@ async fn main(spawner: Spawner) {
             pico_trail_firmware::log_info!("  SSID: {}", config.ssid.as_str());
             pico_trail_firmware::log_info!("  DHCP: {}", config.use_dhcp);
 
-            // Initialize WiFi with individual peripherals
-            match pico_trail_firmware::platform::rp2350::network::initialize_wifi(
-                spawner, config, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.PIO0, p.DMA_CH0,
-            )
-            .await
-            {
-                Ok((stack, _control)) => {
-                    pico_trail_firmware::log_info!("WiFi connected");
+            // Spawn WiFi init task (never returns, keeps Control alive)
+            spawner.spawn(
+                pico_trail_firmware::platform::rp2350::network::wifi_init_task(
+                    spawner, config, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.PIO0, p.DMA_CH0,
+                ).unwrap()
+            );
+
+            // Wait for WiFi to be ready and get stack
+            let stack = pico_trail_firmware::platform::rp2350::network::wait_wifi_ready().await;
+            pico_trail_firmware::log_info!("WiFi connected");
 
                     // Wait for network to be ready
                     Timer::after(Duration::from_secs(2)).await;
@@ -587,15 +589,6 @@ async fn main(spawner: Spawner) {
                         pico_trail_firmware::log_warn!("AHRS features will be disabled");
                         pico_trail_firmware::log_warn!("Check wiring: SDA=GPIO4, SCL=GPIO5");
                     }
-                }
-                Err(e) => {
-                    pico_trail_firmware::log_warn!("WiFi initialization failed: {:?}", e);
-                    pico_trail_firmware::log_warn!("Cannot continue without WiFi");
-                    loop {
-                        Timer::after(Duration::from_secs(60)).await;
-                    }
-                }
-            }
         } else {
             pico_trail_firmware::log_info!("WiFi not configured");
             pico_trail_firmware::log_info!("Configure WiFi via MAVLink parameters and reboot:");

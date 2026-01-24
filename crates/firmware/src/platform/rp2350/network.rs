@@ -54,7 +54,7 @@ use embassy_net::{
 use embassy_rp::clocks::RoscRng;
 use embassy_time::{Duration, Timer};
 
-use cyw43::{aligned_bytes, Control, JoinOptions};
+use cyw43::{aligned_bytes, JoinOptions};
 use cyw43_pio::DEFAULT_CLOCK_DIVIDER;
 use embassy_rp::{
     bind_interrupts,
@@ -63,13 +63,25 @@ use embassy_rp::{
     pio::{InterruptHandler as PioInterruptHandler, Pio},
     Peri,
 };
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use static_cell::StaticCell;
 
 /// Maximum WiFi connection attempts before giving up
 const MAX_WIFI_RETRIES: u8 = 10;
 
-/// Initial retry delay (1 second)
-const INITIAL_RETRY_DELAY_MS: u64 = 1000;
+/// Atomic pointer to WiFi Stack (set after initialization)
+static WIFI_STACK_PTR: AtomicPtr<Stack<'static>> = AtomicPtr::new(core::ptr::null_mut());
+
+/// Signal to indicate WiFi initialization is complete
+static WIFI_READY: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Join timeout in seconds
+const JOIN_TIMEOUT_SECS: u64 = 5;
+
+/// Retry delay after timeout (1 second)
+const RETRY_DELAY_MS: u64 = 1000;
 
 /// WiFi configuration loaded from parameters
 #[derive(Debug, Clone)]
@@ -142,7 +154,33 @@ pub enum WifiError {
     InvalidConfig,
 }
 
-/// Initialize WiFi and network stack
+/// Wait for WiFi to be ready and get the Stack reference.
+///
+/// Call this after spawning the WiFi task to get the network stack.
+/// Blocks until WiFi initialization is complete.
+///
+/// # Returns
+///
+/// Reference to the network stack.
+pub async fn wait_wifi_ready() -> &'static Stack<'static> {
+    WIFI_READY.wait().await;
+    // SAFETY: WIFI_STACK_PTR is set before WIFI_READY is signaled
+    unsafe { &*WIFI_STACK_PTR.load(Ordering::Acquire) }
+}
+
+/// Initialize WiFi and network stack.
+///
+/// **IMPORTANT**: This function never returns! It runs an infinite loop to keep
+/// the CYW43 Control alive. Moving Control to static memory breaks ping functionality.
+///
+/// # Usage
+///
+/// Spawn this as a task and use `wait_wifi_ready()` to get the Stack:
+///
+/// ```no_run
+/// spawner.spawn(wifi_init_task(spawner, config, pins...)).unwrap();
+/// let stack = wait_wifi_ready().await;
+/// ```
 ///
 /// # Arguments
 ///
@@ -154,30 +192,6 @@ pub enum WifiError {
 /// * `pin_29` - GPIO29 for WiFi CLK (PIN_29)
 /// * `pio0` - PIO0 peripheral for WiFi SPI
 /// * `dma_ch0` - DMA channel 0 for WiFi SPI
-///
-/// # Returns
-///
-/// `Ok((&'static Stack, &'static Control))` on success containing network stack and WiFi control handles
-///
-/// # Errors
-///
-/// - `WifiError::NotConfigured` - Empty SSID in configuration
-/// - `WifiError::ConnectionFailed` - Failed to connect after all retries
-///
-/// # Example
-///
-/// ```no_run
-/// let (stack, control) = initialize_wifi(
-///     spawner,
-///     wifi_config,
-///     p.PIN_23,
-///     p.PIN_24,
-///     p.PIN_25,
-///     p.PIN_29,
-///     p.PIO0,
-///     p.DMA_CH0,
-/// ).await?;
-/// ```
 #[allow(clippy::too_many_arguments)]
 pub async fn initialize_wifi(
     spawner: Spawner,
@@ -188,10 +202,12 @@ pub async fn initialize_wifi(
     pin_29: Peri<'static, PIN_29>,
     pio0: Peri<'static, PIO0>,
     dma_ch0: Peri<'static, DMA_CH0>,
-) -> Result<(&'static Stack<'static>, &'static mut Control<'static>), WifiError> {
+) -> ! {
     if !config.is_configured() {
         crate::log_info!("WiFi not configured (empty SSID), skipping WiFi initialization");
-        return Err(WifiError::NotConfigured);
+        loop {
+            Timer::after(Duration::from_secs(3600)).await;
+        }
     }
 
     let mut rng = RoscRng;
@@ -223,22 +239,22 @@ pub async fn initialize_wifi(
     let state = STATE.init(cyw43::State::new());
     let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw, nvram).await;
 
+    // NOTE: Control must remain a local variable (NOT in StaticCell)
+    // Moving Control to static memory causes ping to stop working.
+    // This is a known issue with the CYW43 driver.
+
     // 5. Spawn WiFi driver task
     spawner.spawn(wifi_task(runner).unwrap());
 
     // Give WiFi driver task time to start
     Timer::after_millis(100).await;
 
-    // 6. Initialize CLM (Country Locale Matrix) BEFORE network stack
+    // 7. Initialize CLM (Country Locale Matrix) BEFORE network stack
     // This is critical - CLM must be loaded before network operations
     control.init(clm).await;
 
-    // 7. Configure power management (embassy official recommendation)
-    control
-        .set_power_management(cyw43::PowerManagementMode::PowerSave)
-        .await;
-
-    // Log MAC address for debugging
+    // 8. Get MAC address BEFORE power management (matches wifi_test.rs order)
+    // Note: Order matters for CYW43439 driver stability
     let mac = control.address().await;
     crate::log_debug!(
         "WiFi MAC address: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
@@ -249,6 +265,12 @@ pub async fn initialize_wifi(
         mac[4],
         mac[5]
     );
+
+    // 8. Configure power management
+    // Note: PowerSave causes ping unresponsiveness, use None for debugging
+    control
+        .set_power_management(cyw43::PowerManagementMode::None)
+        .await;
 
     // 8. Configure network stack
     let net_config = if config.use_dhcp {
@@ -286,7 +308,7 @@ pub async fn initialize_wifi(
     let seed = rng.next_u64();
 
     // 7. Create network stack using StaticCell (following embassy official examples)
-    static STACK_RESOURCES: StaticCell<StackResources<8>> = StaticCell::new();
+    static STACK_RESOURCES: StaticCell<StackResources<4>> = StaticCell::new();
     let (stack, runner) = embassy_net::new(
         net_device,
         net_config,
@@ -306,47 +328,66 @@ pub async fn initialize_wifi(
     crate::log_debug!("Waiting for network stack to initialize...");
     Timer::after_millis(500).await;
 
-    // 10. Join WPA2 network with retry logic
+    // 10. Join WPA2 network with timeout and retry logic
+    // Note: First join attempt often times out due to CYW43439 driver state issue.
+    // Calling leave() after timeout fixes the internal state and allows subsequent joins to succeed.
     let mut retries = 0;
     loop {
+        retries += 1;
         crate::log_info!(
             "Attempting to join WiFi network (attempt {}/{})",
-            retries + 1,
+            retries,
             MAX_WIFI_RETRIES
         );
 
         let options = JoinOptions::new(config.password.as_bytes());
-        match control.join(config.ssid.as_str(), options).await {
-            Ok(_) => {
-                crate::log_info!("WiFi connected successfully");
+
+        // Try join with timeout
+        let join_result = embassy_time::with_timeout(
+            Duration::from_secs(JOIN_TIMEOUT_SECS),
+            control.join(config.ssid.as_str(), options),
+        )
+        .await;
+
+        match join_result {
+            Ok(Ok(_)) => {
+                crate::log_info!("WiFi connected successfully on attempt {}", retries);
                 break;
             }
-            Err(_e) => {
-                crate::log_warn!("WiFi connection failed");
-                retries += 1;
-
-                if retries >= MAX_WIFI_RETRIES {
-                    crate::log_error!("WiFi connection failed after {} attempts", MAX_WIFI_RETRIES);
-                    return Err(WifiError::ConnectionFailed);
-                }
-
-                // Wait before retry with exponential backoff
-                let delay = get_retry_delay(retries - 1);
-                crate::log_info!("Retrying in {} ms", delay.as_millis());
-                Timer::after(delay).await;
+            Ok(Err(_e)) => {
+                crate::log_warn!("WiFi join returned error on attempt {}", retries);
+            }
+            Err(_timeout) => {
+                crate::log_warn!(
+                    "WiFi join timeout after {} seconds on attempt {}",
+                    JOIN_TIMEOUT_SECS,
+                    retries
+                );
             }
         }
+
+        if retries >= MAX_WIFI_RETRIES {
+            crate::log_error!("WiFi connection failed after {} attempts", MAX_WIFI_RETRIES);
+            // Don't return - keep Control alive and loop forever
+            loop {
+                Timer::after(Duration::from_secs(3600)).await;
+            }
+        }
+
+        // Cleanup after timeout - leave() resets CYW43439 internal state
+        crate::log_debug!("Calling leave() to cleanup driver state...");
+        control.leave().await;
+        crate::log_debug!("leave() done");
+
+        // Wait before retry
+        crate::log_info!("Retrying in {} ms", RETRY_DELAY_MS);
+        Timer::after(Duration::from_millis(RETRY_DELAY_MS)).await;
     }
 
     // 11. Wait for network configuration (DHCP or static)
     if config.use_dhcp {
-        // Give extra time for router DHCP server to be ready
-        // On cold boot, routers may need time to initialize DHCP service
-        // and learn the new MAC address
-        crate::log_debug!("Waiting for router DHCP server to be ready (5 seconds)...");
-        Timer::after_millis(5000).await;
-
         // Wait for link and DHCP using embassy's official wait methods
+        // Note: Removed 5 second delay - it caused ping to stop working
         crate::log_info!("Waiting for link up...");
         stack.wait_link_up().await;
         crate::log_info!("Link is up");
@@ -373,32 +414,21 @@ pub async fn initialize_wifi(
 
     crate::log_info!("WiFi initialization complete");
 
-    // SAFETY: We need to return a mutable reference to Control, but it's stored in a static.
-    // This is safe because:
-    // 1. Control is only created once in this function
-    // 2. We're returning the only mutable reference to it
-    // 3. The caller is expected to manage it appropriately
-    static CONTROL: StaticCell<Control<'static>> = StaticCell::new();
-    let control_ref = CONTROL.init(control);
+    // Store stack pointer and signal ready
+    WIFI_STACK_PTR.store(stack as *const _ as *mut _, Ordering::Release);
+    WIFI_READY.signal(());
 
-    Ok((stack, control_ref))
+    // CRITICAL: Control must NOT be moved or stored in static memory.
+    // Moving Control breaks ping functionality (CYW43 driver issue).
+    // Keep Control alive by running an infinite loop here.
+    // The caller should use wait_wifi_ready() to get the Stack.
+    crate::log_info!("WiFi control loop starting (Control stays local)");
+    loop {
+        Timer::after(Duration::from_secs(3600)).await;
+    }
 }
 
-/// Helper function to retry WiFi connection with exponential backoff
-///
-/// # Arguments
-///
-/// * `attempt` - Current attempt number (0-based)
-///
-/// # Returns
-///
-/// Delay duration in milliseconds
-fn get_retry_delay(attempt: u8) -> Duration {
-    let delay_ms = INITIAL_RETRY_DELAY_MS * (1 << attempt).min(16);
-    Duration::from_millis(delay_ms)
-}
-
-bind_interrupts!(struct PioIrqs {
+bind_interrupts!(pub struct PioIrqs {
     PIO0_IRQ_0 => PioInterruptHandler<PIO0>;
 });
 
@@ -423,6 +453,32 @@ async fn wifi_task(
 #[embassy_executor::task]
 async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>) -> ! {
     runner.run().await
+}
+
+/// WiFi initialization task
+///
+/// Wrapper task for `initialize_wifi`. Spawn this task and use `wait_wifi_ready()`
+/// to get the Stack once initialization is complete.
+///
+/// # Example
+///
+/// ```no_run
+/// spawner.spawn(wifi_init_task(spawner, config, pins...).unwrap());
+/// let stack = wait_wifi_ready().await;
+/// ```
+#[embassy_executor::task]
+#[allow(clippy::too_many_arguments)]
+pub async fn wifi_init_task(
+    spawner: Spawner,
+    config: WifiConfig,
+    pin_23: Peri<'static, PIN_23>,
+    pin_24: Peri<'static, PIN_24>,
+    pin_25: Peri<'static, PIN_25>,
+    pin_29: Peri<'static, PIN_29>,
+    pio0: Peri<'static, PIO0>,
+    dma_ch0: Peri<'static, DMA_CH0>,
+) -> ! {
+    initialize_wifi(spawner, config, pin_23, pin_24, pin_25, pin_29, pio0, dma_ch0).await
 }
 
 #[cfg(test)]

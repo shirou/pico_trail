@@ -1,12 +1,12 @@
 # pico_trail Traceability Overview
 
-Generated on 2026-01-19T00:46:15.332Z
+Generated on 2026-01-24T08:01:11.792Z
 
 ## Summary
 
 | Metric                  |     Count |
 | ----------------------- | --------: |
-| Analyses                |        39 |
+| Analyses                |        40 |
 | Requirements            |       221 |
 | ADRs                    |        33 |
 | Tasks                   |        31 |
