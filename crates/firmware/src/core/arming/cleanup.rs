@@ -77,12 +77,11 @@ impl PostDisarmCleanup {
     /// 5. Disable geofence if FENCE_AUTOENABLE was set
     /// 6. Persist configuration changes if unsaved
     /// 7. Clear arm timestamp and monitoring state
-    #[allow(unused_variables)] // method and reason used in logging but may be compiled out
     pub fn execute(
         &mut self,
         state: &SystemState,
-        method: DisarmMethod,
-        reason: DisarmReason,
+        _method: DisarmMethod,
+        _reason: DisarmReason,
     ) -> Result<(), CleanupError> {
         // 1. Verify disarmed state
         if state.is_armed() {
@@ -91,7 +90,7 @@ impl PostDisarmCleanup {
         }
 
         // 2. Log disarm event
-        crate::log_info!("Vehicle disarmed via {} ({})", method, reason);
+        crate::log_info!("Vehicle disarmed via {} ({})", _method, _reason);
 
         // 3. Verify actuators neutral
         // TODO: When actuator system is implemented, verify:

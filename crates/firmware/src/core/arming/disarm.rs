@@ -108,7 +108,6 @@ impl DisarmValidator {
     /// - **Failsafe disarm**: Always allowed (emergency situation)
     /// - **RC stick disarm**: Requires throttle low AND velocity safe
     /// - **GCS command disarm**: Requires throttle low only (lenient for remote ops)
-    #[allow(unused_variables)] // method used in future validations
     pub fn validate(
         &self,
         state: &SystemState,
@@ -127,6 +126,7 @@ impl DisarmValidator {
         }
 
         // Failsafe disarm bypasses all checks (emergency situation)
+        #[allow(clippy::collapsible_if)]
         if method == DisarmMethod::Failsafe {
             return Ok(());
         }

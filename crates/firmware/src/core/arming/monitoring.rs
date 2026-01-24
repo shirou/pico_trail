@@ -147,10 +147,9 @@ impl ArmedStateMonitor {
     ///
     /// * `state` - Current system state
     /// * `current_time_ms` - Current system time (milliseconds since boot)
-    #[allow(unused_variables)] // Parameters used in logging but may be compiled out
     pub fn update_fast(
         &mut self,
-        state: &SystemState,
+        _state: &SystemState,
         current_time_ms: u64,
     ) -> Option<FailsafeReason> {
         // Update RC signal age
@@ -242,10 +241,9 @@ impl ArmedStateMonitor {
     ///
     /// * `state` - Current system state
     /// * `current_time_ms` - Current system time (milliseconds since boot)
-    #[allow(unused_variables)] // Parameters used in logging but may be compiled out
     pub fn update_slow(
         &mut self,
-        state: &SystemState,
+        _state: &SystemState,
         current_time_ms: u64,
     ) -> Option<FailsafeReason> {
         // Update geofence status

@@ -34,7 +34,6 @@ use crate::subsystems::navigation::{NavigationController, SimpleNavigationContro
 
 /// Guided Mode state
 #[derive(Clone, Copy, Debug, Default)]
-#[allow(dead_code)]
 struct GuidedState {
     /// Flag indicating if navigation is active
     navigation_active: bool,
@@ -59,7 +58,6 @@ pub struct GuidedMode<'a> {
     heading_provider: fn() -> Option<f32>,
 }
 
-#[allow(dead_code)]
 impl<'a> GuidedMode<'a> {
     /// Create new Guided mode
     ///

@@ -17,7 +17,6 @@
 //! - DCM Tutorial: <http://www.starlino.com/dcm_tutorial.html>
 
 // micromath::F32Ext provides atan2 and asin methods for f32 in no_std environments
-#[allow(unused_imports)]
 use micromath::F32Ext;
 use nalgebra::{Matrix3, Vector3};
 

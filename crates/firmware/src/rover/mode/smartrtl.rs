@@ -39,7 +39,6 @@ const MAX_WAYPOINTS: usize = 300;
 
 /// SmartRTL Mode state
 #[derive(Clone, Copy, Debug, Default)]
-#[allow(dead_code)]
 struct SmartRtlState {
     /// Current waypoint index
     waypoint_idx: usize,
@@ -60,10 +59,8 @@ pub struct SmartRtlMode<'a> {
     /// SmartRTL state
     state: Option<SmartRtlState>,
     /// Waypoints loaded from path recorder (reverse order)
-    #[allow(dead_code)]
     waypoints: [PathPoint; MAX_WAYPOINTS],
     /// Number of waypoints loaded
-    #[allow(dead_code)]
     waypoint_count: usize,
     /// GPS position provider function
     gps_provider: fn() -> Option<GpsPosition>,
@@ -75,7 +72,6 @@ pub struct SmartRtlMode<'a> {
     heading_provider: fn() -> Option<f32>,
 }
 
-#[allow(dead_code)]
 impl<'a> SmartRtlMode<'a> {
     /// Create new SmartRTL mode
     ///

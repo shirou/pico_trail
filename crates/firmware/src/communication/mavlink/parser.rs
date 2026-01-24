@@ -36,8 +36,8 @@ pub struct ParserStats {
 /// Wraps rust-mavlink's parsing functionality with async UART reading
 /// and statistics tracking.
 pub struct MavlinkParser {
-    /// RX buffer for incoming bytes
-    rx_buffer: Vec<u8, RX_BUFFER_SIZE>,
+    /// RX buffer for incoming bytes (reserved for future byte-by-byte parsing)
+    _rx_buffer: Vec<u8, RX_BUFFER_SIZE>,
     /// Parser statistics
     stats: ParserStats,
 }
@@ -46,7 +46,7 @@ impl MavlinkParser {
     /// Create a new MAVLink parser
     pub fn new() -> Self {
         Self {
-            rx_buffer: Vec::new(),
+            _rx_buffer: Vec::new(),
             stats: ParserStats::default(),
         }
     }
@@ -117,36 +117,6 @@ impl MavlinkParser {
                 }
             }
         }
-    }
-
-    /// Process a single byte from UART
-    ///
-    /// Helper function for byte-by-byte parsing. Accumulates bytes in buffer
-    /// until a complete message is received.
-    ///
-    /// # Arguments
-    ///
-    /// * `byte` - Single byte from UART
-    ///
-    /// # Returns
-    ///
-    /// Returns `Some((header, message))` when a complete message is parsed,
-    /// or `None` if more bytes are needed.
-    #[allow(dead_code)]
-    fn _process_byte(
-        &mut self,
-        byte: u8,
-    ) -> Option<Result<(mavlink::MavHeader, mavlink::common::MavMessage), ParserError>> {
-        // Add byte to buffer
-        if self.rx_buffer.push(byte).is_err() {
-            self.stats.buffer_overflows += 1;
-            return Some(Err(ParserError::BufferOverflow));
-        }
-
-        // Try to parse message from buffer
-        // This is a placeholder - actual implementation will use rust-mavlink's
-        // read_v2_msg() with a custom Read implementation.
-        None
     }
 }
 

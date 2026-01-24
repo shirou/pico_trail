@@ -183,14 +183,13 @@ where
         // Read packets until we get quaternion data
         // BNO086 outputs 0xFB batched reports containing 0x08 by default
         let mut got_quaternion = false;
-        #[allow(unused_variables)]
-        for attempt in 0..50 {
+        for _attempt in 0..50 {
             // Try for 5 seconds (50 * 100ms max per read)
             match self.read_and_process().await {
                 Ok(true) => {
                     crate::log_info!(
                         "BNO086: Got quaternion after {} attempts (passive mode)",
-                        attempt + 1
+                        _attempt + 1
                     );
                     got_quaternion = true;
                     break;
@@ -268,8 +267,7 @@ where
         crate::log_info!("Waiting for first quaternion data...");
 
         let mut got_data = false;
-        #[allow(unused_variables)]
-        for attempt in 0..30 {
+        for _attempt in 0..30 {
             let mut packet = ShtpPacket::<280>::new();
 
             // Use timeout to prevent hanging
@@ -289,7 +287,7 @@ where
                             crate::log_info!(
                                 "Got first data (report 0x{:02X}) after {} attempts",
                                 report_id,
-                                attempt + 1
+                                _attempt + 1
                             );
                             got_data = true;
                             break;
@@ -823,8 +821,7 @@ mod tests {
             }
         }
 
-        #[allow(dead_code)]
-        fn add_rotation_vector_packet(&mut self) {
+        fn _add_rotation_vector_packet(&mut self) {
             // Simulated Rotation Vector report
             // Identity quaternion: w=1, x=y=z=0
             let payload: Vec<u8> = vec![
@@ -841,8 +838,7 @@ mod tests {
             self.packets.push(payload);
         }
 
-        #[allow(dead_code)]
-        fn add_product_id_packet(&mut self) {
+        fn _add_product_id_packet(&mut self) {
             let payload: Vec<u8> = vec![
                 0xF8, // Report ID
                 0x01, // Reset cause

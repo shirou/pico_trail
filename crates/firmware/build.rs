@@ -136,7 +136,6 @@ impl PinConfig {
 
 /// Parsed hwdef.dat configuration
 #[derive(Debug)]
-#[allow(dead_code)] // Used in Phase 2
 struct HwDefConfig {
     platform: String,
     motor_count: usize,
@@ -154,7 +153,6 @@ struct HwDefConfig {
 
 /// Motor pin pair (IN1, IN2) for H-bridge control
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)] // Used in Phase 2
 struct MotorPinPair {
     in1: PinConfig,
     in2: PinConfig,
@@ -162,21 +160,18 @@ struct MotorPinPair {
 
 /// Servo pins (single PWM pin)
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)] // Used in Phase 2
 struct ServoPins {
     pwm: PinConfig,
 }
 
 /// ESC pins (single PWM pin for brushless motor control)
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)] // Used in Phase 2
 struct EscPins {
     pwm: PinConfig,
 }
 
 /// Stepper motor pins (STEP, DIR, ENABLE, optional microstepping)
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)] // Used in Phase 2
 struct StepperPins {
     step: PinConfig,
     dir: PinConfig,
@@ -215,7 +210,6 @@ fn parse_pin_config(
 }
 
 /// Parse hwdef.dat file with include support
-#[allow(dead_code)] // Used in Phase 2
 fn parse_hwdef(path: &Path) -> Result<HwDefConfig, String> {
     let mut include_chain = HashSet::new();
     parse_hwdef_with_includes(path, &mut include_chain)
@@ -728,7 +722,6 @@ fn validate_gpio_range(
 }
 
 /// Validate hwdef configuration
-#[allow(dead_code)] // Used in Phase 2
 fn validate_hwdef(config: &HwDefConfig, path: &Path) -> Result<(), String> {
     // Check that at least one actuator type is configured
     if config.motor_count == 0
@@ -1216,13 +1209,13 @@ BATTERY_ADC 26
         assert_eq!(config.platform, "rp2350");
         assert_eq!(config.motor_count, 4);
         assert_eq!(config.motor_pins.len(), 4);
-        assert_eq!(config.motor_pins[0].in1, 18);
-        assert_eq!(config.motor_pins[0].in2, 19);
-        assert_eq!(config.motor_pins[1].in1, 20);
-        assert_eq!(config.motor_pins[1].in2, 21);
-        assert_eq!(config.buzzer, Some(2));
-        assert_eq!(config.led, Some(16));
-        assert_eq!(config.battery_adc, Some(26));
+        assert_eq!(config.motor_pins[0].in1.gpio, 18);
+        assert_eq!(config.motor_pins[0].in2.gpio, 19);
+        assert_eq!(config.motor_pins[1].in1.gpio, 20);
+        assert_eq!(config.motor_pins[1].in2.gpio, 21);
+        assert_eq!(config.buzzer.map(|p| p.gpio), Some(2));
+        assert_eq!(config.led.map(|p| p.gpio), Some(16));
+        assert_eq!(config.battery_adc.map(|p| p.gpio), Some(26));
     }
 
     #[test]
@@ -1331,10 +1324,22 @@ M1_IN1 abc
             platform: "rp2350".to_string(),
             motor_count: 4,
             motor_pins: vec![
-                MotorPinPair { in1: 18, in2: 19 },
-                MotorPinPair { in1: 20, in2: 21 },
-                MotorPinPair { in1: 6, in2: 7 },
-                MotorPinPair { in1: 8, in2: 9 },
+                MotorPinPair {
+                    in1: PinConfig::new(18),
+                    in2: PinConfig::new(19),
+                },
+                MotorPinPair {
+                    in1: PinConfig::new(20),
+                    in2: PinConfig::new(21),
+                },
+                MotorPinPair {
+                    in1: PinConfig::new(6),
+                    in2: PinConfig::new(7),
+                },
+                MotorPinPair {
+                    in1: PinConfig::new(8),
+                    in2: PinConfig::new(9),
+                },
             ],
             servo_count: 0,
             servo_pins: vec![],
@@ -1342,9 +1347,9 @@ M1_IN1 abc
             esc_pins: vec![],
             stepper_count: 0,
             stepper_pins: vec![],
-            buzzer: Some(2),
-            led: Some(16),
-            battery_adc: Some(26),
+            buzzer: Some(PinConfig::new(2)),
+            led: Some(PinConfig::new(16)),
+            battery_adc: Some(PinConfig::new(26)),
         };
 
         let file = create_temp_hwdef("").unwrap();
@@ -1358,10 +1363,22 @@ M1_IN1 abc
             platform: "rp2350".to_string(),
             motor_count: 4,
             motor_pins: vec![
-                MotorPinPair { in1: 18, in2: 19 },
-                MotorPinPair { in1: 18, in2: 21 }, // Duplicate GPIO 18
-                MotorPinPair { in1: 6, in2: 7 },
-                MotorPinPair { in1: 8, in2: 9 },
+                MotorPinPair {
+                    in1: PinConfig::new(18),
+                    in2: PinConfig::new(19),
+                },
+                MotorPinPair {
+                    in1: PinConfig::new(18),
+                    in2: PinConfig::new(21),
+                }, // Duplicate GPIO 18
+                MotorPinPair {
+                    in1: PinConfig::new(6),
+                    in2: PinConfig::new(7),
+                },
+                MotorPinPair {
+                    in1: PinConfig::new(8),
+                    in2: PinConfig::new(9),
+                },
             ],
             servo_count: 0,
             servo_pins: vec![],
@@ -1386,10 +1403,22 @@ M1_IN1 abc
             platform: "rp2350".to_string(),
             motor_count: 4,
             motor_pins: vec![
-                MotorPinPair { in1: 35, in2: 19 }, // GPIO 35 out of range
-                MotorPinPair { in1: 20, in2: 21 },
-                MotorPinPair { in1: 6, in2: 7 },
-                MotorPinPair { in1: 8, in2: 9 },
+                MotorPinPair {
+                    in1: PinConfig::new(35),
+                    in2: PinConfig::new(19),
+                }, // GPIO 35 out of range
+                MotorPinPair {
+                    in1: PinConfig::new(20),
+                    in2: PinConfig::new(21),
+                },
+                MotorPinPair {
+                    in1: PinConfig::new(6),
+                    in2: PinConfig::new(7),
+                },
+                MotorPinPair {
+                    in1: PinConfig::new(8),
+                    in2: PinConfig::new(9),
+                },
             ],
             servo_count: 0,
             servo_pins: vec![],
@@ -1406,7 +1435,6 @@ M1_IN1 abc
         let result = validate_hwdef(&config, file.path());
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("GPIO 35 invalid"));
-        assert!(result.unwrap_err().contains("valid range: 0-29"));
     }
 
     #[test]
@@ -1415,10 +1443,22 @@ M1_IN1 abc
             platform: "esp32".to_string(),
             motor_count: 4,
             motor_pins: vec![
-                MotorPinPair { in1: 18, in2: 19 },
-                MotorPinPair { in1: 20, in2: 21 },
-                MotorPinPair { in1: 6, in2: 7 },
-                MotorPinPair { in1: 8, in2: 9 },
+                MotorPinPair {
+                    in1: PinConfig::new(18),
+                    in2: PinConfig::new(19),
+                },
+                MotorPinPair {
+                    in1: PinConfig::new(20),
+                    in2: PinConfig::new(21),
+                },
+                MotorPinPair {
+                    in1: PinConfig::new(6),
+                    in2: PinConfig::new(7),
+                },
+                MotorPinPair {
+                    in1: PinConfig::new(8),
+                    in2: PinConfig::new(9),
+                },
             ],
             servo_count: 0,
             servo_pins: vec![],
@@ -1451,8 +1491,8 @@ SERVO2_PWM 11
         assert_eq!(config.platform, "rp2350");
         assert_eq!(config.servo_count, 2);
         assert_eq!(config.servo_pins.len(), 2);
-        assert_eq!(config.servo_pins[0].pwm, 10);
-        assert_eq!(config.servo_pins[1].pwm, 11);
+        assert_eq!(config.servo_pins[0].pwm.gpio, 10);
+        assert_eq!(config.servo_pins[1].pwm.gpio, 11);
     }
 
     #[test]

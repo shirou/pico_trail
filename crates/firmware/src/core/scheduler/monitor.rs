@@ -45,22 +45,20 @@ pub fn collect_and_report_stats(uptime_ms: u64) {
 }
 
 /// Log scheduler summary
-#[allow(unused_variables)]
-fn log_scheduler_summary(scheduler_stats: &super::types::SchedulerStats, cpu_load: u8) {
+fn log_scheduler_summary(_scheduler_stats: &super::types::SchedulerStats, _cpu_load: u8) {
     crate::log_info!(
         "Scheduler: uptime={}ms cpu={}% deadline_misses={}",
-        scheduler_stats.uptime_ms,
-        cpu_load,
-        scheduler_stats.total_deadline_misses
+        _scheduler_stats.uptime_ms,
+        _cpu_load,
+        _scheduler_stats.total_deadline_misses
     );
 }
 
 /// Check for warning conditions
-#[allow(unused_variables)]
-fn check_warnings(cpu_load: u8) {
+fn check_warnings(_cpu_load: u8) {
     // CPU load warning
-    if cpu_load >= CPU_LOAD_WARNING_THRESHOLD {
-        crate::log_warn!("High CPU load: {}%", cpu_load);
+    if _cpu_load >= CPU_LOAD_WARNING_THRESHOLD {
+        crate::log_warn!("High CPU load: {}%", _cpu_load);
     }
 
     // Check per-task warnings
@@ -89,7 +87,6 @@ fn check_warnings(cpu_load: u8) {
 }
 
 /// Report per-task statistics
-#[allow(unused_variables)]
 fn report_task_stats() {
     let count = task_count();
     if count == 0 {

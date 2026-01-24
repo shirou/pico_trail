@@ -193,10 +193,8 @@ impl<U: UartInterface> GpsOperation<U> {
 
     /// Handle no data from GPS (still waiting for fix or sentence)
     ///
-    /// Note: Currently used only by tests. Will be integrated with poll_loop
-    /// when periodic polling mode is implemented.
-    #[allow(dead_code)]
-    fn handle_no_data(&mut self) {
+    /// Note: Will be integrated with poll_loop when periodic polling mode is implemented.
+    fn _handle_no_data(&mut self) {
         // If we had a fix before, this might indicate fix loss
         if self.state.fix_type != GpsFixType::NoFix {
             self.no_fix_count += 1;
@@ -207,7 +205,7 @@ impl<U: UartInterface> GpsOperation<U> {
                 self.state.position = None;
 
                 // Trigger GPS failsafe (3 consecutive NoFix readings)
-                self.trigger_gps_failsafe();
+                self._trigger_gps_failsafe();
             }
         }
     }
@@ -225,8 +223,7 @@ impl<U: UartInterface> GpsOperation<U> {
     ///
     /// Called after 3 consecutive NoFix readings (~3s).
     /// This should notify the navigation subsystem to take appropriate action.
-    #[allow(dead_code)]
-    fn trigger_gps_failsafe(&self) {
+    fn _trigger_gps_failsafe(&self) {
         crate::log_warn!("GPS: Failsafe triggered (3 consecutive NoFix readings)");
         // TODO: Integration with failsafe system (future task)
     }

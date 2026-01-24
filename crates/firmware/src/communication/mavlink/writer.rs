@@ -36,8 +36,8 @@ pub struct WriterStats {
 /// Wraps rust-mavlink's serialization functionality with async UART writing
 /// and statistics tracking.
 pub struct MavlinkWriter {
-    /// TX buffer for outgoing bytes
-    tx_buffer: Vec<u8, TX_BUFFER_SIZE>,
+    /// TX buffer for outgoing bytes (reserved for future buffered writes)
+    _tx_buffer: Vec<u8, TX_BUFFER_SIZE>,
     /// System ID (our autopilot ID)
     system_id: u8,
     /// Component ID (autopilot component)
@@ -57,7 +57,7 @@ impl MavlinkWriter {
     /// * `component_id` - MAVLink component ID (default: 1 for autopilot)
     pub fn new(system_id: u8, component_id: u8) -> Self {
         Self {
-            tx_buffer: Vec::new(),
+            _tx_buffer: Vec::new(),
             system_id,
             component_id,
             sequence: 0,
@@ -147,38 +147,6 @@ impl MavlinkWriter {
                 Err(WriterError::UartError)
             }
         }
-    }
-
-    /// Serialize a message into the TX buffer
-    ///
-    /// Helper function that serializes a MAVLink message into bytes.
-    ///
-    /// # Arguments
-    ///
-    /// * `header` - MAVLink header
-    /// * `message` - MAVLink message
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(())` if serialization succeeds, or `Err` if buffer is full.
-    #[allow(dead_code)]
-    fn _serialize_message(
-        &mut self,
-        _header: &mavlink::MavHeader,
-        _message: &mavlink::common::MavMessage,
-    ) -> Result<(), WriterError> {
-        // Check if buffer has enough space
-        // Largest common MAVLink message is ~280 bytes
-        if self.tx_buffer.len() + 280 > TX_BUFFER_SIZE {
-            self.stats.buffer_overflows += 1;
-            return Err(WriterError::BufferOverflow);
-        }
-
-        // Serialize message using rust-mavlink
-        // This is a placeholder - actual implementation will use rust-mavlink's
-        // write_v2_msg() with a custom Write implementation.
-
-        Ok(())
     }
 }
 

@@ -51,16 +51,13 @@ const MAX_CHUNKS: usize = 4;
 /// Queued STATUSTEXT message with severity and text
 #[derive(Debug)]
 pub(crate) struct QueuedMessage {
-    #[allow(dead_code)] // Used in Phase 3 (router integration)
     pub(crate) severity: MavSeverity,
-    #[allow(dead_code)] // Used in Phase 3 (router integration)
     pub(crate) text: String<MAX_MESSAGE_LEN>,
 }
 
 /// StatusNotifier manages a queue of pending STATUSTEXT messages
 pub struct StatusNotifier {
     queue: Deque<QueuedMessage, QUEUE_CAPACITY>,
-    #[allow(dead_code)] // Used in Phase 2 (chunking)
     next_chunk_id: AtomicU16,
     dropped_count: u32,
 }
@@ -114,11 +111,10 @@ impl StatusNotifier {
             .expect("Queue should have space after drop");
     }
 
-    /// Drain all messages from the queue (internal use only)
+    /// Drain all messages from the queue (used by tests)
     ///
     /// Returns an iterator over the drained messages.
-    /// Called by the telemetry router to send pending messages.
-    #[allow(dead_code)] // Used in Phase 3 (router integration)
+    #[cfg(test)]
     pub(crate) fn drain_messages(&mut self) -> impl Iterator<Item = QueuedMessage> + '_ {
         core::iter::from_fn(move || self.queue.pop_front())
     }
@@ -263,7 +259,6 @@ pub fn take_pending_statustext_messages() -> Vec<STATUSTEXT_DATA, 32> {
 /// # Returns
 ///
 /// A heapless Vec of STATUSTEXT_DATA messages (1-4 chunks)
-#[allow(dead_code)] // Used in Phase 3 (router integration)
 pub(crate) fn chunk_message(severity: MavSeverity, text: &str) -> Vec<STATUSTEXT_DATA, MAX_CHUNKS> {
     let bytes = text.as_bytes();
     let len = bytes.len().min(MAX_MESSAGE_LEN);

@@ -105,7 +105,6 @@ pub struct RoverLoiter<'a> {
 }
 
 #[cfg(feature = "rover")]
-#[allow(dead_code)]
 impl<'a> RoverLoiter<'a> {
     /// Create new Loiter mode
     ///

@@ -35,7 +35,6 @@ use crate::subsystems::navigation::{NavigationController, SimpleNavigationContro
 
 /// Auto Mode state
 #[derive(Clone, Copy, Debug, Default)]
-#[allow(dead_code)]
 struct AutoState {
     /// Flag indicating if navigation is active
     navigation_active: bool,
@@ -62,7 +61,6 @@ pub struct AutoMode<'a> {
     heading_provider: fn() -> Option<f32>,
 }
 
-#[allow(dead_code)]
 impl<'a> AutoMode<'a> {
     /// Create new Auto mode
     ///

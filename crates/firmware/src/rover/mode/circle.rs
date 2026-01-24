@@ -51,7 +51,6 @@ impl From<i8> for CircleDirection {
 
 /// Circle mode state
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)] // Fields used in embassy feature and tests
 struct CircleState {
     /// Center point of the circle (calculated on mode entry)
     center_lat: f32,
@@ -141,7 +140,6 @@ pub struct CircleMode<'a> {
     /// Circle state (set on mode entry)
     state: Option<CircleState>,
     /// Configuration (loaded on mode entry)
-    #[allow(dead_code)] // Used in embassy feature
     config: CircleConfig,
     /// GPS position provider function
     gps_provider: fn() -> Option<GpsPosition>,
@@ -149,7 +147,6 @@ pub struct CircleMode<'a> {
     heading_provider: fn() -> Option<f32>,
 }
 
-#[allow(dead_code)] // Used in embassy feature and tests
 impl<'a> CircleMode<'a> {
     /// Look-ahead time in seconds for target calculation
     const LOOK_AHEAD_TIME: f32 = 1.5;

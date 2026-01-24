@@ -832,8 +832,7 @@ mod tests {
             }
         }
 
-        #[allow(dead_code)]
-        fn add_rotation_vector_packet(&mut self) {
+        fn _add_rotation_vector_packet(&mut self) {
             // Identity quaternion
             let payload: Vec<u8> = vec![
                 0x05, // Report ID

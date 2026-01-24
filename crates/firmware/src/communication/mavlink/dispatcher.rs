@@ -445,12 +445,11 @@ impl<V: VehicleType> MessageDispatcher<V> {
 
             // MISSION_WRITE_PARTIAL_LIST - partial mission update (not fully implemented)
             // Log for debugging, but don't handle yet
-            #[allow(unused_variables)]
-            MISSION_WRITE_PARTIAL_LIST(data) => {
+            MISSION_WRITE_PARTIAL_LIST(_data) => {
                 crate::log_warn!(
                     "MISSION_WRITE_PARTIAL_LIST received: start={}, end={} (NOT IMPLEMENTED)",
-                    data.start_index,
-                    data.end_index
+                    _data.start_index,
+                    _data.end_index
                 );
                 Vec::new()
             }

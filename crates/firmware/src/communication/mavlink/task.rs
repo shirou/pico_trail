@@ -80,8 +80,7 @@ pub struct MavlinkContext<V: VehicleType> {
     pub dispatcher: MessageDispatcher<V>,
     /// System state
     pub state: SystemState,
-    #[allow(dead_code)]
-    config: MavlinkConfig,
+    _config: MavlinkConfig,
 }
 
 impl<V: VehicleType> MavlinkContext<V> {
@@ -105,7 +104,7 @@ impl<V: VehicleType> MavlinkContext<V> {
             writer: MavlinkWriter::new(config.system_id, config.component_id),
             dispatcher,
             state: SystemState::new(),
-            config,
+            _config: config,
         }
     }
 

@@ -67,8 +67,7 @@ impl PostArmInitializer {
     /// 4. Notify subsystems (placeholder - will notify monitoring, failsafe, mode_manager)
     /// 5. Enable geofence if configured (placeholder - will check FENCE_AUTOENABLE)
     /// 6. Warn if checks disabled
-    #[allow(unused_variables)] // method is used in logging, but may be compiled out
-    pub fn execute(&mut self, state: &SystemState, method: ArmMethod) -> Result<(), ArmingError> {
+    pub fn execute(&mut self, state: &SystemState, _method: ArmMethod) -> Result<(), ArmingError> {
         // Verify armed state
         if !state.is_armed() {
             return Err(ArmingError::InitializationFailed {
@@ -80,7 +79,7 @@ impl PostArmInitializer {
         self.arm_timestamp_ms = Some(state.uptime_us / 1000);
 
         // 2. Log arm event
-        crate::log_info!("Vehicle armed via {}", method);
+        crate::log_info!("Vehicle armed via {}", _method);
 
         // 3. Initialize actuators
         // TODO: When actuator subsystem is implemented, call:

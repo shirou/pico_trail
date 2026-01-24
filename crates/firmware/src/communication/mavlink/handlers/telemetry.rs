@@ -28,7 +28,6 @@ use mavlink::common::{
     MavSysStatusSensorExtended, ATTITUDE_DATA, BATTERY_STATUS_DATA, GLOBAL_POSITION_INT_DATA,
     GPS_RAW_INT_DATA, HEARTBEAT_DATA, SYS_STATUS_DATA,
 };
-#[allow(unused_imports)]
 use micromath::F32Ext;
 
 // Unit conversion helper functions for GPS telemetry
@@ -144,10 +143,8 @@ impl StreamConfig {
 }
 
 pub struct TelemetryStreamer<V: VehicleType> {
-    #[allow(dead_code)]
-    system_id: u8,
-    #[allow(dead_code)]
-    component_id: u8,
+    _system_id: u8,
+    _component_id: u8,
     heartbeat: StreamConfig,
     attitude: StreamConfig,
     gps: StreamConfig,
@@ -160,8 +157,8 @@ pub struct TelemetryStreamer<V: VehicleType> {
 impl<V: VehicleType> TelemetryStreamer<V> {
     pub fn new(system_id: u8, component_id: u8) -> Self {
         Self {
-            system_id,
-            component_id,
+            _system_id: system_id,
+            _component_id: component_id,
             heartbeat: StreamConfig::new(1),
             attitude: StreamConfig::new(2),
             gps: StreamConfig::new(2),

@@ -32,7 +32,6 @@ use crate::subsystems::navigation::{NavigationController, SimpleNavigationContro
 
 /// RTL Mode state
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)] // Fields used in embassy feature
 struct RtlState {
     /// Home position target
     target_lat: f32,
@@ -70,7 +69,6 @@ pub struct RtlMode<'a> {
     heading_provider: fn() -> Option<f32>,
 }
 
-#[allow(dead_code)]
 impl<'a> RtlMode<'a> {
     /// Create new RTL mode
     ///

@@ -146,11 +146,9 @@ pub struct MissionHandler {
     /// Current transfer state
     state: MissionState,
     /// System ID (for message generation)
-    #[allow(dead_code)]
-    system_id: u8,
+    _system_id: u8,
     /// Component ID (for message generation)
-    #[allow(dead_code)]
-    component_id: u8,
+    _component_id: u8,
 }
 
 impl MissionHandler {
@@ -164,8 +162,8 @@ impl MissionHandler {
         Self {
             transfer_buffer: MissionStorage::new(),
             state: MissionState::Idle,
-            system_id,
-            component_id,
+            _system_id: system_id,
+            _component_id: component_id,
         }
     }
 
