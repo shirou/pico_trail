@@ -54,7 +54,7 @@ use embassy_net::{
 use embassy_rp::clocks::RoscRng;
 use embassy_time::{Duration, Timer};
 
-use cyw43::{Control, JoinOptions};
+use cyw43::{aligned_bytes, Control, JoinOptions};
 use cyw43_pio::DEFAULT_CLOCK_DIVIDER;
 use embassy_rp::{
     bind_interrupts,
@@ -198,9 +198,10 @@ pub async fn initialize_wifi(
 
     crate::log_info!("Initializing WiFi with SSID: {}", config.ssid.as_str());
 
-    // 1. Load CYW43439 firmware
-    let fw = include_bytes!("../../../../../cyw43-firmware/43439A0.bin");
+    // 1. Load CYW43439 firmware (aligned for DMA)
+    let fw = aligned_bytes!("../../../../../cyw43-firmware/43439A0.bin");
     let clm = include_bytes!("../../../../../cyw43-firmware/43439A0_clm.bin");
+    let nvram = aligned_bytes!("../../../../../cyw43-firmware/nvram_rp2040.bin");
 
     // 2. Initialize PIO for WiFi SPI communication
     let pwr = Output::new(pin_23, Level::Low);
@@ -220,7 +221,7 @@ pub async fn initialize_wifi(
     // 4. Initialize CYW43 driver
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
-    let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
+    let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw, nvram).await;
 
     // 5. Spawn WiFi driver task
     spawner.spawn(wifi_task(runner).unwrap());
@@ -407,7 +408,10 @@ bind_interrupts!(struct PioIrqs {
 /// Must be spawned on the executor for WiFi to function.
 #[embassy_executor::task]
 async fn wifi_task(
-    runner: cyw43::Runner<'static, Output<'static>, cyw43_pio::PioSpi<'static, PIO0, 0, DMA_CH0>>,
+    runner: cyw43::Runner<
+        'static,
+        cyw43::SpiBus<Output<'static>, cyw43_pio::PioSpi<'static, PIO0, 0, DMA_CH0>>,
+    >,
 ) -> ! {
     runner.run().await
 }

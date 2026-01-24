@@ -58,9 +58,9 @@ crc = { version = "3.4", default-features = false }
 bitflags = "2.10"
 
 # MAVLink 2.0 protocol
-mavlink = { version = "0.16.2", default-features = false, features = ["embedded", "common", "emit-extensions"] }
-embedded-io = "0.6"
-embedded-io-async = "0.6"
+mavlink = { version = "0.17.0", default-features = false, features = ["embedded", "common", "emit-extensions"] }
+embedded-io = "0.7"
+embedded-io-async = "0.7"
 
 # AHRS subsystem dependencies
 nalgebra = { version = "0.34", default-features = false, features = ["libm"] }
