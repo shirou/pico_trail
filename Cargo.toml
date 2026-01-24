@@ -3,6 +3,10 @@ members = [
     "crates/core",
     "crates/firmware",
 ]
+# Only check core crate by default (firmware requires embedded target)
+default-members = [
+    "crates/core",
+]
 resolver = "2"
 
 # Workspace-level profiles apply to all member crates
