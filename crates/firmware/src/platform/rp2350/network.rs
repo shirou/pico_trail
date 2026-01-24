@@ -54,7 +54,7 @@ use embassy_net::{
 use embassy_rp::clocks::RoscRng;
 use embassy_time::{Duration, Timer};
 
-use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use core::sync::atomic::{AtomicPtr, Ordering};
 use cyw43::{aligned_bytes, JoinOptions};
 use cyw43_pio::DEFAULT_CLOCK_DIVIDER;
 use embassy_rp::{
@@ -253,7 +253,7 @@ pub async fn initialize_wifi(
     // This is critical - CLM must be loaded before network operations
     control.init(clm).await;
 
-    // 8. Get MAC address BEFORE power management (matches wifi_test.rs order)
+    // 8. Get MAC address BEFORE power management
     // Note: Order matters for CYW43439 driver stability
     let mac = control.address().await;
     crate::log_debug!(

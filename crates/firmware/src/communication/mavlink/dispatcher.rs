@@ -223,7 +223,12 @@ impl<V: VehicleType> MessageDispatcher<V> {
 
             MISSION_REQUEST_INT(data) => {
                 crate::log_info!("RX MISSION_REQUEST_INT: seq={}", data.seq);
-                match self.mission_handler.handle_request_int(data, timestamp_us) {
+                match self.mission_handler.handle_request_int(
+                    data,
+                    timestamp_us,
+                    header.system_id,
+                    header.component_id,
+                ) {
                     Ok(item_data) => {
                         crate::log_info!(
                             "TX MISSION_ITEM_INT: seq={} cmd={} lat={} lon={} alt={}",
@@ -262,15 +267,24 @@ impl<V: VehicleType> MessageDispatcher<V> {
                     data.count,
                     data.mission_type as u8
                 );
-                let req = self.mission_handler.handle_count(
+                let req_int = self.mission_handler.handle_count(
                     data,
                     timestamp_us,
                     header.system_id,
                     header.component_id,
                 );
-                crate::log_info!("TX MISSION_REQUEST_INT: seq={}", req.seq);
+                crate::log_info!("TX MISSION_REQUEST: seq={}", req_int.seq);
+                // Use deprecated MISSION_REQUEST for compatibility with Mission Planner
+                #[allow(deprecated)]
+                let req = mavlink::common::MISSION_REQUEST_DATA {
+                    target_system: req_int.target_system,
+                    target_component: req_int.target_component,
+                    seq: req_int.seq,
+                    mission_type: mavlink::common::MavMissionType::MAV_MISSION_TYPE_MISSION,
+                };
                 let mut responses = Vec::new();
-                let _ = responses.push(MISSION_REQUEST_INT(req));
+                #[allow(deprecated)]
+                let _ = responses.push(MISSION_REQUEST(req));
                 responses
             }
 
@@ -283,10 +297,19 @@ impl<V: VehicleType> MessageDispatcher<V> {
                 };
                 crate::log_info!("RX ITEM_INT: seq={} expect={}", data.seq, _next_seq);
                 match self.mission_handler.handle_item_int(data, timestamp_us) {
-                    Ok(Some(req)) => {
-                        crate::log_info!("TX MISSION_REQUEST_INT: seq={}", req.seq);
+                    Ok(Some(req_int)) => {
+                        crate::log_info!("TX MISSION_REQUEST: seq={}", req_int.seq);
+                        // Use deprecated MISSION_REQUEST for compatibility with Mission Planner
+                        #[allow(deprecated)]
+                        let req = mavlink::common::MISSION_REQUEST_DATA {
+                            target_system: req_int.target_system,
+                            target_component: req_int.target_component,
+                            seq: req_int.seq,
+                            mission_type: mavlink::common::MavMissionType::MAV_MISSION_TYPE_MISSION,
+                        };
                         let mut responses = Vec::new();
-                        let _ = responses.push(MISSION_REQUEST_INT(req));
+                        #[allow(deprecated)]
+                        let _ = responses.push(MISSION_REQUEST(req));
                         responses
                     }
                     Ok(None) => {

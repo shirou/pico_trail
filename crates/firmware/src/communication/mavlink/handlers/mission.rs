@@ -274,23 +274,40 @@ impl MissionHandler {
     /// Handle MISSION_REQUEST_INT message
     ///
     /// Sends requested waypoint to GCS during download.
+    /// If not in download mode, automatically starts download (for Mission Planner compatibility).
     pub fn handle_request_int(
         &mut self,
         data: &MISSION_REQUEST_INT_DATA,
         current_time_us: u64,
+        sender_system_id: u8,
+        sender_component_id: u8,
     ) -> Result<MISSION_ITEM_INT_DATA, MavMissionResult> {
         // Get sender IDs (GCS) from download state and update activity timestamp
-        let (gcs_system_id, gcs_component_id) = if let MissionState::DownloadInProgress {
-            last_activity_us,
-            sender_system_id,
-            sender_component_id,
-        } = &mut self.state
-        {
-            *last_activity_us = current_time_us;
-            (*sender_system_id, *sender_component_id)
-        } else {
-            crate::log_warn!("Received MISSION_REQUEST_INT while not downloading");
-            return Err(MavMissionResult::MAV_MISSION_ERROR);
+        let (gcs_system_id, gcs_component_id) = match &mut self.state {
+            MissionState::DownloadInProgress {
+                last_activity_us,
+                sender_system_id,
+                sender_component_id,
+            } => {
+                *last_activity_us = current_time_us;
+                (*sender_system_id, *sender_component_id)
+            }
+            MissionState::Idle => {
+                // Auto-start download for Mission Planner compatibility
+                // Mission Planner sometimes sends MISSION_REQUEST_INT without MISSION_REQUEST_LIST
+                crate::log_info!("Auto-starting download for MISSION_REQUEST_INT");
+                storage_ops::load_to_buffer(&mut self.transfer_buffer);
+                self.state = MissionState::DownloadInProgress {
+                    last_activity_us: current_time_us,
+                    sender_system_id,
+                    sender_component_id,
+                };
+                (sender_system_id, sender_component_id)
+            }
+            MissionState::UploadInProgress { .. } => {
+                crate::log_warn!("Received MISSION_REQUEST_INT while uploading");
+                return Err(MavMissionResult::MAV_MISSION_ERROR);
+            }
         };
 
         let seq = data.seq;
