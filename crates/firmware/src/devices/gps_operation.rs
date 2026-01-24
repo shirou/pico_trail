@@ -33,8 +33,7 @@ fn update_system_gps(position: GpsPosition) {
 }
 
 /// GPS polling rate configuration
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(defmt::Format)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
 pub enum PollingRate {
     /// Poll GPS at 1 Hz (every 1 second)
     Rate1Hz,

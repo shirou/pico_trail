@@ -303,292 +303,278 @@ async fn main(spawner: Spawner) {
             spawner.spawn(
                 pico_trail_firmware::platform::rp2350::network::wifi_init_task(
                     spawner, config, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.PIO0, p.DMA_CH0,
-                ).unwrap()
+                )
+                .unwrap(),
             );
 
             // Wait for WiFi to be ready and get stack
             let stack = pico_trail_firmware::platform::rp2350::network::wait_wifi_ready().await;
             pico_trail_firmware::log_info!("WiFi connected");
 
-                    // Wait for network to be ready
-                    Timer::after(Duration::from_secs(2)).await;
+            // Wait for network to be ready
+            Timer::after(Duration::from_secs(2)).await;
 
-                    // Initialize UDP transport
-                    static mut RX_META: [embassy_net::udp::PacketMetadata; 4] =
-                        [embassy_net::udp::PacketMetadata::EMPTY; 4];
-                    static mut RX_BUFFER: [u8; 4096] = [0; 4096];
-                    static mut TX_META: [embassy_net::udp::PacketMetadata; 4] =
-                        [embassy_net::udp::PacketMetadata::EMPTY; 4];
-                    static mut TX_BUFFER: [u8; 4096] = [0; 4096];
+            // Initialize UDP transport
+            static mut RX_META: [embassy_net::udp::PacketMetadata; 4] =
+                [embassy_net::udp::PacketMetadata::EMPTY; 4];
+            static mut RX_BUFFER: [u8; 4096] = [0; 4096];
+            static mut TX_META: [embassy_net::udp::PacketMetadata; 4] =
+                [embassy_net::udp::PacketMetadata::EMPTY; 4];
+            static mut TX_BUFFER: [u8; 4096] = [0; 4096];
 
-                    let udp_transport = UdpTransport::new(
-                        stack,
-                        14550,
-                        unsafe { &mut *core::ptr::addr_of_mut!(RX_META) },
-                        unsafe { &mut *core::ptr::addr_of_mut!(RX_BUFFER) },
-                        unsafe { &mut *core::ptr::addr_of_mut!(TX_META) },
-                        unsafe { &mut *core::ptr::addr_of_mut!(TX_BUFFER) },
+            let udp_transport = UdpTransport::new(
+                stack,
+                14550,
+                unsafe { &mut *core::ptr::addr_of_mut!(RX_META) },
+                unsafe { &mut *core::ptr::addr_of_mut!(RX_BUFFER) },
+                unsafe { &mut *core::ptr::addr_of_mut!(TX_META) },
+                unsafe { &mut *core::ptr::addr_of_mut!(TX_BUFFER) },
+            );
+
+            pico_trail_firmware::log_info!("UDP transport initialized on port 14550");
+
+            // Create transport router with UDP only
+            let mut router = TransportRouter::new();
+            router.set_udp_transport(udp_transport);
+
+            pico_trail_firmware::log_info!("Transport router initialized with UDP");
+
+            // Initialize handlers
+            // Load system state with ARMING_CHECK parameter from parameter store
+            let state =
+                pico_trail_firmware::communication::mavlink::state::SystemState::from_param_store(
+                    param_handler.store(),
+                );
+            // Initialize global SYSTEM_STATE
+            critical_section::with(|cs| {
+                *pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
+                    .borrow_ref_mut(cs) = state;
+            });
+
+            let command_handler = CommandHandler::new();
+            let telemetry_streamer = TelemetryStreamer::new(1, 1);
+            let mission_handler = MissionHandler::new(1, 1);
+            let rc_input_handler = RcInputHandler::new();
+
+            // Create message dispatcher
+            let dispatcher = MessageDispatcher::<GroundRover>::new(
+                param_handler,
+                command_handler,
+                telemetry_streamer,
+                mission_handler,
+                rc_input_handler,
+            );
+
+            pico_trail_firmware::log_info!("Message dispatcher initialized");
+
+            // Initialize ADC for battery voltage monitoring (GPIO 26 = ADC0)
+            let adc = embassy_rp::adc::Adc::new(p.ADC, Irqs, embassy_rp::adc::Config::default());
+
+            let adc_channel =
+                embassy_rp::adc::Channel::new_pin(p.PIN_26, embassy_rp::gpio::Pull::None);
+
+            let adc_reader = Rp2350AdcReader::from_parts(adc, adc_channel);
+            pico_trail_firmware::log_info!("ADC reader initialized (GPIO 26)");
+
+            // Spawn MAVLink task
+            spawner.spawn(rover_mavlink_task(router, dispatcher, adc_reader).unwrap());
+
+            // Spawn motor control task
+            spawner.spawn(motor_control_task(motor_group).unwrap());
+
+            // Spawn GPS task (after WiFi to avoid blocking DHCP)
+            spawner.spawn(gps_task(uart0).unwrap());
+
+            // Spawn navigation task
+            spawner.spawn(navigation_task().unwrap());
+
+            // =========================================================================
+            // BNO086 Initialization with GPIO Driver
+            // =========================================================================
+            // Uses Bno086DriverWithGpio for INT-driven reads and RST recovery
+            // Driver handles all GPIO operations internally
+
+            use embassy_rp::gpio::{Input, Level, Output, Pull};
+
+            // Pre-scan RST pulse to ensure BNO086 is in clean state
+            // This is critical after Pico soft reset (BNO086 may be in bad state)
+            // Uses Flex to properly release RST to high-Z (BNO086 RST must NOT be driven HIGH)
+            pico_trail_firmware::log_info!("=== BNO086 Pre-Reset ===");
+            {
+                use embassy_rp::gpio::Flex;
+                let mut rst = Flex::new(p.PIN_17);
+                rst.set_as_output();
+                rst.set_low();
+                Timer::after(Duration::from_millis(100)).await;
+                rst.set_as_input(); // Release to high-Z (not driven HIGH!)
+                drop(rst);
+                pico_trail_firmware::log_info!("  RST pulse complete, waiting for boot...");
+                Timer::after(Duration::from_millis(1000)).await; // Full boot time
+            }
+
+            // I2C Bus Recovery (SCL toggle only)
+            pico_trail_firmware::log_info!("=== I2C Bus Recovery ===");
+            {
+                let mut scl = Output::new(i2c0_scl, Level::High);
+                let sda_out = Output::new(i2c0_sda, Level::High);
+
+                Timer::after(Duration::from_millis(10)).await;
+
+                drop(sda_out);
+                let sda = Input::new(unsafe { hal::peripherals::PIN_4::steal() }, Pull::Up);
+                Timer::after(Duration::from_micros(100)).await;
+
+                if sda.is_low() {
+                    pico_trail_firmware::log_warn!(
+                        "  SDA stuck low, attempting SCL toggle recovery..."
                     );
 
-                    pico_trail_firmware::log_info!("UDP transport initialized on port 14550");
+                    // Toggle SCL up to 16 times to release stuck slave
+                    for i in 0..16 {
+                        scl.set_low();
+                        Timer::after(Duration::from_micros(50)).await;
+                        scl.set_high();
+                        Timer::after(Duration::from_micros(50)).await;
 
-                    // Create transport router with UDP only
-                    let mut router = TransportRouter::new();
-                    router.set_udp_transport(udp_transport);
-
-                    pico_trail_firmware::log_info!("Transport router initialized with UDP");
-
-                    // Initialize handlers
-                    // Load system state with ARMING_CHECK parameter from parameter store
-                    let state =
-                        pico_trail_firmware::communication::mavlink::state::SystemState::from_param_store(
-                            param_handler.store(),
-                        );
-                    // Initialize global SYSTEM_STATE
-                    critical_section::with(|cs| {
-                        *pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
-                            .borrow_ref_mut(cs) = state;
-                    });
-
-                    let command_handler = CommandHandler::new();
-                    let telemetry_streamer = TelemetryStreamer::new(1, 1);
-                    let mission_handler = MissionHandler::new(1, 1);
-                    let rc_input_handler = RcInputHandler::new();
-
-                    // Create message dispatcher
-                    let dispatcher = MessageDispatcher::<GroundRover>::new(
-                        param_handler,
-                        command_handler,
-                        telemetry_streamer,
-                        mission_handler,
-                        rc_input_handler,
-                    );
-
-                    pico_trail_firmware::log_info!("Message dispatcher initialized");
-
-                    // Initialize ADC for battery voltage monitoring (GPIO 26 = ADC0)
-                    let adc =
-                        embassy_rp::adc::Adc::new(p.ADC, Irqs, embassy_rp::adc::Config::default());
-
-                    let adc_channel =
-                        embassy_rp::adc::Channel::new_pin(p.PIN_26, embassy_rp::gpio::Pull::None);
-
-                    let adc_reader = Rp2350AdcReader::from_parts(adc, adc_channel);
-                    pico_trail_firmware::log_info!("ADC reader initialized (GPIO 26)");
-
-                    // Spawn MAVLink task
-                    spawner.spawn(rover_mavlink_task(router, dispatcher, adc_reader).unwrap());
-
-                    // Spawn motor control task
-                    spawner.spawn(motor_control_task(motor_group).unwrap());
-
-                    // Spawn GPS task (after WiFi to avoid blocking DHCP)
-                    spawner.spawn(gps_task(uart0).unwrap());
-
-                    // Spawn navigation task
-                    spawner.spawn(navigation_task().unwrap());
-
-                    // =========================================================================
-                    // BNO086 Initialization with GPIO Driver
-                    // =========================================================================
-                    // Uses Bno086DriverWithGpio for INT-driven reads and RST recovery
-                    // Driver handles all GPIO operations internally
-
-                    use embassy_rp::gpio::{Input, Level, Output, Pull};
-
-                    // Pre-scan RST pulse to ensure BNO086 is in clean state
-                    // This is critical after Pico soft reset (BNO086 may be in bad state)
-                    // Uses Flex to properly release RST to high-Z (BNO086 RST must NOT be driven HIGH)
-                    pico_trail_firmware::log_info!("=== BNO086 Pre-Reset ===");
-                    {
-                        use embassy_rp::gpio::Flex;
-                        let mut rst = Flex::new(p.PIN_17);
-                        rst.set_as_output();
-                        rst.set_low();
-                        Timer::after(Duration::from_millis(100)).await;
-                        rst.set_as_input(); // Release to high-Z (not driven HIGH!)
-                        drop(rst);
-                        pico_trail_firmware::log_info!("  RST pulse complete, waiting for boot...");
-                        Timer::after(Duration::from_millis(1000)).await; // Full boot time
-                    }
-
-                    // I2C Bus Recovery (SCL toggle only)
-                    pico_trail_firmware::log_info!("=== I2C Bus Recovery ===");
-                    {
-                        let mut scl = Output::new(i2c0_scl, Level::High);
-                        let sda_out = Output::new(i2c0_sda, Level::High);
-
-                        Timer::after(Duration::from_millis(10)).await;
-
-                        drop(sda_out);
-                        let sda = Input::new(unsafe { hal::peripherals::PIN_4::steal() }, Pull::Up);
-                        Timer::after(Duration::from_micros(100)).await;
-
-                        if sda.is_low() {
-                            pico_trail_firmware::log_warn!(
-                                "  SDA stuck low, attempting SCL toggle recovery..."
+                        if sda.is_high() {
+                            pico_trail_firmware::log_info!(
+                                "  SDA released after {} clock pulses",
+                                i + 1
                             );
-
-                            // Toggle SCL up to 16 times to release stuck slave
-                            for i in 0..16 {
-                                scl.set_low();
-                                Timer::after(Duration::from_micros(50)).await;
-                                scl.set_high();
-                                Timer::after(Duration::from_micros(50)).await;
-
-                                if sda.is_high() {
-                                    pico_trail_firmware::log_info!(
-                                        "  SDA released after {} clock pulses",
-                                        i + 1
-                                    );
-                                    break;
-                                }
-                            }
-
-                            // Generate STOP condition
-                            drop(sda);
-                            let mut sda_out2 = Output::new(
-                                unsafe { hal::peripherals::PIN_4::steal() },
-                                Level::Low,
-                            );
-                            Timer::after(Duration::from_micros(50)).await;
-                            scl.set_high();
-                            Timer::after(Duration::from_micros(50)).await;
-                            sda_out2.set_high();
-                            Timer::after(Duration::from_micros(100)).await;
-
-                            drop(sda_out2);
-                            let sda_check =
-                                Input::new(unsafe { hal::peripherals::PIN_4::steal() }, Pull::Up);
-                            Timer::after(Duration::from_micros(100)).await;
-                            if sda_check.is_high() {
-                                pico_trail_firmware::log_info!(
-                                    "  Recovery complete, SDA is now HIGH"
-                                );
-                            } else {
-                                pico_trail_firmware::log_warn!(
-                                    "  SDA still LOW - may need power cycle (RST not used)"
-                                );
-                            }
-                        } else {
-                            pico_trail_firmware::log_info!("  SDA is high, bus OK");
+                            break;
                         }
                     }
 
-                    // Small delay after recovery
-                    Timer::after(Duration::from_millis(10)).await;
+                    // Generate STOP condition
+                    drop(sda);
+                    let mut sda_out2 =
+                        Output::new(unsafe { hal::peripherals::PIN_4::steal() }, Level::Low);
+                    Timer::after(Duration::from_micros(50)).await;
+                    scl.set_high();
+                    Timer::after(Duration::from_micros(50)).await;
+                    sda_out2.set_high();
+                    Timer::after(Duration::from_micros(100)).await;
 
-                    // Step 3: Initialize I2C at 50kHz (matching demo)
-                    pico_trail_firmware::log_info!(
-                        "Initializing I2C0 (GPIO4=SDA, GPIO5=SCL, 5kHz)..."
-                    );
-                    let pin_4 = unsafe { hal::peripherals::PIN_4::steal() };
-                    let pin_5 = unsafe { hal::peripherals::PIN_5::steal() };
-
-                    let i2c0 =
-                        embassy_rp::i2c::I2c::new_async(i2c0_peripheral, pin_5, pin_4, Irqs, {
-                            let mut config = embassy_rp::i2c::Config::default();
-                            // 5kHz for maximum I2C stability with BNO086
-                            // BNO086 has known I2C timing issues requiring very slow speeds
-                            // and adequate delays between transactions
-                            config.frequency = 5_000;
-                            config
-                        });
-
-                    Timer::after(Duration::from_millis(100)).await;
-
-                    // Step 4: Check for BNO086 at 0x4B (with retry)
-                    let mut found_addr: Option<u8> = None;
-                    use embedded_hal_async::i2c::I2c as I2cTrait;
-                    let mut i2c0 = i2c0;
-
-                    const BNO086_ADDR: u8 = 0x4B;
-                    pico_trail_firmware::log_info!("=== BNO086 Check (0x{:02X}) ===", BNO086_ADDR);
-
-                    for attempt in 1..=3_u8 {
-                        let mut buf = [0u8; 1];
-                        match embassy_time::with_timeout(
-                            Duration::from_millis(100),
-                            i2c0.read(BNO086_ADDR, &mut buf),
-                        )
-                        .await
-                        {
-                            Ok(Ok(_)) => {
-                                pico_trail_firmware::log_info!(
-                                    "  Found BNO086 at 0x{:02X}",
-                                    BNO086_ADDR
-                                );
-                                found_addr = Some(BNO086_ADDR);
-                                break;
-                            }
-                            Ok(Err(_)) => {
-                                pico_trail_firmware::log_warn!("  Attempt {}/3: NACK", attempt);
-                            }
-                            Err(_) => {
-                                pico_trail_firmware::log_warn!("  Attempt {}/3: timeout", attempt);
-                            }
-                        }
-
-                        if attempt < 3 {
-                            Timer::after(Duration::from_millis(200)).await;
-                        }
-                    }
-
-                    if let Some(bno_addr) = found_addr {
-                        pico_trail_firmware::log_info!(
-                            "Using BNO086 at address 0x{:02X}",
-                            bno_addr
-                        );
-
-                        // =========================================================================
-                        // Create BNO086 driver with GPIO support (INT/RST pins)
-                        // =========================================================================
-                        pico_trail_firmware::log_info!(
-                            "Initializing BNO086 with GPIO driver (INT-driven)..."
-                        );
-
-                        // Create SHTP I2C transport
-                        let transport = ShtpI2c::new(i2c0, bno_addr);
-
-                        // Create INT pin (GPIO22) - data ready signal
-                        let int_gpio = Input::new(p.PIN_22, Pull::Up);
-                        let int_pin = EmbassyIntPin::new(int_gpio);
-
-                        // Create RST pin (GPIO17) - hardware reset (uses Flex for high-Z release)
-                        // Note: PIN_17 was used for pre-scan reset, so we steal it here
-                        use embassy_rp::gpio::Flex;
-                        let rst_gpio = Flex::new(unsafe { hal::peripherals::PIN_17::steal() });
-                        let rst_pin = EmbassyRstPin::new(rst_gpio);
-
-                        // Create GPIO driver config
-                        let config = Bno086GpioConfig::default();
-
-                        // Create BNO086 driver with GPIO support
-                        let mut driver =
-                            Bno086DriverWithGpio::new(transport, int_pin, rst_pin, config);
-
-                        // Initialize driver - handles RST pulse and INT detection internally
-                        match driver.init().await {
-                            Ok(()) => {
-                                pico_trail_firmware::log_info!("BNO086 GPIO driver initialized!");
-
-                                // Create AHRS wrapper and spawn task
-                                let ahrs = Bno086ExternalAhrs::new(driver);
-                                spawner.spawn(ahrs_task(ahrs).unwrap());
-                                pico_trail_firmware::log_info!(
-                                    "AHRS task spawned (BNO086 External AHRS, INT-driven)"
-                                );
-                            }
-                            Err(e) => {
-                                pico_trail_firmware::log_error!("BNO086 init failed: {:?}", e);
-                                pico_trail_firmware::log_warn!("AHRS features will be disabled");
-                            }
-                        }
+                    drop(sda_out2);
+                    let sda_check =
+                        Input::new(unsafe { hal::peripherals::PIN_4::steal() }, Pull::Up);
+                    Timer::after(Duration::from_micros(100)).await;
+                    if sda_check.is_high() {
+                        pico_trail_firmware::log_info!("  Recovery complete, SDA is now HIGH");
                     } else {
-                        pico_trail_firmware::log_warn!("BNO086 not found on I2C bus!");
-                        pico_trail_firmware::log_warn!("AHRS features will be disabled");
-                        pico_trail_firmware::log_warn!("Check wiring: SDA=GPIO4, SCL=GPIO5");
+                        pico_trail_firmware::log_warn!(
+                            "  SDA still LOW - may need power cycle (RST not used)"
+                        );
                     }
+                } else {
+                    pico_trail_firmware::log_info!("  SDA is high, bus OK");
+                }
+            }
+
+            // Small delay after recovery
+            Timer::after(Duration::from_millis(10)).await;
+
+            // Step 3: Initialize I2C at 50kHz (matching demo)
+            pico_trail_firmware::log_info!("Initializing I2C0 (GPIO4=SDA, GPIO5=SCL, 5kHz)...");
+            let pin_4 = unsafe { hal::peripherals::PIN_4::steal() };
+            let pin_5 = unsafe { hal::peripherals::PIN_5::steal() };
+
+            let i2c0 = embassy_rp::i2c::I2c::new_async(i2c0_peripheral, pin_5, pin_4, Irqs, {
+                let mut config = embassy_rp::i2c::Config::default();
+                // 5kHz for maximum I2C stability with BNO086
+                // BNO086 has known I2C timing issues requiring very slow speeds
+                // and adequate delays between transactions
+                config.frequency = 5_000;
+                config
+            });
+
+            Timer::after(Duration::from_millis(100)).await;
+
+            // Step 4: Check for BNO086 at 0x4B (with retry)
+            let mut found_addr: Option<u8> = None;
+            use embedded_hal_async::i2c::I2c as I2cTrait;
+            let mut i2c0 = i2c0;
+
+            const BNO086_ADDR: u8 = 0x4B;
+            pico_trail_firmware::log_info!("=== BNO086 Check (0x{:02X}) ===", BNO086_ADDR);
+
+            for attempt in 1..=3_u8 {
+                let mut buf = [0u8; 1];
+                match embassy_time::with_timeout(
+                    Duration::from_millis(100),
+                    i2c0.read(BNO086_ADDR, &mut buf),
+                )
+                .await
+                {
+                    Ok(Ok(_)) => {
+                        pico_trail_firmware::log_info!("  Found BNO086 at 0x{:02X}", BNO086_ADDR);
+                        found_addr = Some(BNO086_ADDR);
+                        break;
+                    }
+                    Ok(Err(_)) => {
+                        pico_trail_firmware::log_warn!("  Attempt {}/3: NACK", attempt);
+                    }
+                    Err(_) => {
+                        pico_trail_firmware::log_warn!("  Attempt {}/3: timeout", attempt);
+                    }
+                }
+
+                if attempt < 3 {
+                    Timer::after(Duration::from_millis(200)).await;
+                }
+            }
+
+            if let Some(bno_addr) = found_addr {
+                pico_trail_firmware::log_info!("Using BNO086 at address 0x{:02X}", bno_addr);
+
+                // =========================================================================
+                // Create BNO086 driver with GPIO support (INT/RST pins)
+                // =========================================================================
+                pico_trail_firmware::log_info!(
+                    "Initializing BNO086 with GPIO driver (INT-driven)..."
+                );
+
+                // Create SHTP I2C transport
+                let transport = ShtpI2c::new(i2c0, bno_addr);
+
+                // Create INT pin (GPIO22) - data ready signal
+                let int_gpio = Input::new(p.PIN_22, Pull::Up);
+                let int_pin = EmbassyIntPin::new(int_gpio);
+
+                // Create RST pin (GPIO17) - hardware reset (uses Flex for high-Z release)
+                // Note: PIN_17 was used for pre-scan reset, so we steal it here
+                use embassy_rp::gpio::Flex;
+                let rst_gpio = Flex::new(unsafe { hal::peripherals::PIN_17::steal() });
+                let rst_pin = EmbassyRstPin::new(rst_gpio);
+
+                // Create GPIO driver config
+                let config = Bno086GpioConfig::default();
+
+                // Create BNO086 driver with GPIO support
+                let mut driver = Bno086DriverWithGpio::new(transport, int_pin, rst_pin, config);
+
+                // Initialize driver - handles RST pulse and INT detection internally
+                match driver.init().await {
+                    Ok(()) => {
+                        pico_trail_firmware::log_info!("BNO086 GPIO driver initialized!");
+
+                        // Create AHRS wrapper and spawn task
+                        let ahrs = Bno086ExternalAhrs::new(driver);
+                        spawner.spawn(ahrs_task(ahrs).unwrap());
+                        pico_trail_firmware::log_info!(
+                            "AHRS task spawned (BNO086 External AHRS, INT-driven)"
+                        );
+                    }
+                    Err(e) => {
+                        pico_trail_firmware::log_error!("BNO086 init failed: {:?}", e);
+                        pico_trail_firmware::log_warn!("AHRS features will be disabled");
+                    }
+                }
+            } else {
+                pico_trail_firmware::log_warn!("BNO086 not found on I2C bus!");
+                pico_trail_firmware::log_warn!("AHRS features will be disabled");
+                pico_trail_firmware::log_warn!("Check wiring: SDA=GPIO4, SCL=GPIO5");
+            }
         } else {
             pico_trail_firmware::log_info!("WiFi not configured");
             pico_trail_firmware::log_info!("Configure WiFi via MAVLink parameters and reboot:");

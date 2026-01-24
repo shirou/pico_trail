@@ -173,8 +173,14 @@ mod tests {
     fn test_monitoring_functions_exist() {
         // This test verifies that the monitoring functions are defined
         // They can only be called in async context, so we just check they exist
-        let _ = super::monitoring_loop_fast::<fn(u64) -> Option<super::super::monitoring::FailsafeReason>>;
-        let _ = super::monitoring_loop_medium::<fn() -> Option<super::super::monitoring::FailsafeReason>>;
-        let _ = super::monitoring_loop_slow::<fn(u64) -> Option<super::super::monitoring::FailsafeReason>>;
+        let _ = super::monitoring_loop_fast::<
+            fn(u64) -> Option<super::super::monitoring::FailsafeReason>,
+        >;
+        let _ = super::monitoring_loop_medium::<
+            fn() -> Option<super::super::monitoring::FailsafeReason>,
+        >;
+        let _ = super::monitoring_loop_slow::<
+            fn(u64) -> Option<super::super::monitoring::FailsafeReason>,
+        >;
     }
 }

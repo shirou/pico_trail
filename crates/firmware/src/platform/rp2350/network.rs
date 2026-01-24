@@ -54,6 +54,7 @@ use embassy_net::{
 use embassy_rp::clocks::RoscRng;
 use embassy_time::{Duration, Timer};
 
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use cyw43::{aligned_bytes, JoinOptions};
 use cyw43_pio::DEFAULT_CLOCK_DIVIDER;
 use embassy_rp::{
@@ -63,7 +64,6 @@ use embassy_rp::{
     pio::{InterruptHandler as PioInterruptHandler, Pio},
     Peri,
 };
-use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use static_cell::StaticCell;
@@ -478,7 +478,10 @@ pub async fn wifi_init_task(
     pio0: Peri<'static, PIO0>,
     dma_ch0: Peri<'static, DMA_CH0>,
 ) -> ! {
-    initialize_wifi(spawner, config, pin_23, pin_24, pin_25, pin_29, pio0, dma_ch0).await
+    initialize_wifi(
+        spawner, config, pin_23, pin_24, pin_25, pin_29, pio0, dma_ch0,
+    )
+    .await
 }
 
 #[cfg(test)]
