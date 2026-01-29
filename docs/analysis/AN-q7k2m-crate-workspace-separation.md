@@ -20,6 +20,7 @@
   - (To be created after approval)
 - Related Tasks:
   - [T-3n2ej-workspace-separation](../tasks/T-3n2ej-workspace-separation/README.md)
+  - [T-nazbq-firmware-to-core-migration](../tasks/T-nazbq-firmware-to-core-migration/README.md)
 
 ## Executive Summary
 

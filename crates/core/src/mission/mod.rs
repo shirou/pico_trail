@@ -20,7 +20,11 @@
 //! This module contains only pure data types. Global state management
 //! and Embassy-specific wrappers are provided by the firmware crate.
 
+pub mod state;
+
 use heapless::Vec;
+
+pub use state::MissionState;
 
 /// Maximum number of waypoints in a mission
 pub const MAX_WAYPOINTS: usize = 50;

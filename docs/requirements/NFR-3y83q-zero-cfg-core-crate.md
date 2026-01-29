@@ -17,6 +17,7 @@
   - [AN-q7k2m-crate-workspace-separation](../analysis/AN-q7k2m-crate-workspace-separation.md)
 - Related Tasks:
   - [T-3n2ej-workspace-separation](../tasks/T-3n2ej-workspace-separation/README.md)
+  - [T-nazbq-firmware-to-core-migration](../tasks/T-nazbq-firmware-to-core-migration/README.md)
 
 ## Requirement Statement
 

@@ -45,7 +45,7 @@
 //! ```
 
 use crate::devices::traits::QuaternionSensor;
-use crate::subsystems::ahrs::{Ahrs, AhrsError, AhrsState, AhrsType};
+use crate::subsystems::ahrs::{Ahrs, AhrsError, AhrsState, AhrsType, QuaternionReadingExt};
 
 /// BNO086 External AHRS wrapper
 ///
@@ -149,7 +149,7 @@ impl<D: QuaternionSensor> Ahrs for Bno086ExternalAhrs<D> {
         );
 
         // Build AhrsState with NED quaternion and angular rate
-        let state = AhrsState::from_quaternion_reading(&reading_ned).with_angular_rate(gyro_ned);
+        let state = reading_ned.to_ahrs_state().with_angular_rate(gyro_ned);
 
         // Debug: log ENU→NED conversion to verify attitude extraction
         crate::log_debug!(

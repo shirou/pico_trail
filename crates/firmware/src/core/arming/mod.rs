@@ -36,7 +36,6 @@
 pub mod checks;
 pub mod cleanup;
 pub mod disarm;
-pub mod error;
 pub mod initialization;
 pub mod monitoring;
 pub mod tasks;
@@ -44,11 +43,11 @@ pub mod tasks;
 pub use checks::{create_default_checker, ArmingChecker, CheckResult, PreArmCheck};
 pub use cleanup::{CleanupError, PostDisarmCleanup};
 pub use disarm::{DisarmMethod, DisarmReason, DisarmValidator};
-pub use error::{ArmingError, CheckCategory, DisarmError};
 pub use initialization::{ArmMethod, PostArmInitializer};
 pub use monitoring::{
     ArmedStateMonitor, EkfStatus, FailsafeReason, FenceStatus, SensorHealthFlags,
 };
+pub use pico_trail_core::arming::{ArmingError, CheckCategory, DisarmError};
 
 // Embassy async task integration
 pub use tasks::{monitoring_loop_fast, monitoring_loop_medium, monitoring_loop_slow};

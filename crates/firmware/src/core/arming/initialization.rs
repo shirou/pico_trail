@@ -2,8 +2,8 @@
 //!
 //! Handles initialization sequence after successful arming.
 
-use super::error::ArmingError;
 use crate::communication::mavlink::state::SystemState;
+use pico_trail_core::arming::ArmingError;
 
 /// Method used to arm the vehicle
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -3,8 +3,8 @@
 //! Defines the PreArmCheck trait and built-in checks for system validation
 //! before arming.
 
-use super::error::{ArmingError, CheckCategory};
 use crate::communication::mavlink::state::SystemState;
+use pico_trail_core::arming::{ArmingError, CheckCategory};
 
 /// Result of a pre-arm check execution
 pub type CheckResult = Result<(), ArmingError>;

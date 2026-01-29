@@ -7,9 +7,12 @@
 //! MissionStorage serves as the single source of truth for waypoint navigation
 //! in both GUIDED and AUTO modes. This module provides:
 //!
-//! - MissionState enum for tracking execution status
 //! - Global MISSION_STORAGE accessible from navigation and handlers
 //! - Helper functions for synchronized state access
+//!
+//! # Types
+//!
+//! MissionState enum is defined in pico_trail_core and re-exported here.
 //!
 //! # Migration Note (FR-jpmdj)
 //!
@@ -17,24 +20,9 @@
 //! sync (non-async) operations via critical sections. All functions are now
 //! synchronous, eliminating the need for separate `_sync` variants.
 
-use super::Waypoint;
-use crate::core::mission::MissionStorage;
+use super::{MissionState, MissionStorage, Waypoint};
 use crate::core::traits::{EmbassyState, SharedState};
 use crate::subsystems::navigation::PositionTarget;
-
-/// Mission execution state
-///
-/// Tracks the current state of mission execution for both GUIDED and AUTO modes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum MissionState {
-    /// No mission active, navigation idle
-    #[default]
-    Idle,
-    /// Mission running, navigating to waypoints
-    Running,
-    /// Mission completed, all waypoints reached
-    Completed,
-}
 
 // ============================================================================
 // Global State and Helper Functions
@@ -208,20 +196,6 @@ pub fn add_waypoint(waypoint: Waypoint) -> bool {
 }
 
 // ============================================================================
-// Waypoint to PositionTarget Conversion
-// ============================================================================
-
-impl From<&Waypoint> for PositionTarget {
-    fn from(wp: &Waypoint) -> Self {
-        Self {
-            latitude: (wp.x as f64 / 1e7) as f32,
-            longitude: (wp.y as f64 / 1e7) as f32,
-            altitude: Some(wp.z),
-        }
-    }
-}
-
-// ============================================================================
 // Unit Tests
 // ============================================================================
 
@@ -230,28 +204,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_mission_state_default() {
+    fn test_mission_state_reexport() {
+        // Verify re-exported MissionState works
         let state = MissionState::default();
         assert_eq!(state, MissionState::Idle);
     }
 
     #[test]
-    fn test_mission_state_equality() {
-        assert_eq!(MissionState::Idle, MissionState::Idle);
-        assert_eq!(MissionState::Running, MissionState::Running);
-        assert_eq!(MissionState::Completed, MissionState::Completed);
-        assert_ne!(MissionState::Idle, MissionState::Running);
-    }
-
-    #[test]
-    fn test_mission_state_clone() {
-        let state = MissionState::Running;
-        let cloned = state;
-        assert_eq!(state, cloned);
-    }
-
-    #[test]
-    fn test_waypoint_to_position_target_conversion() {
+    fn test_waypoint_to_position_target_via_core() {
+        // Verify From<&Waypoint> for PositionTarget from core works
         let wp = Waypoint {
             seq: 0,
             frame: 3,
@@ -271,28 +232,5 @@ mod tests {
         assert!((target.latitude - 35.7).abs() < 0.0001);
         assert!((target.longitude - 139.6).abs() < 0.0001);
         assert_eq!(target.altitude, Some(100.0));
-    }
-
-    #[test]
-    fn test_waypoint_to_position_target_negative_coords() {
-        let wp = Waypoint {
-            seq: 0,
-            frame: 3,
-            command: 16,
-            current: 0,
-            autocontinue: 1,
-            param1: 0.0,
-            param2: 0.0,
-            param3: 0.0,
-            param4: 0.0,
-            x: -337000000,  // -33.7 degrees (south)
-            y: -1512000000, // -151.2 degrees (west)
-            z: 50.0,
-        };
-
-        let target = PositionTarget::from(&wp);
-        assert!((target.latitude - (-33.7)).abs() < 0.0001);
-        assert!((target.longitude - (-151.2)).abs() < 0.0001);
-        assert_eq!(target.altitude, Some(50.0));
     }
 }

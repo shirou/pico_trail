@@ -179,7 +179,9 @@ impl<'a> Mode for RtlMode<'a> {
         let target = PositionTarget::new(state.target_lat, state.target_lon);
 
         // Navigate to target
-        let output = self.nav_controller.update(&gps, &target, heading, dt);
+        let output = self
+            .nav_controller
+            .update(gps.latitude, gps.longitude, &target, heading, dt);
 
         // Check for arrival
         if output.at_target {
