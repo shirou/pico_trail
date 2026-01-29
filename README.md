@@ -15,10 +15,10 @@ An embedded autopilot system for Raspberry Pi Pico W and Pico 2 W, targeting rov
 
 ## Supported Platforms
 
-| Platform              | CPU                 | Flash | RAM    | Status  |
-| --------------------- | ------------------- | ----- | ------ | ------- |
-| Raspberry Pi Pico W   | RP2040 (Cortex-M0+) | 2 MB  | 264 KB | Planned |
-| Raspberry Pi Pico 2 W | RP2350 (Cortex-M33) | 4 MB  | 520 KB | Planned |
+| Platform              | CPU                 | Flash | RAM    | Status             |
+| --------------------- | ------------------- | ----- | ------ | ------------------ |
+| Raspberry Pi Pico 2 W | RP2350 (Cortex-M33) | 4 MB  | 520 KB | Active Development |
+| Raspberry Pi Pico W   | RP2040 (Cortex-M0+) | 2 MB  | 264 KB | Planned            |
 
 ## Design Goals
 
@@ -83,17 +83,15 @@ target = "thumbv8m.main-none-eabihf"  # For Pico 2 W
 
 ### 2. Build and Flash
 
-**UART-Only Example:**
-
 ```bash
 # Build for RP2350 (Pico 2 W)
-./scripts/build-rp2350.sh --release mavlink_demo
+./scripts/build-rp2350.sh --release pico_trail_rover
 
 # Flash to device
-probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/mavlink_demo
+probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/pico_trail_rover
 ```
 
-**WiFi-Enabled Example (Pico 2 W):**
+**WiFi Configuration (Pico 2 W):**
 
 Option 1: Build-time WiFi configuration (recommended for development):
 
@@ -103,10 +101,10 @@ cp .env.example .env
 # Edit .env with your WiFi credentials
 
 # 2. Build (automatically loads .env)
-./scripts/build-rp2350.sh --release mavlink_demo_network
+./scripts/build-rp2350.sh --release pico_trail_rover
 
 # 3. Flash - device connects to WiFi automatically
-probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/mavlink_demo_network
+probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/pico_trail_rover
 
 # 4. Connect QGroundControl via UDP (port 14550, listening mode)
 ```
@@ -115,10 +113,10 @@ Option 2: Runtime WiFi configuration (recommended for production):
 
 ```bash
 # 1. Build without .env file
-./scripts/build-rp2350.sh --release mavlink_demo_network
+./scripts/build-rp2350.sh --release pico_trail_rover
 
 # 2. Flash to device
-probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/mavlink_demo_network
+probe-rs run --chip RP2350 target/thumbv8m.main-none-eabihf/release/examples/pico_trail_rover
 
 # 3. Configure WiFi via UART:
 #    - Connect QGroundControl to UART (115200 baud)
@@ -134,8 +132,8 @@ See [WiFi Configuration Guide](docs/wifi-configuration.md) for detailed setup in
 ### 3. Run Tests
 
 ```bash
-# Run core crate unit tests (pure no_std logic)
-cargo test -p pico_trail_core --lib --quiet
+# Run unit tests (209 tests)
+cargo test --lib --quiet
 ```
 
 ## Development
@@ -148,26 +146,27 @@ pico_trail uses a Cargo workspace with two crates:
 crates/
 ├── core/              # Pure no_std business logic (platform-independent)
 │   └── src/
-│       ├── traits/    # Time, platform abstractions
-│       ├── kinematics/# Differential drive math
-│       ├── parameters/# Parameter types and CRC
+│       ├── ahrs/      # AHRS types, DCM algorithm, calibration math
 │       ├── arming/    # Arming error types
-│       ├── scheduler/ # Task scheduling types
-│       ├── navigation/# Navigation types
-│       ├── ahrs/      # Calibration math
+│       ├── kinematics/# Differential drive math
 │       ├── mission/   # Waypoint and mission storage
-│       ├── mode/      # Mode trait and state types
+│       ├── mode/      # Mode trait, state types, navigation helpers
+│       ├── motor/     # Motor driver traits (H-bridge, motor groups)
+│       ├── navigation/# Path planning, geo calculations, controllers
+│       ├── parameters/# Parameter types, CRC, registry
 │       ├── rc/        # RC normalization functions
+│       ├── scheduler/ # Task scheduling types and registry
 │       ├── servo/     # Servo PWM conversion
-│       └── motor/     # Motor driver traits
+│       └── traits/    # Time, platform abstractions
 │
 └── firmware/          # Embassy/RP2350 binary (platform-specific)
     └── src/
         ├── platform/  # Hardware abstraction layer (UART, I2C, SPI, PWM)
-        ├── devices/   # Device drivers (GPS, IMU, Motor, Servo)
+        ├── devices/   # Device drivers (GPS, IMU: BNO086/ICM20948/MPU9250)
         ├── subsystems/# Functional subsystems (AHRS, Navigation)
-        ├── rover/     # Rover vehicle modes
-        ├── communication/ # MAVLink protocol
+        ├── rover/     # Rover vehicle modes and mode manager
+        ├── communication/ # MAVLink protocol and SHTP
+        ├── libraries/ # RC channel, servo output, motor driver
         ├── parameters/# ArduPilot parameter definitions
         └── core/      # Logging, parameter saver, arming tasks
 ```
@@ -184,8 +183,8 @@ When finishing any Rust coding task, always run:
 
 ```bash
 cargo fmt                                           # Auto-format code
-cargo clippy -p pico_trail_core -- -D warnings      # Lint core crate
-cargo test -p pico_trail_core --lib --quiet         # Run unit tests
+cargo clippy --all-targets -- -D warnings           # Lint all targets
+cargo test --lib --quiet                            # Run unit tests
 ./scripts/build-rp2350.sh pico_trail_rover          # Verify embedded build
 ```
 
@@ -233,6 +232,16 @@ See [docs/architecture.md](docs/architecture.md) for complete details.
 
 ## Navigation & Control
 
+### Control Modes
+
+- **Manual**: RC pass-through with direct motor control
+- **Auto**: Waypoint mission following with S-curve path planning
+- **Guided**: External position target navigation
+- **Circle**: Autonomous circular orbit around center point
+- **Loiter**: Position holding
+- **RTL**: Return-to-launch
+- **SmartRTL**: Return via recorded path
+
 ### Path Following
 
 - **S-Curve Path Planning**: Primary method for smooth waypoint transitions with velocity/acceleration limits
@@ -244,6 +253,7 @@ See [docs/architecture.md](docs/architecture.md) for complete details.
 - **DCM (Direction Cosine Matrix)**: Lightweight attitude estimation
 - **Complementary Filter**: Accelerometer + gyroscope fusion
 - **Compass Integration**: Heading correction from magnetometer
+- **External IMU**: BNO086 9-axis IMU integration for hardware-based attitude estimation
 
 ### Compass Calibration
 
@@ -301,6 +311,9 @@ Telemetry is broadcast to all active transports (UART and UDP).
 - [Architecture & Structure](docs/architecture.md) - Project structure, components, and design
 - [WiFi Configuration Guide](docs/wifi-configuration.md) - WiFi and UDP transport setup
 - [MAVLink Guide](docs/mavlink.md) - MAVLink protocol usage and GCS setup
+- [Parameter System](docs/parameters.md) - Parameter storage, Flash layout, ArduPilot compliance
+- [Scheduler](docs/scheduler.md) - Task scheduler architecture and priorities
+- [Hardware Definition](docs/hwdef-specification.md) - Board pin configuration format
 - [TDL Process](docs/tdl.md) - Traceable Development Lifecycle workflow
 - [Analysis Documents](docs/analysis/) - Problem exploration and requirements discovery
 - [Requirements](docs/requirements/) - Functional and non-functional requirements
@@ -321,7 +334,7 @@ Standard "Write" mission upload does not work correctly with Mission Planner. Th
 
 Contributions are welcome! Please ensure:
 
-- All code passes `cargo fmt`, `cargo clippy -p pico_trail_core -- -D warnings`, and `cargo test -p pico_trail_core --lib --quiet`
+- All code passes `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --lib --quiet`
 - Embedded build passes: `./scripts/build-rp2350.sh pico_trail_rover`
 - Documentation is written in English
 - Changes follow the TDL process (see [docs/tdl.md](docs/tdl.md))
