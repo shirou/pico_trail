@@ -1190,7 +1190,8 @@ async fn navigation_task() {
                     .unwrap_or(current.course_over_ground.unwrap_or(0.0));
 
                 // Compute navigation output
-                let output = controller.update(&current, &target, heading, 0.02); // 20ms dt
+                let output =
+                    controller.update(current.latitude, current.longitude, &target, heading, 0.02);
 
                 // Update global NAV_OUTPUT
                 NAV_OUTPUT.with_mut(|nav_output| {
@@ -1443,8 +1444,8 @@ async fn ahrs_task(
                 // Only log every 10th error to reduce spam
                 if error_count <= 3 || error_count % 10 == 0 {
                     pico_trail_firmware::log_warn!(
-                        "AHRS read error: {:?} (count={})",
-                        e,
+                        "AHRS read error: {} (count={})",
+                        e.as_str(),
                         error_count
                     );
                 }

@@ -1,9 +1,5 @@
 //! Kinematics library for vehicle motion control
 //!
-//! This module provides pure, platform-independent kinematics conversions for various
-//! vehicle drive systems. All implementations are no_std compatible and have zero
-//! dependencies on platform-specific code, hardware abstractions, or system state.
+//! This module re-exports platform-independent kinematics from `pico_trail_core`.
 
-pub mod differential_drive;
-
-pub use differential_drive::DifferentialDrive;
+pub use pico_trail_core::kinematics::DifferentialDrive;

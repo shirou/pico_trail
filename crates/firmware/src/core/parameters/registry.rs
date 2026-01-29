@@ -5,9 +5,9 @@
 //! storage using the FlashParamStorage backend.
 
 use super::storage::FlashParamStorage;
-use super::{hash_param_name, Parameter, ParameterFlags};
 use crate::platform::error::{FlashError, PlatformError};
 use crate::platform::traits::flash::FlashInterface;
+use pico_trail_core::parameters::{hash_param_name, Parameter, ParameterFlags};
 
 /// Parameter type enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

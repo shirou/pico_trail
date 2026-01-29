@@ -3,9 +3,10 @@
 //! This module provides Flash-backed parameter persistence with redundant
 //! block rotation for wear leveling.
 
-use super::block::{Parameter, ParameterBlockHeader, MAX_PARAMS};
-use super::crc::{calculate_crc32, validate_crc32};
 use crate::platform::{FlashInterface, Result};
+use pico_trail_core::parameters::{
+    calculate_crc32, validate_crc32, Parameter, ParameterBlockHeader, MAX_PARAMS,
+};
 
 /// Flash block addresses for parameter storage
 ///

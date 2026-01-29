@@ -2,8 +2,8 @@
 //!
 //! Provides safety checks before allowing vehicle disarm.
 
-use super::error::DisarmError;
 use crate::communication::mavlink::state::SystemState;
+use pico_trail_core::arming::DisarmError;
 
 /// Method used to disarm the vehicle
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

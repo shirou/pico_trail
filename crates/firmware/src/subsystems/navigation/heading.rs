@@ -31,34 +31,8 @@
 use crate::devices::gps::GpsPosition;
 use crate::subsystems::ahrs::SharedAhrsState;
 
-/// Type of heading source currently being used
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum HeadingSourceType {
-    /// Heading from AHRS yaw (stationary or low speed)
-    Ahrs,
-    /// Heading from GPS Course Over Ground (moving)
-    GpsCog,
-    /// No valid heading source available
-    None,
-}
-
-/// Provides heading information for navigation
-///
-/// This trait abstracts the source of heading data, allowing different
-/// implementations for various sensor configurations.
-pub trait HeadingSource {
-    /// Returns current heading in degrees (0-360, 0 = North)
-    ///
-    /// Returns `None` if no valid heading is available.
-    fn get_heading(&self) -> Option<f32>;
-
-    /// Returns true if heading source is healthy and providing valid data
-    fn is_valid(&self) -> bool;
-
-    /// Returns the current heading source type for telemetry/debugging
-    fn source_type(&self) -> HeadingSourceType;
-}
+// Re-export core heading types
+pub use pico_trail_core::navigation::heading::{HeadingSource, HeadingSourceType};
 
 /// Fused heading source combining AHRS yaw and GPS COG
 ///

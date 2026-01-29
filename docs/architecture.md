@@ -90,14 +90,21 @@ crates/
 │       │   ├── types.rs   # TaskMetadata, Priority
 │       │   ├── stats.rs   # Scheduler statistics
 │       │   └── registry.rs # Task registry
-│       ├── navigation/    # Navigation types
+│       ├── navigation/    # Navigation algorithms and types
 │       │   ├── mod.rs
-│       │   └── types.rs   # PositionTarget, NavigationOutput
-│       ├── ahrs/          # AHRS calibration
+│       │   ├── types.rs   # PositionTarget, NavigationOutput, SimpleNavConfig
+│       │   ├── controller.rs # NavigationController trait, SimpleNavigationController
+│       │   ├── geo.rs     # Geographic calculations (haversine, bearing, distance)
+│       │   ├── heading.rs # HeadingSource trait, HeadingSourceType enum
+│       │   └── path_recorder.rs # PathPoint, PathRecorder, ReturnPathIter
+│       ├── ahrs/          # AHRS types and algorithms
 │       │   ├── mod.rs
-│       │   └── calibration.rs # Pure calibration math
-│       ├── mission/       # Mission types
-│       │   └── mod.rs     # Waypoint, MissionStorage
+│       │   ├── traits.rs  # Ahrs trait, AhrsState, AhrsType, AhrsError
+│       │   ├── calibration.rs # Pure calibration math
+│       │   └── dcm.rs     # Direction Cosine Matrix algorithm
+│       ├── mission/       # Mission types and state
+│       │   ├── mod.rs     # Waypoint, MissionStorage
+│       │   └── state.rs   # MissionState enum, Waypoint→PositionTarget conversion
 │       ├── mode/          # Mode abstractions
 │       │   ├── mod.rs     # Mode trait
 │       │   ├── types.rs   # AutoState, GuidedState, RtlState
