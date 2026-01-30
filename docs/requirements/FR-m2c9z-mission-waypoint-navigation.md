@@ -18,6 +18,8 @@
   - [FR-evl5k-position-target-mission-integration](FR-evl5k-position-target-mission-integration.md)
   - [FR-pbuh7-guided-mode-arm-start](FR-pbuh7-guided-mode-arm-start.md)
   - [FR-jm7mj-auto-mode-mission-execution](FR-jm7mj-auto-mode-mission-execution.md)
+  - [FR-zcnqw-mission-item-reached](FR-zcnqw-mission-item-reached.md)
+  - [FR-aulp3-mission-set-current](FR-aulp3-mission-set-current.md)
 - Related Tasks:
   - [T-c26bh-unified-waypoint-navigation](../tasks/T-c26bh-unified-waypoint-navigation/README.md)
 

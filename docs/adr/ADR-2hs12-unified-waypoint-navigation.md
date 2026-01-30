@@ -18,6 +18,7 @@
   - [NFR-iuk5h-navigation-update-rate](../requirements/NFR-iuk5h-navigation-update-rate.md)
 - Related Tasks:
   - [T-c26bh-unified-waypoint-navigation](../tasks/T-c26bh-unified-waypoint-navigation/README.md)
+  - [T-r7k2p-mission-execution-sequencer](../tasks/T-r7k2p-mission-execution-sequencer/README.md)
 
 ## Context
 

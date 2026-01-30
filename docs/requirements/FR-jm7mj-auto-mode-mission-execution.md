@@ -20,6 +20,8 @@
   - [FR-v6571-mission-execution-state](FR-v6571-mission-execution-state.md)
 - Dependent Requirements:
   - [FR-w893v-mission-start-command](FR-w893v-mission-start-command.md)
+  - [FR-5zqns-nav-do-command-separation](FR-5zqns-nav-do-command-separation.md)
+  - [FR-4dq92-waypoint-hold-time](FR-4dq92-waypoint-hold-time.md)
 - Related Tasks:
   - [T-r9v2k-heading-source-navigation-integration](../tasks/T-r9v2k-heading-source-navigation-integration/README.md)
 
