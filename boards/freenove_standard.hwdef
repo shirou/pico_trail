@@ -54,17 +54,14 @@ BNO086_INT 22 INPUT PULLUP   # BNO086 interrupt (active low)
 # UART configuration
 # UART0: GPIO 0 (TX), GPIO 1 (RX) at 9600 baud
 # Used for NEO-M8N GPS module communication
-# Note: UART pins are configured directly in code via embassy-rp, not via hwdef
-#
-# Pin allocation:
-#   GPIO 0: UART0 TX (transmit to GPS RX)
-#   GPIO 1: UART0 RX (receive from GPS TX)
 #
 # Hardware requirements:
 #   - NEO-M8N GPS module configured for UART mode (default)
 #   - Baud rate: 9600 bps, 8N1 (8 data bits, no parity, 1 stop bit)
 #   - GPS outputs NMEA sentences (GPGGA, GPRMC) at 1Hz default rate
 #
+UART0_TX 0 OUTPUT        # UART0 TX (transmit to GPS RX)
+UART0_RX 1 INPUT         # UART0 RX (receive from GPS TX)
 
 # Pin usage notes:
 # - All motor pins use OUTPUT mode with default push-pull configuration

@@ -19,5 +19,11 @@ PLATFORM rp2350
 # - Output modes: PUSHPULL (default), OPENDRAIN (warning, not supported on RP2350)
 # - Speeds: SPEED_LOW, SPEED_MEDIUM (default), SPEED_HIGH (warnings for speed modifiers)
 
+# WiFi pins (CYW43 on Pico 2 W - hardware-fixed, cannot be reassigned)
+WIFI_PWR 23 OUTPUT       # CYW43 power control (WL_REG_ON)
+WIFI_DIO 24 OUTPUT       # CYW43 SPI data I/O
+WIFI_CS 25 OUTPUT        # CYW43 SPI chip select
+WIFI_CLK 29 OUTPUT       # CYW43 SPI clock
+
 # Note: Actuator counts (MOTOR_COUNT, SERVO_COUNT, etc.) should be defined
 # in board-specific hwdef files, not in this common platform file
