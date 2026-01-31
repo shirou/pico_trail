@@ -69,6 +69,8 @@ pub enum FlightMode {
     Manual,
     /// Stabilize mode (heading hold)
     Stabilize,
+    /// Hold mode (stop and hold position)
+    Hold,
     /// Loiter mode (position hold)
     Loiter,
     /// Auto mode (following waypoints)
@@ -93,6 +95,7 @@ impl FlightMode {
         match self {
             FlightMode::Manual => "MANUAL",
             FlightMode::Stabilize => "STABILIZE",
+            FlightMode::Hold => "HOLD",
             FlightMode::Loiter => "LOITER",
             FlightMode::Auto => "AUTO",
             FlightMode::Guided => "GUIDED",
@@ -108,6 +111,7 @@ impl FlightMode {
         match self {
             FlightMode::Manual => 0,
             FlightMode::Stabilize => 1,
+            FlightMode::Hold => 4,
             FlightMode::Loiter => 5,
             FlightMode::Auto => 10,
             FlightMode::Guided => 15,
@@ -123,6 +127,7 @@ impl FlightMode {
         match mode {
             0 => Some(FlightMode::Manual),
             1 => Some(FlightMode::Stabilize),
+            4 => Some(FlightMode::Hold),
             5 => Some(FlightMode::Loiter),
             10 => Some(FlightMode::Auto),
             15 => Some(FlightMode::Guided),
@@ -155,6 +160,10 @@ impl FlightMode {
             FlightMode::Stabilize => {
                 flags |= MavModeFlag::MAV_MODE_FLAG_MANUAL_INPUT_ENABLED;
                 flags |= MavModeFlag::MAV_MODE_FLAG_STABILIZE_ENABLED;
+            }
+            FlightMode::Hold => {
+                flags |= MavModeFlag::MAV_MODE_FLAG_STABILIZE_ENABLED;
+                flags |= MavModeFlag::MAV_MODE_FLAG_GUIDED_ENABLED;
             }
             FlightMode::Loiter => {
                 flags |= MavModeFlag::MAV_MODE_FLAG_STABILIZE_ENABLED;
@@ -925,12 +934,14 @@ mod tests {
         // ArduPilot Rover mode numbers
         assert_eq!(FlightMode::Manual.to_custom_mode(), 0);
         assert_eq!(FlightMode::Stabilize.to_custom_mode(), 1);
+        assert_eq!(FlightMode::Hold.to_custom_mode(), 4);
         assert_eq!(FlightMode::Loiter.to_custom_mode(), 5);
         assert_eq!(FlightMode::Auto.to_custom_mode(), 10);
         assert_eq!(FlightMode::Guided.to_custom_mode(), 15);
         assert_eq!(FlightMode::Rtl.to_custom_mode(), 11);
 
         assert_eq!(FlightMode::from_custom_mode(0), Some(FlightMode::Manual));
+        assert_eq!(FlightMode::from_custom_mode(4), Some(FlightMode::Hold));
         assert_eq!(FlightMode::from_custom_mode(10), Some(FlightMode::Auto));
         assert_eq!(FlightMode::from_custom_mode(15), Some(FlightMode::Guided));
         assert_eq!(FlightMode::from_custom_mode(99), None);

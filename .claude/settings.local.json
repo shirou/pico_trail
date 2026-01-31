@@ -60,7 +60,15 @@
       "WebFetch(domain:discuss.ardupilot.org)",
       "Bash(xargs:*)",
       "Bash(gh api:*)",
-      "Bash(gh pr view:*)"
+      "Bash(gh pr view:*)",
+      "mcp__serena__check_onboarding_performed",
+      "mcp__serena__list_memories",
+      "mcp__serena__initial_instructions",
+      "mcp__serena__think_about_whether_you_are_done",
+      "Bash(git add:*)",
+      "mcp__serena__find_file",
+      "mcp__serena__find_referencing_symbols",
+      "mcp__serena__replace_symbol_body"
     ],
     "deny": [],
     "ask": []

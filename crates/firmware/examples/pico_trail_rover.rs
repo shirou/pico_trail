@@ -770,6 +770,9 @@ async fn rover_mavlink_task(
 ) {
     use embassy_time::Instant;
     use mavlink::Message;
+    use pico_trail_firmware::subsystems::battery_failsafe::{
+        BatteryFailsafeChecker, BatteryFailsafeConfig, BatteryFailsafeLevel,
+    };
 
     pico_trail_firmware::log_info!("Rover MAVLink task started");
 
@@ -780,6 +783,13 @@ async fn rover_mavlink_task(
     // Battery update timing (10 Hz = 100ms interval)
     let mut last_battery_update = Instant::now();
     const BATTERY_UPDATE_INTERVAL: Duration = Duration::from_millis(100);
+
+    // Initialize battery failsafe checker from parameter store
+    let battery_params = pico_trail_firmware::parameters::battery::BatteryParams::from_store(
+        dispatcher.param_handler().store(),
+    );
+    let battery_failsafe_config = BatteryFailsafeConfig::from_params(&battery_params);
+    let mut battery_failsafe = BatteryFailsafeChecker::new(battery_failsafe_config);
 
     loop {
         // Non-blocking receive with timeout
@@ -929,6 +939,62 @@ async fn rover_mavlink_task(
                     .borrow_ref_mut(cs);
                 state.update_battery(&mut adc_reader);
             });
+
+            // Battery failsafe check
+            let (voltage, is_armed) = critical_section::with(|cs| {
+                let state =
+                    pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE.borrow_ref(cs);
+                (state.battery.voltage, state.is_armed())
+            });
+
+            if let Some(event) = battery_failsafe.check(voltage, is_armed) {
+                use pico_trail_firmware::parameters::battery::BatteryFailsafeAction;
+
+                match event.level {
+                    BatteryFailsafeLevel::Low => {
+                        pico_trail_firmware::log_warn!("Battery LOW failsafe: voltage={}", voltage);
+                    }
+                    BatteryFailsafeLevel::Critical => {
+                        pico_trail_firmware::log_error!(
+                            "Battery CRITICAL failsafe: voltage={}",
+                            voltage
+                        );
+                    }
+                }
+
+                match event.action {
+                    BatteryFailsafeAction::None => {}
+                    BatteryFailsafeAction::Hold => {
+                        critical_section::with(|cs| {
+                            let mut state =
+                                pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
+                                    .borrow_ref_mut(cs);
+                            let _ = state.set_mode(
+                                pico_trail_firmware::communication::mavlink::state::FlightMode::Hold,
+                            );
+                        });
+                    }
+                    BatteryFailsafeAction::RTL => {
+                        critical_section::with(|cs| {
+                            let mut state =
+                                pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
+                                    .borrow_ref_mut(cs);
+                            let _ = state.set_mode(
+                                pico_trail_firmware::communication::mavlink::state::FlightMode::Rtl,
+                            );
+                        });
+                    }
+                    BatteryFailsafeAction::Disarm => {
+                        critical_section::with(|cs| {
+                            let mut state =
+                                pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
+                                    .borrow_ref_mut(cs);
+                            let _ = state.disarm_forced();
+                        });
+                    }
+                }
+            }
+
             last_battery_update = Instant::now();
         }
 
@@ -978,6 +1044,10 @@ async fn motor_control_task(
                 // For bidirectional movement, we keep throttle as-is (forward only in Guided)
                 NAV_OUTPUT.with(|nav_output| (nav_output.steering, nav_output.throttle, None))
                 // No RC status in Guided mode
+            }
+            FlightMode::Hold => {
+                // Hold mode: stop all motors (battery failsafe or user-commanded hold)
+                (0.0, 0.0, None)
             }
             _ => {
                 // Other modes (Stabilize, Loiter, Auto, RTL): not implemented yet

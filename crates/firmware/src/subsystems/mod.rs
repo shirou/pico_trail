@@ -6,4 +6,5 @@
 //! - Control: Steering and throttle control
 
 pub mod ahrs;
+pub mod battery_failsafe;
 pub mod navigation;
