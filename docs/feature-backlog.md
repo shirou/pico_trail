@@ -15,7 +15,7 @@ This document tracks planned features outside the formal TDL process. Features h
 
 ### FB-001: Circle Mode
 
-**Status**: Done
+**Status**: In Progress
 
 **Description**: Navigate in a circular path around a specified center point at a configurable radius and speed.
 
@@ -60,7 +60,7 @@ This document tracks planned features outside the formal TDL process. Features h
 
 ### FB-002: Loiter Mode
 
-**Status**: Done
+**Status**: Proposed
 
 **Description**: Hold current position. For rovers, this means stopping and actively correcting position drift.
 
@@ -114,7 +114,7 @@ This document tracks planned features outside the formal TDL process. Features h
 
 ### FB-003: Smart RTL (Return to Launch)
 
-**Status**: Done
+**Status**: Proposed
 
 **Description**: Return to launch point by retracing the path taken, rather than direct line. Useful for avoiding obstacles encountered on the way out.
 

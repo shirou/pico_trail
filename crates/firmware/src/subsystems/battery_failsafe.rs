@@ -135,6 +135,15 @@ impl BatteryFailsafeChecker {
         self.low_triggered = false;
         self.critical_triggered = false;
     }
+
+    /// Reset state and reload configuration
+    ///
+    /// Called on arm transition to clear sticky flags and pick up any
+    /// parameter changes made while disarmed.
+    pub fn reset_with_config(&mut self, config: BatteryFailsafeConfig) {
+        self.config = config;
+        self.reset();
+    }
 }
 
 #[cfg(test)]
@@ -365,5 +374,35 @@ mod tests {
 
         // 100th triggers
         assert!(checker.check(3.3, true).is_some());
+    }
+
+    #[test]
+    fn test_reset_with_config_clears_state_and_updates_config() {
+        let mut checker = BatteryFailsafeChecker::new(default_config());
+
+        // Trigger critical
+        assert!(checker.check(2.5, true).is_some());
+
+        // Reset with new config (different critical threshold)
+        let new_config = BatteryFailsafeConfig {
+            low_voltage: 3.8,
+            low_action: BatteryFailsafeAction::RTL,
+            critical_voltage: 2.0,
+            critical_action: BatteryFailsafeAction::Disarm,
+        };
+        checker.reset_with_config(new_config);
+
+        // Old critical (2.5V) no longer triggers with new threshold (2.0V)
+        assert_eq!(checker.check(2.5, true), None);
+
+        // New critical threshold triggers
+        let event = checker.check(1.5, true);
+        assert_eq!(
+            event,
+            Some(BatteryFailsafeEvent {
+                level: BatteryFailsafeLevel::Critical,
+                action: BatteryFailsafeAction::Disarm,
+            })
+        );
     }
 }

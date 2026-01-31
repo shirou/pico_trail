@@ -790,6 +790,7 @@ async fn rover_mavlink_task(
     );
     let battery_failsafe_config = BatteryFailsafeConfig::from_params(&battery_params);
     let mut battery_failsafe = BatteryFailsafeChecker::new(battery_failsafe_config);
+    let mut was_armed = false;
 
     loop {
         // Non-blocking receive with timeout
@@ -946,6 +947,18 @@ async fn rover_mavlink_task(
                     pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE.borrow_ref(cs);
                 (state.battery.voltage, state.is_armed())
             });
+
+            // On arm transition: reset sticky flags and reload config from param store
+            if is_armed && !was_armed {
+                let fresh_params =
+                    pico_trail_firmware::parameters::battery::BatteryParams::from_store(
+                        dispatcher.param_handler().store(),
+                    );
+                battery_failsafe
+                    .reset_with_config(BatteryFailsafeConfig::from_params(&fresh_params));
+                pico_trail_firmware::log_info!("Battery failsafe reset on arm");
+            }
+            was_armed = is_armed;
 
             if let Some(event) = battery_failsafe.check(voltage, is_armed) {
                 use pico_trail_firmware::parameters::battery::BatteryFailsafeAction;
