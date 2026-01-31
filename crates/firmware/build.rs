@@ -149,6 +149,7 @@ struct HwDefConfig {
     buzzer: Option<PinConfig>,
     led: Option<PinConfig>,
     battery_adc: Option<PinConfig>,
+    all_pins: HashMap<String, PinConfig>,
 }
 
 /// Motor pin pair (IN1, IN2) for H-bridge control
@@ -236,6 +237,9 @@ fn parse_hwdef_with_includes(
     }
 
     include_chain.insert(canonical_path.clone());
+
+    // Ensure rebuild when this file changes (important for included files)
+    println!("cargo:rerun-if-changed={}", path.display());
 
     let content = fs::read_to_string(path)
         .map_err(|e| format!("Failed to read hwdef file {}: {}", path.display(), e))?;
@@ -342,6 +346,11 @@ fn parse_hwdef_with_includes(
             }
             if let Some(battery_adc) = included_config.battery_adc {
                 pins.entry("BATTERY_ADC".to_string()).or_insert(battery_adc);
+            }
+
+            // Merge all named pins from included file (for macro generation)
+            for (name, pin) in included_config.all_pins {
+                pins.entry(name).or_insert(pin);
             }
 
             continue;
@@ -486,7 +495,8 @@ fn parse_hwdef_with_includes(
                 pins.insert(key.to_string(), pin_config);
             }
             "BUZZER" | "LED_WS2812" | "BATTERY_ADC" | "BNO086_RST" | "BNO086_INT"
-            | "BNO086_SDA" | "BNO086_SCL" => {
+            | "BNO086_SDA" | "BNO086_SCL" | "UART0_TX" | "UART0_RX" | "WIFI_PWR" | "WIFI_DIO"
+            | "WIFI_CS" | "WIFI_CLK" => {
                 let pin_config = parse_pin_config(path, line_num, key, value_and_modifiers)?;
                 pins.insert(key.to_string(), pin_config);
             }
@@ -665,6 +675,7 @@ fn parse_hwdef_with_includes(
         buzzer: pins.get("BUZZER").copied(),
         led: pins.get("LED_WS2812").copied(),
         battery_adc: pins.get("BATTERY_ADC").copied(),
+        all_pins: pins,
     })
 }
 
@@ -1025,6 +1036,104 @@ fn generate_board_config(config: &HwDefConfig) -> String {
     output
 }
 
+/// Generate compile-time pin macros from hwdef configuration
+///
+/// Produces `board_pins.rs` with macros that map hwdef pin names to
+/// embassy-rp monomorphic pin types at compile time.
+fn generate_board_pins(config: &HwDefConfig) -> String {
+    let mut output = String::new();
+
+    output.push_str("// Auto-generated from hwdef.dat - DO NOT EDIT\n");
+    output.push_str("// Generated at build time by build.rs\n");
+    output.push_str("// Provides compile-time pin mapping macros for embassy-rp\n\n");
+
+    // board_pin!($p, NAME) - maps hwdef name to $p.PIN_X
+    output.push_str("/// Maps a hwdef pin name to the corresponding `$p.PIN_X` peripheral.\n");
+    output.push_str("macro_rules! board_pin {\n");
+    let mut sorted_pins: Vec<_> = config.all_pins.iter().collect();
+    sorted_pins.sort_by_key(|(name, _)| (*name).clone());
+    for (name, pin) in &sorted_pins {
+        output.push_str(&format!(
+            "    ($p:expr, {}) => {{ $p.PIN_{} }};\n",
+            name, pin.gpio
+        ));
+    }
+    output.push_str("}\n\n");
+
+    // board_steal_pin!(NAME) - maps hwdef name to PIN_X::steal()
+    output.push_str(
+        "/// Maps a hwdef pin name to `embassy_rp::peripherals::PIN_X::steal()` for bus recovery.\n",
+    );
+    output.push_str("macro_rules! board_steal_pin {\n");
+    for (name, pin) in &sorted_pins {
+        output.push_str(&format!(
+            "    ({}) => {{ hal::peripherals::PIN_{}::steal() }};\n",
+            name, pin.gpio
+        ));
+    }
+    output.push_str("}\n\n");
+
+    // Motor-specific macros (only if motors are configured)
+    if config.motor_count > 0 {
+        // board_pwm_slice!($p, N) - maps motor number to PWM slice
+        // PWM slice = (min_gpio / 2) % 8
+        output.push_str(
+            "/// Maps a motor number (1-based) to the corresponding `$p.PWM_SLICEX` peripheral.\n",
+        );
+        output.push_str("macro_rules! board_pwm_slice {\n");
+        for (i, motor) in config.motor_pins.iter().enumerate() {
+            let motor_num = i + 1;
+            let min_gpio = motor.in1.gpio.min(motor.in2.gpio);
+            let slice = (min_gpio / 2) % 8;
+            output.push_str(&format!(
+                "    ($p:expr, {}) => {{ $p.PWM_SLICE{} }};\n",
+                motor_num, slice
+            ));
+        }
+        output.push_str("}\n\n");
+
+        // board_motor_pin_a!($p, N) - even GPIO (PWM channel A)
+        output.push_str(
+            "/// Maps a motor number to the even GPIO pin (PWM channel A) for `Pwm::new_output_ab`.\n",
+        );
+        output.push_str("macro_rules! board_motor_pin_a {\n");
+        for (i, motor) in config.motor_pins.iter().enumerate() {
+            let motor_num = i + 1;
+            let even_gpio = if motor.in1.gpio % 2 == 0 {
+                motor.in1.gpio
+            } else {
+                motor.in2.gpio
+            };
+            output.push_str(&format!(
+                "    ($p:expr, {}) => {{ $p.PIN_{} }};\n",
+                motor_num, even_gpio
+            ));
+        }
+        output.push_str("}\n\n");
+
+        // board_motor_pin_b!($p, N) - odd GPIO (PWM channel B)
+        output.push_str(
+            "/// Maps a motor number to the odd GPIO pin (PWM channel B) for `Pwm::new_output_ab`.\n",
+        );
+        output.push_str("macro_rules! board_motor_pin_b {\n");
+        for (i, motor) in config.motor_pins.iter().enumerate() {
+            let motor_num = i + 1;
+            let odd_gpio = if motor.in1.gpio % 2 == 1 {
+                motor.in1.gpio
+            } else {
+                motor.in2.gpio
+            };
+            output.push_str(&format!(
+                "    ($p:expr, {}) => {{ $p.PIN_{} }};\n",
+                motor_num, odd_gpio
+            ));
+        }
+        output.push_str("}\n\n");
+    }
+
+    output
+}
+
 fn main() {
     // Generate BUILD_ID for debugging (changes on every build)
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1153,14 +1262,21 @@ fn main() {
 
     // Generate Rust code
     let generated_code = generate_board_config(&hwdef_config);
+    let generated_pins = generate_board_pins(&hwdef_config);
 
     // Write to OUT_DIR
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
-    let dest_path = PathBuf::from(out_dir).join("board_config.rs");
+    let out_dir_path = PathBuf::from(&out_dir);
 
-    let mut file = fs::File::create(&dest_path).expect("Failed to create board_config.rs");
+    let config_path = out_dir_path.join("board_config.rs");
+    let mut file = fs::File::create(&config_path).expect("Failed to create board_config.rs");
     file.write_all(generated_code.as_bytes())
         .expect("Failed to write board_config.rs");
+
+    let pins_path = out_dir_path.join("board_pins.rs");
+    let mut file = fs::File::create(&pins_path).expect("Failed to create board_pins.rs");
+    file.write_all(generated_pins.as_bytes())
+        .expect("Failed to write board_pins.rs");
 
     println!(
         "cargo:warning=Generated board configuration for '{}' from {}",
@@ -1350,6 +1466,7 @@ M1_IN1 abc
             buzzer: Some(PinConfig::new(2)),
             led: Some(PinConfig::new(16)),
             battery_adc: Some(PinConfig::new(26)),
+            all_pins: HashMap::new(),
         };
 
         let file = create_temp_hwdef("").unwrap();
@@ -1389,6 +1506,7 @@ M1_IN1 abc
             buzzer: None,
             led: None,
             battery_adc: None,
+            all_pins: HashMap::new(),
         };
 
         let file = create_temp_hwdef("").unwrap();
@@ -1429,6 +1547,7 @@ M1_IN1 abc
             buzzer: None,
             led: None,
             battery_adc: None,
+            all_pins: HashMap::new(),
         };
 
         let file = create_temp_hwdef("").unwrap();
@@ -1469,6 +1588,7 @@ M1_IN1 abc
             buzzer: None,
             led: None,
             battery_adc: None,
+            all_pins: HashMap::new(),
         };
 
         let file = create_temp_hwdef("").unwrap();

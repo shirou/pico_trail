@@ -55,6 +55,8 @@
 #![no_std]
 #![no_main]
 
+include!(concat!(env!("OUT_DIR"), "/board_pins.rs"));
+
 use embassy_executor::Spawner;
 use embassy_rp as hal;
 use embassy_time::{Duration, Timer};
@@ -228,8 +230,13 @@ async fn main(spawner: Spawner) {
 
         pico_trail_firmware::log_info!("Initializing motors...");
 
-        // Motor 1 (GPIO18/19) - Left Front
-        let pwm1 = Pwm::new_output_ab(p.PWM_SLICE1, p.PIN_18, p.PIN_19, pwm_config.clone());
+        // Motor 1 - Left Front (manual A/B swap: channel A→IN2, channel B→IN1)
+        let pwm1 = Pwm::new_output_ab(
+            board_pwm_slice!(p, 1),
+            board_motor_pin_a!(p, 1),
+            board_motor_pin_b!(p, 1),
+            pwm_config.clone(),
+        );
         let (output_a, output_b) = pwm1.split();
         let in2 = pico_trail_firmware::platform::rp2350::EmbassyPwmPin {
             output: core::cell::RefCell::new(output_a.expect("PWM channel A")),
@@ -239,16 +246,31 @@ async fn main(spawner: Spawner) {
         };
         let motor1 = pico_trail_firmware::libraries::motor_driver::HBridgeMotor::new(in1, in2);
 
-        // Motor 2 (GPIO20/21) - Left Rear
-        let pwm2 = Pwm::new_output_ab(p.PWM_SLICE2, p.PIN_20, p.PIN_21, pwm_config.clone());
+        // Motor 2 - Left Rear
+        let pwm2 = Pwm::new_output_ab(
+            board_pwm_slice!(p, 2),
+            board_motor_pin_a!(p, 2),
+            board_motor_pin_b!(p, 2),
+            pwm_config.clone(),
+        );
         let motor2 = pico_trail_firmware::platform::rp2350::init_motor_embassy(pwm2);
 
-        // Motor 3 (GPIO6/7) - Right Rear
-        let pwm3 = Pwm::new_output_ab(p.PWM_SLICE3, p.PIN_6, p.PIN_7, pwm_config.clone());
+        // Motor 3 - Right Rear
+        let pwm3 = Pwm::new_output_ab(
+            board_pwm_slice!(p, 3),
+            board_motor_pin_a!(p, 3),
+            board_motor_pin_b!(p, 3),
+            pwm_config.clone(),
+        );
         let motor3 = pico_trail_firmware::platform::rp2350::init_motor_embassy(pwm3);
 
-        // Motor 4 (GPIO8/9) - Right Front
-        let pwm4 = Pwm::new_output_ab(p.PWM_SLICE4, p.PIN_8, p.PIN_9, pwm_config);
+        // Motor 4 - Right Front
+        let pwm4 = Pwm::new_output_ab(
+            board_pwm_slice!(p, 4),
+            board_motor_pin_a!(p, 4),
+            board_motor_pin_b!(p, 4),
+            pwm_config,
+        );
         let motor4 = pico_trail_firmware::platform::rp2350::init_motor_embassy(pwm4);
 
         let motors = [motor1, motor2, motor3, motor4];
@@ -265,24 +287,24 @@ async fn main(spawner: Spawner) {
 
         let uart0 = embassy_rp::uart::BufferedUart::new(
             p.UART0,
-            p.PIN_0, // TX (GPIO 0)
-            p.PIN_1, // RX (GPIO 1)
+            board_pin!(p, UART0_TX),
+            board_pin!(p, UART0_RX),
             Irqs,
             unsafe { &mut *core::ptr::addr_of_mut!(UART0_TX_BUF) },
             unsafe { &mut *core::ptr::addr_of_mut!(UART0_RX_BUF) },
             uart0_config,
         );
 
-        pico_trail_firmware::log_info!("UART0 initialized (GPIO 0/1, 9600 baud)");
+        pico_trail_firmware::log_info!("UART0 initialized (9600 baud)");
 
         // GPS task will be spawned after WiFi connects (to avoid blocking DHCP)
         // Keep uart0 for later use
 
-        // BNO086 External AHRS will be initialized after WiFi (GPIO 4 = SDA, GPIO 5 = SCL)
+        // BNO086 External AHRS will be initialized after WiFi
         // Keep I2C0 peripherals for later use
         let i2c0_peripheral = p.I2C0;
-        let i2c0_scl = p.PIN_5;
-        let i2c0_sda = p.PIN_4;
+        let i2c0_scl = board_pin!(p, BNO086_SCL);
+        let i2c0_sda = board_pin!(p, BNO086_SDA);
 
         // Load WiFi configuration from parameters
         let wifi_config = WifiParams::from_store(param_handler.store());
@@ -302,7 +324,14 @@ async fn main(spawner: Spawner) {
             // Spawn WiFi init task (never returns, keeps Control alive)
             spawner.spawn(
                 pico_trail_firmware::platform::rp2350::network::wifi_init_task(
-                    spawner, config, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.PIO0, p.DMA_CH0,
+                    spawner,
+                    config,
+                    board_pin!(p, WIFI_PWR),
+                    board_pin!(p, WIFI_DIO),
+                    board_pin!(p, WIFI_CS),
+                    board_pin!(p, WIFI_CLK),
+                    p.PIO0,
+                    p.DMA_CH0,
                 )
                 .unwrap(),
             );
@@ -370,11 +399,13 @@ async fn main(spawner: Spawner) {
             // Initialize ADC for battery voltage monitoring (GPIO 26 = ADC0)
             let adc = embassy_rp::adc::Adc::new(p.ADC, Irqs, embassy_rp::adc::Config::default());
 
-            let adc_channel =
-                embassy_rp::adc::Channel::new_pin(p.PIN_26, embassy_rp::gpio::Pull::None);
+            let adc_channel = embassy_rp::adc::Channel::new_pin(
+                board_pin!(p, BATTERY_ADC),
+                embassy_rp::gpio::Pull::None,
+            );
 
             let adc_reader = Rp2350AdcReader::from_parts(adc, adc_channel);
-            pico_trail_firmware::log_info!("ADC reader initialized (GPIO 26)");
+            pico_trail_firmware::log_info!("ADC reader initialized");
 
             // Spawn MAVLink task
             spawner.spawn(rover_mavlink_task(router, dispatcher, adc_reader).unwrap());
@@ -402,7 +433,7 @@ async fn main(spawner: Spawner) {
             pico_trail_firmware::log_info!("=== BNO086 Pre-Reset ===");
             {
                 use embassy_rp::gpio::Flex;
-                let mut rst = Flex::new(p.PIN_17);
+                let mut rst = Flex::new(board_pin!(p, BNO086_RST));
                 rst.set_as_output();
                 rst.set_low();
                 Timer::after(Duration::from_millis(100)).await;
@@ -421,7 +452,7 @@ async fn main(spawner: Spawner) {
                 Timer::after(Duration::from_millis(10)).await;
 
                 drop(sda_out);
-                let sda = Input::new(unsafe { hal::peripherals::PIN_4::steal() }, Pull::Up);
+                let sda = Input::new(unsafe { board_steal_pin!(BNO086_SDA) }, Pull::Up);
                 Timer::after(Duration::from_micros(100)).await;
 
                 if sda.is_low() {
@@ -448,7 +479,7 @@ async fn main(spawner: Spawner) {
                     // Generate STOP condition
                     drop(sda);
                     let mut sda_out2 =
-                        Output::new(unsafe { hal::peripherals::PIN_4::steal() }, Level::Low);
+                        Output::new(unsafe { board_steal_pin!(BNO086_SDA) }, Level::Low);
                     Timer::after(Duration::from_micros(50)).await;
                     scl.set_high();
                     Timer::after(Duration::from_micros(50)).await;
@@ -456,8 +487,7 @@ async fn main(spawner: Spawner) {
                     Timer::after(Duration::from_micros(100)).await;
 
                     drop(sda_out2);
-                    let sda_check =
-                        Input::new(unsafe { hal::peripherals::PIN_4::steal() }, Pull::Up);
+                    let sda_check = Input::new(unsafe { board_steal_pin!(BNO086_SDA) }, Pull::Up);
                     Timer::after(Duration::from_micros(100)).await;
                     if sda_check.is_high() {
                         pico_trail_firmware::log_info!("  Recovery complete, SDA is now HIGH");
@@ -474,12 +504,12 @@ async fn main(spawner: Spawner) {
             // Small delay after recovery
             Timer::after(Duration::from_millis(10)).await;
 
-            // Step 3: Initialize I2C at 50kHz (matching demo)
-            pico_trail_firmware::log_info!("Initializing I2C0 (GPIO4=SDA, GPIO5=SCL, 5kHz)...");
-            let pin_4 = unsafe { hal::peripherals::PIN_4::steal() };
-            let pin_5 = unsafe { hal::peripherals::PIN_5::steal() };
+            // Step 3: Initialize I2C at 5kHz
+            pico_trail_firmware::log_info!("Initializing I2C0 (5kHz)...");
+            let sda_pin = unsafe { board_steal_pin!(BNO086_SDA) };
+            let scl_pin = unsafe { board_steal_pin!(BNO086_SCL) };
 
-            let i2c0 = embassy_rp::i2c::I2c::new_async(i2c0_peripheral, pin_5, pin_4, Irqs, {
+            let i2c0 = embassy_rp::i2c::I2c::new_async(i2c0_peripheral, scl_pin, sda_pin, Irqs, {
                 let mut config = embassy_rp::i2c::Config::default();
                 // 5kHz for maximum I2C stability with BNO086
                 // BNO086 has known I2C timing issues requiring very slow speeds
@@ -537,14 +567,14 @@ async fn main(spawner: Spawner) {
                 // Create SHTP I2C transport
                 let transport = ShtpI2c::new(i2c0, bno_addr);
 
-                // Create INT pin (GPIO22) - data ready signal
-                let int_gpio = Input::new(p.PIN_22, Pull::Up);
+                // Create INT pin - data ready signal
+                let int_gpio = Input::new(board_pin!(p, BNO086_INT), Pull::Up);
                 let int_pin = EmbassyIntPin::new(int_gpio);
 
-                // Create RST pin (GPIO17) - hardware reset (uses Flex for high-Z release)
-                // Note: PIN_17 was used for pre-scan reset, so we steal it here
+                // Create RST pin - hardware reset (uses Flex for high-Z release)
+                // Note: BNO086_RST was used for pre-scan reset, so we steal it here
                 use embassy_rp::gpio::Flex;
-                let rst_gpio = Flex::new(unsafe { hal::peripherals::PIN_17::steal() });
+                let rst_gpio = Flex::new(unsafe { board_steal_pin!(BNO086_RST) });
                 let rst_pin = EmbassyRstPin::new(rst_gpio);
 
                 // Create GPIO driver config
@@ -573,7 +603,7 @@ async fn main(spawner: Spawner) {
             } else {
                 pico_trail_firmware::log_warn!("BNO086 not found on I2C bus!");
                 pico_trail_firmware::log_warn!("AHRS features will be disabled");
-                pico_trail_firmware::log_warn!("Check wiring: SDA=GPIO4, SCL=GPIO5");
+                pico_trail_firmware::log_warn!("Check wiring: BNO086 SDA/SCL connections");
             }
         } else {
             pico_trail_firmware::log_info!("WiFi not configured");
