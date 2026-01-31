@@ -1043,7 +1043,7 @@ fn generate_board_config(config: &HwDefConfig) -> String {
 fn generate_board_pins(config: &HwDefConfig) -> String {
     let mut output = String::new();
 
-    output.push_str("// Auto-generated from hwdef.dat - DO NOT EDIT\n");
+    output.push_str("// Auto-generated from hwdef configuration - DO NOT EDIT\n");
     output.push_str("// Generated at build time by build.rs\n");
     output.push_str("// Provides compile-time pin mapping macros for embassy-rp\n\n");
 
