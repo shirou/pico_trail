@@ -59,6 +59,8 @@ bitflags = "2.10"
 
 # MAVLink 2.0 protocol
 mavlink = { version = "0.17.0", default-features = false, features = ["embedded", "common", "emit-extensions"] }
+# Numeric trait conversion (used by mavlink's FromPrimitive-derived enums)
+num-traits = { version = "0.2", default-features = false }
 embedded-io = "0.7"
 embedded-io-async = "0.7"
 

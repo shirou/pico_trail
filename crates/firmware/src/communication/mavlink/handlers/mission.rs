@@ -26,11 +26,15 @@
 //! - State machine returns to Idle on timeout
 //! - Partial missions are discarded on timeout
 
-use crate::core::mission::{MissionStorage, Waypoint};
+use crate::core::mission::{MissionStorage, Waypoint, MISSION_SEQUENCER, MISSION_STORAGE};
+use crate::core::traits::SharedState;
+#[allow(deprecated)]
 use mavlink::common::{
-    MavCmd, MavFrame, MavMissionResult, MavMissionType, MISSION_ACK_DATA, MISSION_COUNT_DATA,
-    MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA,
+    MavCmd, MavFrame, MavMissionResult, MavMissionType, MISSION_ACK_DATA, MISSION_CLEAR_ALL_DATA,
+    MISSION_COUNT_DATA, MISSION_CURRENT_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA,
+    MISSION_REQUEST_LIST_DATA, MISSION_SET_CURRENT_DATA,
 };
+use num_traits::FromPrimitive;
 
 mod storage_ops {
     use crate::core::mission::{
@@ -503,22 +507,146 @@ impl MissionHandler {
         }
     }
 
+    /// Handle MISSION_CLEAR_ALL message
+    ///
+    /// Clears all waypoints and resets sequencer state.
+    /// Rejects the request if the vehicle is armed and mission is running.
+    ///
+    /// # Returns
+    ///
+    /// MISSION_ACK with ACCEPTED on success, DENIED if armed and running.
+    pub fn handle_clear_all(
+        &mut self,
+        _data: &MISSION_CLEAR_ALL_DATA,
+        target_system: u8,
+        target_component: u8,
+    ) -> MISSION_ACK_DATA {
+        // Check if armed and mission running — reject if so
+        let is_armed_and_running = {
+            use crate::communication::mavlink::state::SYSTEM_STATE;
+            let armed = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).is_armed());
+            let running = MISSION_SEQUENCER
+                .with(|seq| seq.state() == crate::core::mission::MissionState::Running);
+            armed && running
+        };
+
+        if is_armed_and_running {
+            crate::log_warn!("MISSION_CLEAR_ALL rejected: armed and mission running");
+            return self.create_ack(
+                MavMissionResult::MAV_MISSION_DENIED,
+                target_system,
+                target_component,
+            );
+        }
+
+        // Clear sequencer and storage
+        MISSION_SEQUENCER.with_mut(|sequencer| {
+            MISSION_STORAGE.with_mut(|storage| {
+                sequencer.clear(storage);
+            });
+        });
+
+        // Clear transfer buffer too
+        self.transfer_buffer.clear();
+        self.state = MissionState::Idle;
+
+        crate::log_info!("MISSION_CLEAR_ALL: mission cleared");
+        crate::communication::mavlink::status_notifier::send_notice("Mission cleared");
+        self.create_ack(
+            MavMissionResult::MAV_MISSION_ACCEPTED,
+            target_system,
+            target_component,
+        )
+    }
+
+    /// Handle MISSION_SET_CURRENT message
+    ///
+    /// Jumps to the specified waypoint index in the mission.
+    /// Returns MISSION_CURRENT as acknowledgment.
+    ///
+    /// # Returns
+    ///
+    /// Ok(MISSION_CURRENT_DATA) on success, Err(MISSION_ACK_DATA) if invalid.
+    #[allow(deprecated)]
+    pub fn handle_set_current(
+        &mut self,
+        data: &MISSION_SET_CURRENT_DATA,
+    ) -> Result<MISSION_CURRENT_DATA, MISSION_ACK_DATA> {
+        let seq = data.seq;
+
+        let result = MISSION_SEQUENCER.with_mut(|sequencer| {
+            MISSION_STORAGE.with(|storage| {
+                // Validate bounds
+                if seq >= storage.count() {
+                    return Err("Index out of bounds");
+                }
+
+                // We need a temporary no-op executor for set_current since
+                // the real executor (AutoMode) isn't accessible from the handler.
+                // The sequencer will call start_command on the next update cycle
+                // when AutoMode calls sequencer.update().
+                struct NoOpExecutor;
+                impl crate::core::mission::MissionExecutor for NoOpExecutor {
+                    fn start_command(
+                        &mut self,
+                        _cmd: &Waypoint,
+                    ) -> crate::core::mission::CommandStartResult {
+                        crate::core::mission::CommandStartResult::Accepted
+                    }
+                    fn verify_command(&mut self, _cmd: &Waypoint) -> bool {
+                        false
+                    }
+                    fn on_mission_complete(&mut self) {}
+                }
+                let mut executor = NoOpExecutor;
+
+                sequencer
+                    .set_current(seq, storage, &mut executor)
+                    .map(|_events| storage.count())
+                    .map_err(|_| "set_current failed")
+            })
+        });
+
+        match result {
+            Ok(total) => {
+                crate::log_info!("MISSION_SET_CURRENT: jumped to seq={}", seq);
+                Ok(MISSION_CURRENT_DATA {
+                    seq,
+                    total,
+                    mission_state: mavlink::common::MissionState::MISSION_STATE_ACTIVE,
+                    mission_mode: 1,
+                    mission_id: 0,
+                    fence_id: 0,
+                    rally_points_id: 0,
+                })
+            }
+            Err(_) => {
+                crate::log_warn!("MISSION_SET_CURRENT: invalid seq={}", seq);
+                Err(self.create_ack(
+                    MavMissionResult::MAV_MISSION_INVALID_SEQUENCE,
+                    data.target_system,
+                    data.target_component,
+                ))
+            }
+        }
+    }
+
     /// Convert Waypoint to MISSION_ITEM_INT_DATA
+    ///
+    /// Preserves the original command and frame values from the waypoint,
+    /// using numeric-to-enum conversion to maintain fidelity during
+    /// mission download (FR-ahzhr).
     fn waypoint_to_mission_item(
         &self,
         wp: &Waypoint,
         target_system: u8,
         target_component: u8,
     ) -> MISSION_ITEM_INT_DATA {
-        // Use default values if conversion fails
-        let frame = match wp.frame {
-            3 => MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT,
-            _ => MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT, // Default fallback
-        };
-        let command = match wp.command {
-            16 => MavCmd::MAV_CMD_NAV_WAYPOINT,
-            _ => MavCmd::MAV_CMD_NAV_WAYPOINT, // Default fallback
-        };
+        // Preserve original frame and command values via FromPrimitive conversion.
+        // Falls back to GLOBAL_RELATIVE_ALT / NAV_WAYPOINT for unknown values.
+        let frame =
+            MavFrame::from_u32(wp.frame as u32).unwrap_or(MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT);
+        let command = MavCmd::from_u32(wp.command as u32).unwrap_or(MavCmd::MAV_CMD_NAV_WAYPOINT);
 
         MISSION_ITEM_INT_DATA {
             target_system,
@@ -678,7 +806,7 @@ mod tests {
             seq: 0,
             mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         };
-        let result = handler.handle_request_int(&request0, 0);
+        let result = handler.handle_request_int(&request0, 0, 255, 1);
         assert!(result.is_ok());
         let item = result.unwrap();
         assert_eq!(item.seq, 0);
@@ -686,7 +814,7 @@ mod tests {
 
         // 3. Receive MISSION_REQUEST_INT for seq=1
         let request1 = MISSION_REQUEST_INT_DATA { seq: 1, ..request0 };
-        let result = handler.handle_request_int(&request1, 0);
+        let result = handler.handle_request_int(&request1, 0, 255, 1);
         assert!(result.is_ok());
         let item = result.unwrap();
         assert_eq!(item.seq, 1);
@@ -787,7 +915,7 @@ mod tests {
             seq: 0,
             mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         };
-        let result = handler.handle_request_int(&request, 0);
+        let result = handler.handle_request_int(&request, 0, 255, 1);
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),

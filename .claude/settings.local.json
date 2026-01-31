@@ -57,7 +57,8 @@
       "WebFetch(domain:www.ceva-ip.com)",
       "Bash(./scripts/check-core-no-cfg.sh:*)",
       "Bash(wc:*)",
-      "WebFetch(domain:discuss.ardupilot.org)"
+      "WebFetch(domain:discuss.ardupilot.org)",
+      "Bash(xargs:*)"
     ],
     "deny": [],
     "ask": []

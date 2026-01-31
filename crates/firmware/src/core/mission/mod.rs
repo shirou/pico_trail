@@ -17,11 +17,15 @@
 
 mod state;
 
-pub use pico_trail_core::mission::{MissionState, MissionStorage, Waypoint, MAX_WAYPOINTS};
+pub use pico_trail_core::mission::{
+    CommandStartResult, MissionEvent, MissionExecutor, MissionSequencer, MissionState,
+    MissionStorage, Waypoint, MAX_WAYPOINTS,
+};
 
 pub use state::{
     add_waypoint, advance_waypoint, clear_mission, clear_waypoints, complete_mission,
-    get_current_target, get_mission_state, has_waypoints, set_mission_state, set_single_waypoint,
-    start_mission, start_mission_from_beginning, start_mission_from_current, stop_mission,
-    MISSION_STATE, MISSION_STORAGE,
+    get_current_target, get_mission_state, has_waypoints, push_current_changed, push_item_reached,
+    set_mission_state, set_single_waypoint, start_mission, start_mission_from_beginning,
+    start_mission_from_current, stop_mission, take_current_changed, take_item_reached,
+    MISSION_SEQUENCER, MISSION_STATE, MISSION_STORAGE,
 };
