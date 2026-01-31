@@ -133,77 +133,7 @@ All documentation output in this project must be written in English, including:
 
 ## Traceable Development Lifecycle (TDL)
 
-_Structured phases, linked artifacts, verifiable outcomes_
-
-This project follows the Traceable Development Lifecycle (TDL), a structured development process with full traceability from discovery through delivery. Consult the primary references when in doubt:
-
-**[`docs/tdl.md`](docs/tdl.md)** - Full TDL documentation and workflow\
-**[`docs/templates/README.md`](docs/templates/README.md)** - Template descriptions and usage instructions
-
-### TDL Process Overview
-
-```mermaid
-graph LR
-    A[Analysis] --> R[Requirements]
-    A --> ADR[ADR]
-    ADR --> R
-    R --> T
-    ADR --> T
-    subgraph T[Task]
-      direction LR
-      D[Design] <--> P[Plan]
-    end
-    T --> I[Implementation]
-```
-
-### Key Locations
-
-- **Templates**: `docs/templates/` - All document templates
-- **Analysis**: `docs/analysis/AN-<id>-<topic>.md` - Problem exploration
-- **Requirements**: `docs/requirements/FR-<id>-<capability>.md` and `NFR-<id>-<quality>.md` - Formal requirements
-- **ADRs**: `docs/adr/ADR-<id>-<title>.md` - Architecture decisions (current format)
-- **Tasks**: `docs/tasks/T-<id>-<task>/` - Design and plan documents (current format)
-- **Traceability**: `docs/traceability.md` - Central mapping matrix
-
-### Document Workflow & Approvals
-
-**Cross-Stage Governance**
-
-- **Approval Rules**
-  - **Stage Separation**: Complete only one stage per approval cycle; never advance without an explicit “go”.
-  - **Clarity Guardrail**: Treat ambiguous instructions as cues to request confirmation.
-  - **Status Maintenance**: Keep document metadata current so reviewers know the active phase.
-
-- **Exception Handling**
-  - **Immediate Pause**: If work advanced without the required approval—or a prerequisite artifact is missing—stop immediately.
-  - **User Decision**: Ask whether to delete the premature work and restart or treat it as a draft for sequential review.
-  - **Upstream Gap**: When a needed analysis, requirement, or ADR is absent, suspend implementation, create the missing document via templates, secure approval, and only then resume coding.
-
-**Stage-by-Stage Flow**
-
-1. **Analysis (`docs/analysis/AN-…`)**
-   - **Deliverable**: Problem statement with context, alternatives, and recommendation.
-   - **Approval Gate**: Share the draft and wait for explicit approval before drafting requirements.
-
-2. **Requirements (`docs/requirements/FR-…` / `NFR-…`)**
-   - **Deliverable**: Verifiable functional and non-functional requirements derived from the approved analysis.
-   - **Approval Gate**: Present the requirements and wait for explicit approval before writing the ADR.
-
-3. **Architecture Decision (`docs/adr/ADR-…`)**
-   - **Deliverable**: Decision record describing the structural approach that satisfies the requirements.
-   - **Approval Gate**: Submit the ADR and wait for explicit approval before creating the task package.
-
-4. **Task Package (`docs/tasks/T-…/`)**
-   - **Deliverable**: Task directory with `design.md`, `plan.md`, and an updated `README.md` linked to upstream artifacts.
-   - **Approval Gate**: Share the task documents and wait for explicit approval before starting implementation.
-
-5. **Implementation**
-   - **Deliverable**: Code and supporting assets tied to the approved task.
-   - **Approval Gate**:
-     - Treat every phase listed in `plan.md` as its own approval checkpoint.
-     - After finishing a phase, immediately stop, mark the corresponding checklist item as `[x]`, and request explicit approval to proceed.
-     - Do not write code, run tests, or change artefacts for the next phase until that approval is received.
-     - If approval is missing or unclear at any point, halt all implementation work and ask the approver how to proceed; the only permitted actions while waiting are housekeeping required to request approval (e.g., summarising work done or reverting unintended edits).
+This project follows the Traceable Development Lifecycle (TDL). For TDL-related tasks (analysis, requirements, ADRs, task packages, implementation phases), use the `/tdl` skill which provides the full workflow, templates, and approval gates.
 
 ## Development Workflow
 
