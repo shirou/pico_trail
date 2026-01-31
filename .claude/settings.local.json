@@ -58,7 +58,9 @@
       "Bash(./scripts/check-core-no-cfg.sh:*)",
       "Bash(wc:*)",
       "WebFetch(domain:discuss.ardupilot.org)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(gh api:*)",
+      "Bash(gh pr view:*)"
     ],
     "deny": [],
     "ask": []

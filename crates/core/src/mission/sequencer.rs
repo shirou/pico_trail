@@ -54,7 +54,6 @@ pub struct MissionSequencer {
 }
 
 impl MissionSequencer {
-    /// Create a new sequencer in Idle state.
     /// Create a new sequencer in Idle state (const fn for static initialization).
     pub const fn new() -> Self {
         Self {
@@ -133,8 +132,10 @@ impl MissionSequencer {
 
         // Scan from index 0 to find the first NAV command
         if self.load_first_nav(storage, 0, executor, &mut events) {
-            // Load any DO commands before the NAV
-            self.load_do_commands_before_nav(storage, executor);
+            // Execute DO commands that appear before the first NAV (e.g., DO_CHANGE_SPEED at index 0)
+            self.execute_do_commands_in_range(storage, 0, self.nav_cmd_index, executor);
+            // Load DO commands after the current NAV, up to the next NAV boundary
+            self.load_do_commands_after_nav(storage, executor);
         } else {
             // No NAV commands at all
             self.state = MissionState::Idle;
@@ -198,15 +199,16 @@ impl MissionSequencer {
         self.flags = SequencerFlags::default();
         self.holding_since = None;
 
-        if self.state != MissionState::Running {
-            self.state = MissionState::Running;
-        }
-
         if self.load_first_nav(storage, index, executor, &mut events) {
-            self.load_do_commands_before_nav(storage, executor);
+            // Execute DO commands in [index, nav_cmd_index) before the NAV
+            self.execute_do_commands_in_range(storage, index, self.nav_cmd_index, executor);
+            self.load_do_commands_after_nav(storage, executor);
         }
 
-        self.nav_refresh_needed = true;
+        // Only set nav_refresh if mission is running (avoid implicit start)
+        if self.state == MissionState::Running {
+            self.nav_refresh_needed = true;
+        }
 
         Ok(events)
     }
@@ -257,14 +259,38 @@ impl MissionSequencer {
         false
     }
 
-    /// Load DO commands that appear between the start of the scan region
-    /// and the current NAV command. Called after loading a NAV command.
-    fn load_do_commands_before_nav(
+    /// Execute DO commands in the range [start, end) immediately.
+    /// Used to process DO commands that appear before the first NAV command.
+    fn execute_do_commands_in_range(
+        &mut self,
+        storage: &MissionStorage,
+        start: u16,
+        end: u16,
+        executor: &mut dyn MissionExecutor,
+    ) {
+        for i in start..end {
+            if let Some(wp) = storage.get_waypoint(i) {
+                if !is_nav_command(wp.command) {
+                    // Handle DO_CHANGE_SPEED
+                    if wp.command == MAV_CMD_DO_CHANGE_SPEED {
+                        let speed = wp.param2;
+                        if speed > 0.0 && !speed.is_nan() && !speed.is_infinite() {
+                            self.mission_speed = Some(speed);
+                        }
+                    }
+                    executor.start_command(wp);
+                }
+            }
+        }
+    }
+
+    /// Load DO commands that appear after the current NAV command, up to the
+    /// next NAV command (or end of mission). Called after loading a NAV command.
+    fn load_do_commands_after_nav(
         &mut self,
         storage: &MissionStorage,
         executor: &mut dyn MissionExecutor,
     ) {
-        // DO commands after the current NAV, up to the next NAV boundary
         let scan_start = self.nav_cmd_index + 1;
         self.do_cmd_index = scan_start;
         self.flags.do_cmd_loaded = false;
@@ -337,7 +363,7 @@ impl MissionSequencer {
 
         if self.load_first_nav(storage, next_start, executor, events) {
             // Found next NAV — load DO commands between this NAV and the next
-            self.load_do_commands_before_nav(storage, executor);
+            self.load_do_commands_after_nav(storage, executor);
         } else {
             // No more NAV commands — mission complete
             self.state = MissionState::Completed;
@@ -667,6 +693,43 @@ mod tests {
         assert!(start_calls.contains(&0)); // NAV
         assert!(start_calls.contains(&1)); // DO
         assert!(!start_calls.contains(&3)); // not yet
+    }
+
+    #[test]
+    fn test_do_commands_before_first_nav_executed() {
+        let mut storage = MissionStorage::new();
+        storage.add_waypoint(do_change_speed(0, 4.0)).unwrap(); // DO before any NAV
+        storage.add_waypoint(do_generic(1, 200)).unwrap(); // another DO before NAV
+        storage.add_waypoint(nav_wp(2)).unwrap();
+        let mut exec = MockExecutor::new();
+
+        let mut seq = MissionSequencer::new();
+        seq.start(&storage, &mut exec);
+
+        // DO commands at seq 0 and 1 (before first NAV at seq 2) should be executed
+        assert!(exec.calls.contains(&MockCall::Start(0)));
+        assert!(exec.calls.contains(&MockCall::Start(1)));
+        assert!(exec.calls.contains(&MockCall::Start(2))); // NAV command
+        assert_eq!(seq.mission_speed(), Some(4.0));
+        assert_eq!(seq.current_nav_index(), 2);
+    }
+
+    #[test]
+    fn test_set_current_does_not_start_idle_mission() {
+        let mut storage = MissionStorage::new();
+        storage.add_waypoint(nav_wp(0)).unwrap();
+        storage.add_waypoint(nav_wp(1)).unwrap();
+        let mut exec = MockExecutor::new();
+
+        let mut seq = MissionSequencer::new();
+        // Do not call start() — sequencer is Idle
+        assert_eq!(seq.state(), MissionState::Idle);
+
+        let result = seq.set_current(1, &storage, &mut exec);
+        assert!(result.is_ok());
+        // State should remain Idle (set_current should not implicitly start)
+        assert_eq!(seq.state(), MissionState::Idle);
+        assert!(!seq.needs_nav_refresh());
     }
 
     // ========================================================================

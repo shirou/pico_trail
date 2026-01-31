@@ -37,8 +37,8 @@ As a GCS operator, I want to download a mission and see the same command types I
 - [ ] `waypoint_to_mission_item()` preserves original command ID from Waypoint struct
 - [ ] All MAV_CMD values supported (not just NAV_WAYPOINT)
 - [ ] `frame` field preserves original `MAV_FRAME` value (not just `MAV_FRAME_GLOBAL_RELATIVE_ALT`)
-- [ ] Mission round-trip is lossless: upload → download produces identical command IDs and frames
-- [ ] Unknown command IDs passed through without modification
+- [ ] Mission round-trip is lossless: upload → download produces identical command IDs and frames for all commands representable by the `MavCmd` enum
+- [ ] Behavior for command IDs that cannot be mapped to a known `MavCmd` enum value is explicitly defined, documented, and covered by tests (e.g., a consistent fallback strategy)
 
 ## Technical Details (if applicable)
 

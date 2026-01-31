@@ -533,8 +533,9 @@ impl<V: VehicleType> MessageDispatcher<V> {
         }
 
         // Event-driven MISSION_CURRENT on waypoint change (NFR-at4uq: < 100ms)
+        // Coalesce multiple events to a single message with latest sequencer state
         let current_changed = take_current_changed();
-        for _seq in current_changed {
+        if !current_changed.is_empty() {
             let _ = messages.push(super::handlers::TelemetryStreamer::<V>::build_mission_current());
         }
 

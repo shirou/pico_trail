@@ -235,11 +235,17 @@ impl<'a> Mode for AutoMode<'a> {
         self.nav_controller.reset();
 
         // Start mission via sequencer
-        MISSION_SEQUENCER.with_mut(|sequencer| {
+        let sequencer_running = MISSION_SEQUENCER.with_mut(|sequencer| {
             MISSION_STORAGE.with(|storage| {
                 let _events = sequencer.start(storage, self);
             });
+            matches!(sequencer.state(), MissionState::Running)
         });
+
+        if !sequencer_running {
+            self.state = None;
+            return Err("Auto mission could not be started");
+        }
 
         // Sync global state
         set_mission_state(MissionState::Running);
