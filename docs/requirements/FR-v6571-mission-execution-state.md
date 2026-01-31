@@ -15,6 +15,9 @@
 - Dependent Requirements:
   - [FR-w893v-mission-start-command](FR-w893v-mission-start-command.md)
   - [FR-jm7mj-auto-mode-mission-execution](FR-jm7mj-auto-mode-mission-execution.md)
+  - [FR-sifsm-mission-current-telemetry](FR-sifsm-mission-current-telemetry.md)
+  - [FR-f2f8q-mission-clear-all](FR-f2f8q-mission-clear-all.md)
+  - [FR-aulp3-mission-set-current](FR-aulp3-mission-set-current.md)
 - Related Tasks:
   - [T-c26bh-unified-waypoint-navigation](../tasks/T-c26bh-unified-waypoint-navigation/README.md)
 

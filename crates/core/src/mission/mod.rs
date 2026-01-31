@@ -20,10 +20,16 @@
 //! This module contains only pure data types. Global state management
 //! and Embassy-specific wrappers are provided by the firmware crate.
 
+pub mod command;
+pub mod executor;
+pub mod sequencer;
 pub mod state;
 
 use heapless::Vec;
 
+pub use command::{cmd_has_location, is_nav_command, MAV_CMD_DO_CHANGE_SPEED, MAV_CMD_NAV_LAST};
+pub use executor::{CommandStartResult, MissionEvent, MissionExecutor};
+pub use sequencer::MissionSequencer;
 pub use state::MissionState;
 
 /// Maximum number of waypoints in a mission

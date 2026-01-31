@@ -20,13 +20,15 @@
 
 use crate::communication::mavlink::state::SystemState;
 use crate::communication::mavlink::vehicle::VehicleType;
+use crate::core::mission::{MissionState, MISSION_SEQUENCER, MISSION_STORAGE};
+use crate::core::traits::SharedState;
 use crate::devices::gps::GpsFixType as DeviceGpsFixType;
 use core::marker::PhantomData;
 use mavlink::common::{
     GpsFixType, MavBatteryChargeState, MavBatteryFault, MavBatteryFunction, MavBatteryMode,
     MavBatteryType, MavMessage, MavModeFlag, MavState, MavSysStatusSensor,
     MavSysStatusSensorExtended, ATTITUDE_DATA, BATTERY_STATUS_DATA, GLOBAL_POSITION_INT_DATA,
-    GPS_RAW_INT_DATA, HEARTBEAT_DATA, SYS_STATUS_DATA,
+    GPS_RAW_INT_DATA, HEARTBEAT_DATA, MISSION_CURRENT_DATA, SYS_STATUS_DATA,
 };
 use micromath::F32Ext;
 
@@ -151,6 +153,7 @@ pub struct TelemetryStreamer<V: VehicleType> {
     global_position: StreamConfig,
     sys_status: StreamConfig,
     battery_status: StreamConfig,
+    mission_current: StreamConfig,
     _vehicle: PhantomData<V>,
 }
 
@@ -165,6 +168,7 @@ impl<V: VehicleType> TelemetryStreamer<V> {
             global_position: StreamConfig::new(2),
             sys_status: StreamConfig::new(1),
             battery_status: StreamConfig::new(2),
+            mission_current: StreamConfig::new(1),
             _vehicle: PhantomData,
         }
     }
@@ -191,13 +195,13 @@ impl<V: VehicleType> TelemetryStreamer<V> {
     ///
     /// # Returns
     ///
-    /// Vector of messages to send (max 6: HEARTBEAT, ATTITUDE, GPS_RAW_INT,
-    /// GLOBAL_POSITION_INT, SYS_STATUS, BATTERY_STATUS)
+    /// Vector of messages to send (max 8: HEARTBEAT, ATTITUDE, GPS_RAW_INT,
+    /// GLOBAL_POSITION_INT, SYS_STATUS, BATTERY_STATUS, MISSION_CURRENT)
     pub fn update(
         &mut self,
         state: &SystemState,
         current_time_us: u64,
-    ) -> heapless::Vec<MavMessage, 6> {
+    ) -> heapless::Vec<MavMessage, 8> {
         let mut messages = heapless::Vec::new();
 
         // HEARTBEAT (always at 1Hz)
@@ -246,6 +250,12 @@ impl<V: VehicleType> TelemetryStreamer<V> {
                 let _ = messages.push(msg);
                 self.battery_status.mark_sent(current_time_us);
             }
+        }
+
+        // MISSION_CURRENT (1Hz)
+        if self.mission_current.should_send(current_time_us) {
+            let _ = messages.push(Self::build_mission_current());
+            self.mission_current.mark_sent(current_time_us);
         }
 
         messages
@@ -488,6 +498,60 @@ impl<V: VehicleType> TelemetryStreamer<V> {
         }))
     }
 
+    /// Build MISSION_CURRENT message
+    ///
+    /// Reports current mission progress to GCS. Reads from global
+    /// MISSION_SEQUENCER and MISSION_STORAGE state.
+    ///
+    /// # Fields
+    ///
+    /// - `seq`: Current NAV command index (from sequencer)
+    /// - `total`: Total waypoints in storage
+    /// - `mission_state`: Mapped from core MissionState to MAVLink MissionState
+    /// - `mission_mode`: 1 if running, 0 otherwise
+    pub fn build_mission_current() -> MavMessage {
+        let (seq, core_state) =
+            MISSION_SEQUENCER.with(|seq| (seq.current_nav_index(), seq.state()));
+
+        let total = MISSION_STORAGE.with(|storage| storage.count());
+
+        // Map core MissionState to MAVLink MissionState enum values
+        let mission_state = match core_state {
+            MissionState::Idle => {
+                if total > 0 {
+                    mavlink::common::MissionState::MISSION_STATE_NOT_STARTED
+                } else {
+                    mavlink::common::MissionState::MISSION_STATE_NO_MISSION
+                }
+            }
+            MissionState::Running => mavlink::common::MissionState::MISSION_STATE_ACTIVE,
+            MissionState::Completed => mavlink::common::MissionState::MISSION_STATE_COMPLETE,
+        };
+
+        // mission_mode: 1 = in mission mode, 2 = suspended, 0 = unknown
+        let mission_mode = match core_state {
+            MissionState::Running => 1,
+            _ => 0,
+        };
+
+        MavMessage::MISSION_CURRENT(MISSION_CURRENT_DATA {
+            seq,
+            total,
+            mission_state,
+            mission_mode,
+            mission_id: 0,
+            fence_id: 0,
+            rally_points_id: 0,
+        })
+    }
+
+    /// Build MISSION_ITEM_REACHED message for event-driven telemetry
+    ///
+    /// Called when the sequencer emits an ItemReached event.
+    pub fn build_mission_item_reached(seq: u16) -> MavMessage {
+        MavMessage::MISSION_ITEM_REACHED(mavlink::common::MISSION_ITEM_REACHED_DATA { seq })
+    }
+
     /// Get current stream rates for debugging
     pub fn get_rates(&self) -> (u32, u32, u32, u32, u32) {
         (
@@ -707,12 +771,15 @@ mod tests {
 
         // At t=0, all messages should send (first time for all streams)
         let messages = streamer.update(&state, 0);
-        assert_eq!(messages.len(), 6); // HEARTBEAT, ATTITUDE, GPS_RAW_INT, GLOBAL_POSITION_INT, SYS_STATUS, BATTERY_STATUS
+        assert_eq!(messages.len(), 7); // HEARTBEAT, ATTITUDE, GPS_RAW_INT, GLOBAL_POSITION_INT, SYS_STATUS, BATTERY_STATUS, MISSION_CURRENT
         assert!(messages
             .iter()
             .any(|m| matches!(m, MavMessage::HEARTBEAT(_))));
+        assert!(messages
+            .iter()
+            .any(|m| matches!(m, MavMessage::MISSION_CURRENT(_))));
 
-        // At t=500ms, ATTITUDE/GPS/GLOBAL_POSITION should send (2Hz = 500ms interval)
+        // At t=500ms, ATTITUDE/GPS/GLOBAL_POSITION/BATTERY should send (2Hz = 500ms interval)
         let messages = streamer.update(&state, 500_000);
         assert_eq!(messages.len(), 4); // ATTITUDE, GPS_RAW_INT, GLOBAL_POSITION_INT, BATTERY_STATUS
         assert!(messages
@@ -725,9 +792,9 @@ mod tests {
         let mut streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
         let state = SystemState::new();
 
-        // At t=1s, HEARTBEAT, ATTITUDE, GPS, SYS_STATUS should all send
+        // At t=1s, HEARTBEAT, ATTITUDE, GPS, SYS_STATUS, MISSION_CURRENT should all send
         let messages = streamer.update(&state, 1_000_000);
-        assert!(messages.len() >= 2); // At least HEARTBEAT and SYS_STATUS (1Hz)
+        assert!(messages.len() >= 3); // At least HEARTBEAT, SYS_STATUS, MISSION_CURRENT (1Hz)
 
         // Verify HEARTBEAT is present
         assert!(messages
@@ -1186,6 +1253,33 @@ mod tests {
             assert_eq!(data.hdg, 4500);
         } else {
             panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_mission_current_idle() {
+        // Default state: no mission loaded, sequencer idle
+        let msg = TelemetryStreamer::<GroundRover>::build_mission_current();
+        if let MavMessage::MISSION_CURRENT(data) = msg {
+            assert_eq!(data.seq, 0);
+            assert_eq!(data.total, 0);
+            assert_eq!(
+                data.mission_state,
+                mavlink::common::MissionState::MISSION_STATE_NO_MISSION
+            );
+            assert_eq!(data.mission_mode, 0);
+        } else {
+            panic!("Expected MISSION_CURRENT message");
+        }
+    }
+
+    #[test]
+    fn test_build_mission_item_reached() {
+        let msg = TelemetryStreamer::<GroundRover>::build_mission_item_reached(3);
+        if let MavMessage::MISSION_ITEM_REACHED(data) = msg {
+            assert_eq!(data.seq, 3);
+        } else {
+            panic!("Expected MISSION_ITEM_REACHED message");
         }
     }
 

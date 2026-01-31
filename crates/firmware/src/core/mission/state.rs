@@ -23,6 +23,23 @@
 use super::{MissionState, MissionStorage, Waypoint};
 use crate::core::traits::{EmbassyState, SharedState};
 use crate::subsystems::navigation::PositionTarget;
+use pico_trail_core::mission::MissionSequencer;
+
+/// Queue for pending MISSION_ITEM_REACHED events
+///
+/// Auto mode pushes waypoint indices when the sequencer emits ItemReached events.
+/// The telemetry system drains this queue and converts to MAVLink messages.
+/// Protected by EmbassyState for interrupt-safe access.
+static ITEM_REACHED_QUEUE: EmbassyState<heapless::Vec<u16, 4>> =
+    EmbassyState::new(heapless::Vec::new());
+
+/// Queue for pending event-driven MISSION_CURRENT events
+///
+/// Auto mode pushes waypoint indices when the sequencer emits CurrentChanged events.
+/// The telemetry system drains this queue and builds immediate MISSION_CURRENT
+/// messages, satisfying the < 100 ms latency requirement (NFR-at4uq).
+static CURRENT_CHANGED_QUEUE: EmbassyState<heapless::Vec<u16, 4>> =
+    EmbassyState::new(heapless::Vec::new());
 
 // ============================================================================
 // Global State and Helper Functions
@@ -43,6 +60,15 @@ pub static MISSION_STATE: EmbassyState<MissionState> = EmbassyState::new(Mission
 /// Uses blocking mutex with critical sections for interrupt-safe access.
 pub static MISSION_STORAGE: EmbassyState<MissionStorage> =
     EmbassyState::new(MissionStorage::new_const());
+
+/// Global mission sequencer (protected by EmbassyState)
+///
+/// Owns mission command sequencing logic including dual-slot NAV/DO
+/// advancement, hold time management, and mission speed override.
+/// Accessed by Auto mode for mission execution and by telemetry for
+/// MISSION_CURRENT reporting.
+pub static MISSION_SEQUENCER: EmbassyState<MissionSequencer> =
+    EmbassyState::new(MissionSequencer::new());
 
 /// Get current mission state
 ///
@@ -193,6 +219,50 @@ pub fn clear_waypoints() {
 /// Returns true if added successfully, false if storage is full.
 pub fn add_waypoint(waypoint: Waypoint) -> bool {
     MISSION_STORAGE.with_mut(|storage| storage.add_waypoint(waypoint).is_ok())
+}
+
+/// Push a waypoint index into the MISSION_ITEM_REACHED queue
+///
+/// Called by Auto mode when the sequencer emits an ItemReached event.
+/// Silently drops if queue is full (4 entries max).
+pub fn push_item_reached(seq: u16) {
+    ITEM_REACHED_QUEUE.with_mut(|queue| {
+        let _ = queue.push(seq);
+    });
+}
+
+/// Drain all pending MISSION_ITEM_REACHED indices
+///
+/// Called by the telemetry system to get pending events for conversion
+/// to MAVLink MISSION_ITEM_REACHED messages.
+pub fn take_item_reached() -> heapless::Vec<u16, 4> {
+    ITEM_REACHED_QUEUE.with_mut(|queue| {
+        let result = queue.clone();
+        queue.clear();
+        result
+    })
+}
+
+/// Push a waypoint index into the CURRENT_CHANGED queue for immediate MISSION_CURRENT
+///
+/// Called by Auto mode when the sequencer emits a CurrentChanged event.
+/// Silently drops if queue is full (4 entries max).
+pub fn push_current_changed(seq: u16) {
+    CURRENT_CHANGED_QUEUE.with_mut(|queue| {
+        let _ = queue.push(seq);
+    });
+}
+
+/// Drain all pending CURRENT_CHANGED indices
+///
+/// Called by the telemetry system to get pending events for conversion
+/// to immediate MISSION_CURRENT MAVLink messages (NFR-at4uq).
+pub fn take_current_changed() -> heapless::Vec<u16, 4> {
+    CURRENT_CHANGED_QUEUE.with_mut(|queue| {
+        let result = queue.clone();
+        queue.clear();
+        result
+    })
 }
 
 // ============================================================================

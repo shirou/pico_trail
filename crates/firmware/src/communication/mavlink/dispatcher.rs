@@ -443,6 +443,33 @@ impl<V: VehicleType> MessageDispatcher<V> {
                 Vec::new()
             }
 
+            MISSION_CLEAR_ALL(data) => {
+                crate::log_info!("RX MISSION_CLEAR_ALL");
+                let ack = self.mission_handler.handle_clear_all(
+                    data,
+                    header.system_id,
+                    header.component_id,
+                );
+                let mut responses = Vec::new();
+                let _ = responses.push(MISSION_ACK(ack));
+                responses
+            }
+
+            #[allow(deprecated)]
+            MISSION_SET_CURRENT(data) => {
+                crate::log_info!("RX MISSION_SET_CURRENT: seq={}", data.seq);
+                let mut responses = Vec::new();
+                match self.mission_handler.handle_set_current(data) {
+                    Ok(current_data) => {
+                        let _ = responses.push(MISSION_CURRENT(current_data));
+                    }
+                    Err(ack) => {
+                        let _ = responses.push(MISSION_ACK(ack));
+                    }
+                }
+                responses
+            }
+
             // MISSION_WRITE_PARTIAL_LIST - partial mission update (not fully implemented)
             // Log for debugging, but don't handle yet
             MISSION_WRITE_PARTIAL_LIST(_data) => {
@@ -480,20 +507,36 @@ impl<V: VehicleType> MessageDispatcher<V> {
     ///
     /// # Returns
     ///
-    /// Vector of telemetry messages to send (max 16: HEARTBEAT, ATTITUDE, GPS, SYS_STATUS, BATTERY_STATUS, STATUSTEXT)
+    /// Vector of telemetry messages to send (max 16: HEARTBEAT, ATTITUDE, GPS,
+    /// SYS_STATUS, BATTERY_STATUS, MISSION_CURRENT, MISSION_ITEM_REACHED, STATUSTEXT)
     pub fn update_telemetry(
         &mut self,
         state: &SystemState,
         timestamp_us: u64,
     ) -> Vec<MavMessage, 16> {
         use crate::communication::mavlink::status_notifier;
+        use crate::core::mission::{take_current_changed, take_item_reached};
 
         let mut messages = Vec::new();
 
-        // Get telemetry messages (HEARTBEAT, SYS_STATUS, etc.)
+        // Get telemetry messages (HEARTBEAT, SYS_STATUS, MISSION_CURRENT, etc.)
         let telemetry_msgs = self.telemetry_streamer.update(state, timestamp_us);
         for msg in telemetry_msgs {
             let _ = messages.push(msg);
+        }
+
+        // Get pending MISSION_ITEM_REACHED events (event-driven, not periodic)
+        let reached_events = take_item_reached();
+        for seq in reached_events {
+            let _ = messages
+                .push(super::handlers::TelemetryStreamer::<V>::build_mission_item_reached(seq));
+        }
+
+        // Event-driven MISSION_CURRENT on waypoint change (NFR-at4uq: < 100ms)
+        // Coalesce multiple events to a single message with latest sequencer state
+        let current_changed = take_current_changed();
+        if !current_changed.is_empty() {
+            let _ = messages.push(super::handlers::TelemetryStreamer::<V>::build_mission_current());
         }
 
         // Get pending STATUSTEXT messages from status_notifier

@@ -1538,6 +1538,7 @@ dependencies = [
  "nalgebra",
  "nb 1.1.0",
  "nmea0183",
+ "num-traits",
  "panic-halt",
  "panic-probe",
  "pico_trail_core",
