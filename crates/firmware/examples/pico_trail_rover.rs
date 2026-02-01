@@ -1204,6 +1204,18 @@ async fn gps_task(uart: embassy_rp::uart::BufferedUart) {
     operation.poll_loop().await;
 }
 
+/// Get compass yaw offset from SYSTEM_STATE (set by MAV_CMD_FIXED_MAG_CAL_YAW)
+///
+/// Returns the offset in radians, applied to AHRS yaw for heading correction.
+#[cfg(feature = "pico2_w")]
+fn get_compass_yaw_offset() -> f32 {
+    use pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE;
+    critical_section::with(|cs| {
+        let state = SYSTEM_STATE.borrow_ref(cs);
+        state.compass_yaw_offset
+    })
+}
+
 /// Navigation task
 ///
 /// Reads GPS position from SYSTEM_STATE and navigation target from MISSION_STORAGE,
@@ -1226,14 +1238,16 @@ async fn navigation_task() {
 
     let mut controller = SimpleNavigationController::new();
 
-    // Create fused heading source with AHRS + GPS COG
-    // Uses GPS COG when moving (>1.0 m/s), AHRS yaw when stationary
-    let heading_source = FusedHeadingSource::with_defaults(
+    // Create fused heading source with AHRS + GPS COG + compass yaw offset
+    // Uses GPS COG when moving (>1.0 m/s), AHRS yaw (corrected by compass offset) when stationary
+    let heading_source = FusedHeadingSource::new(
         &pico_trail_firmware::subsystems::ahrs::AHRS_STATE,
         get_gps_position,
+        FusedHeadingSource::DEFAULT_SPEED_THRESHOLD,
+        get_compass_yaw_offset,
     );
     pico_trail_firmware::log_info!(
-        "Heading source initialized (AHRS + GPS COG, threshold=1.0 m/s)"
+        "Heading source initialized (AHRS + GPS COG, threshold=1.0 m/s, with compass offset)"
     );
 
     loop {
