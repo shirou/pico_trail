@@ -157,6 +157,7 @@ impl<V: VehicleType> MessageDispatcher<V> {
                     header.system_id,
                     header.component_id,
                 );
+                let ack_result = ack.result;
                 let mut responses = Vec::new();
                 let _ = responses.push(COMMAND_ACK(ack));
                 // Add any additional messages (HEARTBEAT, STATUSTEXT, etc.)
@@ -186,6 +187,27 @@ impl<V: VehicleType> MessageDispatcher<V> {
                 #[allow(deprecated)]
                 if data.command == MavCmd::MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES {
                     let _ = responses.push(TelemetryStreamer::<V>::build_autopilot_version());
+                }
+
+                // Persist COMPASS_DEC after successful MagCal calibration
+                if data.command == MavCmd::MAV_CMD_FIXED_MAG_CAL_YAW
+                    && ack_result == mavlink::common::MavResult::MAV_RESULT_ACCEPTED
+                {
+                    let offset = critical_section::with(|cs| {
+                        super::state::SYSTEM_STATE.borrow_ref(cs).compass_yaw_offset
+                    });
+                    let store = self.param_handler.store_mut();
+                    if store
+                        .set(
+                            "COMPASS_DEC",
+                            crate::parameters::storage::ParamValue::Float(offset),
+                        )
+                        .is_ok()
+                    {
+                        crate::log_info!("COMPASS_DEC saved: {} rad", offset);
+                    } else {
+                        crate::log_warn!("Failed to save COMPASS_DEC");
+                    }
                 }
 
                 responses

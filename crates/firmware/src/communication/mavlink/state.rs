@@ -546,9 +546,11 @@ impl SystemState {
     pub fn from_param_store(param_store: &crate::parameters::storage::ParameterStore) -> Self {
         use crate::parameters::arming::ArmingParams;
         use crate::parameters::battery::BatteryParams;
+        use crate::parameters::compass::CompassParams;
 
         let arming_params = ArmingParams::from_store(param_store);
         let battery_params = BatteryParams::from_store(param_store);
+        let compass_params = CompassParams::from_store(param_store);
 
         Self {
             armed: ArmedState::Disarmed,
@@ -563,7 +565,7 @@ impl SystemState {
             arming_checks: arming_params.check_bitmask as u16,
             battery_volt_mult: battery_params.volt_mult,
             battery_arm_volt: battery_params.arm_voltage,
-            compass_yaw_offset: 0.0,
+            compass_yaw_offset: compass_params.declination,
         }
     }
 
@@ -1262,5 +1264,30 @@ mod tests {
         // 2S battery: Values below 6.0V empty should clamp to 0
         let remaining = BatteryState::estimate_remaining_percent(5.5);
         assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn test_from_param_store_compass_yaw_offset_default() {
+        use crate::parameters::storage::ParameterStore;
+
+        let mut store = ParameterStore::default();
+        crate::parameters::compass::CompassParams::register_defaults(&mut store).unwrap();
+
+        let state = SystemState::from_param_store(&store);
+        assert_eq!(state.compass_yaw_offset, 0.0);
+    }
+
+    #[test]
+    fn test_from_param_store_compass_yaw_offset_calibrated() {
+        use crate::parameters::storage::{ParamValue, ParameterStore};
+
+        let mut store = ParameterStore::default();
+        crate::parameters::compass::CompassParams::register_defaults(&mut store).unwrap();
+
+        // Simulate a previously calibrated offset (0.126 rad ≈ 7.2°)
+        store.set("COMPASS_DEC", ParamValue::Float(0.126)).unwrap();
+
+        let state = SystemState::from_param_store(&store);
+        assert!((state.compass_yaw_offset - 0.126).abs() < f32::EPSILON);
     }
 }

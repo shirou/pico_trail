@@ -154,3 +154,15 @@ impl From<FlashError> for PlatformError {
         PlatformError::Flash(error)
     }
 }
+
+impl From<pico_trail_core::parameters::ParameterError> for PlatformError {
+    fn from(e: pico_trail_core::parameters::ParameterError) -> Self {
+        match e {
+            pico_trail_core::parameters::ParameterError::InvalidConfig => {
+                PlatformError::InvalidConfig
+            }
+            pico_trail_core::parameters::ParameterError::StoreFull => PlatformError::InvalidConfig,
+            pico_trail_core::parameters::ParameterError::ReadOnly => PlatformError::InvalidConfig,
+        }
+    }
+}

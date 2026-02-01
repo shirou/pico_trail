@@ -14,9 +14,27 @@
 //! - https://ardupilot.org/rover/docs/circle-mode.html
 //! - https://ardupilot.org/rover/docs/parameters.html
 
+use super::error::ParameterError;
 use super::storage::{ParamFlags, ParamValue, ParameterStore};
-use crate::platform::Result;
-use crate::rover::mode::circle::CircleDirection;
+
+/// Circle orbit direction
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CircleDirection {
+    /// Clockwise orbit (0 in CIRC_DIR parameter)
+    #[default]
+    Clockwise,
+    /// Counter-clockwise orbit (1 in CIRC_DIR parameter)
+    CounterClockwise,
+}
+
+impl From<i8> for CircleDirection {
+    fn from(value: i8) -> Self {
+        match value {
+            0 => CircleDirection::Clockwise,
+            _ => CircleDirection::CounterClockwise,
+        }
+    }
+}
 
 /// Default circle radius in meters
 const DEFAULT_RADIUS: f32 = 20.0;
@@ -58,7 +76,7 @@ impl CircleParams {
     /// # Returns
     ///
     /// Ok if all parameters registered successfully
-    pub fn register_defaults(store: &mut ParameterStore) -> Result<()> {
+    pub fn register_defaults(store: &mut ParameterStore) -> Result<(), ParameterError> {
         // CIRC_RADIUS - Default to 20.0 meters
         store.register(
             "CIRC_RADIUS",

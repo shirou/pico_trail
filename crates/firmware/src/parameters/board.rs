@@ -167,7 +167,7 @@ mod tests {
     #[test]
     fn test_register_defaults() {
         let mut flash = MockFlash::new();
-        let mut store = ParameterStore::load_from_flash(&mut flash).unwrap_or_default();
+        let mut store = super::storage::load_from_flash(&mut flash).unwrap_or_default();
 
         // Register board pin parameters
         let result = BoardParams::register_defaults(&mut store);
@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn test_idempotent_registration() {
         let mut flash = MockFlash::new();
-        let mut store = ParameterStore::load_from_flash(&mut flash).unwrap_or_default();
+        let mut store = super::storage::load_from_flash(&mut flash).unwrap_or_default();
 
         // Register twice
         BoardParams::register_defaults(&mut store).unwrap();

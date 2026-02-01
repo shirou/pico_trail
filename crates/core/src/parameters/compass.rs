@@ -7,6 +7,7 @@
 //! - `COMPASS_OFS_X` - Compass X-axis offset
 //! - `COMPASS_OFS_Y` - Compass Y-axis offset
 //! - `COMPASS_OFS_Z` - Compass Z-axis offset
+//! - `COMPASS_DEC` - Compass declination / yaw offset in radians
 //!
 //! # Purpose
 //!
@@ -20,8 +21,8 @@
 //! These parameters match ArduPilot's standard compass parameters:
 //! - https://ardupilot.org/rover/docs/parameters.html#compass-ofs-x-compass-offsets-in-milligauss-on-the-x-axis
 
+use super::error::ParameterError;
 use super::storage::{ParamFlags, ParamValue, ParameterStore};
-use crate::platform::Result;
 
 /// Compass calibration configuration
 #[derive(Debug, Clone, Copy)]
@@ -32,6 +33,8 @@ pub struct CompassParams {
     pub ofs_y: f32,
     /// Z-axis offset in milligauss
     pub ofs_z: f32,
+    /// Compass declination / yaw offset in radians (COMPASS_DEC)
+    pub declination: f32,
 }
 
 impl Default for CompassParams {
@@ -40,6 +43,7 @@ impl Default for CompassParams {
             ofs_x: 0.0,
             ofs_y: 0.0,
             ofs_z: 0.0,
+            declination: 0.0,
         }
     }
 }
@@ -54,7 +58,7 @@ impl CompassParams {
     /// # Returns
     ///
     /// Ok if all parameters registered successfully
-    pub fn register_defaults(store: &mut ParameterStore) -> Result<()> {
+    pub fn register_defaults(store: &mut ParameterStore) -> Result<(), ParameterError> {
         // COMPASS_OFS_X - X-axis offset (required by Mission Planner)
         let _ = store.register("COMPASS_OFS_X", ParamValue::Float(0.0), ParamFlags::empty());
 
@@ -63,6 +67,9 @@ impl CompassParams {
 
         // COMPASS_OFS_Z - Z-axis offset
         let _ = store.register("COMPASS_OFS_Z", ParamValue::Float(0.0), ParamFlags::empty());
+
+        // COMPASS_DEC - Compass declination / yaw offset in radians
+        let _ = store.register("COMPASS_DEC", ParamValue::Float(0.0), ParamFlags::empty());
 
         Ok(())
     }
@@ -90,6 +97,10 @@ impl CompassParams {
                 Some(ParamValue::Float(v)) => *v,
                 _ => 0.0,
             },
+            declination: match store.get("COMPASS_DEC") {
+                Some(ParamValue::Float(v)) => *v,
+                _ => 0.0,
+            },
         }
     }
 }
@@ -104,6 +115,7 @@ mod tests {
         assert_eq!(params.ofs_x, 0.0);
         assert_eq!(params.ofs_y, 0.0);
         assert_eq!(params.ofs_z, 0.0);
+        assert_eq!(params.declination, 0.0);
     }
 
     #[test]
@@ -114,6 +126,7 @@ mod tests {
         assert!(store.get("COMPASS_OFS_X").is_some());
         assert!(store.get("COMPASS_OFS_Y").is_some());
         assert!(store.get("COMPASS_OFS_Z").is_some());
+        assert!(store.get("COMPASS_DEC").is_some());
     }
 
     #[test]
@@ -130,5 +143,34 @@ mod tests {
         assert_eq!(params.ofs_x, 10.5);
         assert_eq!(params.ofs_y, -5.0);
         assert_eq!(params.ofs_z, 3.2);
+    }
+
+    #[test]
+    fn test_from_store_declination_default() {
+        let mut store = ParameterStore::default();
+        CompassParams::register_defaults(&mut store).unwrap();
+
+        let params = CompassParams::from_store(&store);
+        assert_eq!(params.declination, 0.0);
+    }
+
+    #[test]
+    fn test_from_store_declination_custom() {
+        let mut store = ParameterStore::default();
+        CompassParams::register_defaults(&mut store).unwrap();
+
+        // 0.126 rad ≈ 7.2°
+        store.set("COMPASS_DEC", ParamValue::Float(0.126)).unwrap();
+
+        let params = CompassParams::from_store(&store);
+        assert!((params.declination - 0.126).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_from_store_declination_not_registered() {
+        let store = ParameterStore::default();
+
+        let params = CompassParams::from_store(&store);
+        assert_eq!(params.declination, 0.0);
     }
 }

@@ -68,7 +68,7 @@ impl ParamHandler {
     /// Returns a new parameter handler with default parameters registered.
     pub fn new<F: FlashInterface>(flash: &mut F) -> Self {
         // Load parameters from Flash (or create empty store if no valid blocks)
-        let mut store = ParameterStore::load_from_flash(flash).unwrap_or_default();
+        let mut store = crate::parameters::storage::load_from_flash(flash).unwrap_or_default();
 
         // Register WiFi parameters with defaults (only if not already loaded)
         let _ = crate::parameters::WifiParams::register_defaults(&mut store);
@@ -418,8 +418,7 @@ impl ParamHandler {
         &mut self,
         flash: &mut F,
     ) -> Result<(), ParamHandlerError> {
-        self.store
-            .save_to_flash(flash)
+        crate::parameters::storage::save_to_flash(&mut self.store, flash)
             .map_err(|_| ParamHandlerError::StoreError)
     }
 }

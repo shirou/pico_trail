@@ -13,8 +13,8 @@
 //! - https://ardupilot.org/rover/docs/loiter-mode.html
 //! - https://ardupilot.org/rover/docs/parameters.html
 
+use super::error::ParameterError;
 use super::storage::{ParamFlags, ParamValue, ParameterStore};
-use crate::platform::Result;
 
 /// Default loiter type (0 = stop motors)
 const DEFAULT_TYPE: i32 = 0;
@@ -56,7 +56,7 @@ impl LoiterParams {
     /// # Returns
     ///
     /// Ok if all parameters registered successfully
-    pub fn register_defaults(store: &mut ParameterStore) -> Result<()> {
+    pub fn register_defaults(store: &mut ParameterStore) -> Result<(), ParameterError> {
         // LOIT_TYPE - Default to 0 (stop motors)
         store.register(
             "LOIT_TYPE",

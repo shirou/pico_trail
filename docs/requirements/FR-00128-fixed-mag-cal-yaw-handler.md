@@ -16,11 +16,13 @@
   - [FR-00076-gps-operation-data-management](FR-00076-gps-operation-data-management.md)
 - Dependent Requirements:
   - [FR-00129-magcal-gps-validation](FR-00129-magcal-gps-validation.md)
+  - [FR-00141-compass-yaw-offset-persistence](FR-00141-compass-yaw-offset-persistence.md)
   - [NFR-00087-magcal-response-time](NFR-00087-magcal-response-time.md)
 - Related ADRs:
   - N/A - To be created after approval
 - Related Tasks:
   - [T-00034-compass-calibration](../tasks/T-00034-compass-calibration/README.md)
+  - [T-00040-compass-yaw-offset-persistence](../tasks/T-00040-compass-yaw-offset-persistence/README.md)
 
 ## Requirement Statement
 
@@ -43,13 +45,13 @@ As an operator using Mission Planner, I want to use the Large Vehicle MagCal fea
 
 ## Acceptance Criteria
 
-- [ ] Handle `MAV_CMD_FIXED_MAG_CAL_YAW` (command ID 42006) in command dispatcher
-- [ ] Validate GPS fix is available before accepting command
-- [ ] Return `MAV_RESULT_ACCEPTED` when GPS fix available
-- [ ] Return `MAV_RESULT_DENIED` when GPS fix unavailable
-- [ ] Send STATUSTEXT message indicating calibration result
-- [ ] Log the provided yaw angle for debugging purposes
-- [ ] Extract yaw parameter (param1) from command
+- [x] Handle `MAV_CMD_FIXED_MAG_CAL_YAW` (command ID 42006) in command dispatcher
+- [x] Validate GPS fix is available before accepting command
+- [x] Return `MAV_RESULT_ACCEPTED` when GPS fix available
+- [x] Return `MAV_RESULT_DENIED` when GPS fix unavailable
+- [x] Send STATUSTEXT message indicating calibration result
+- [x] Log the provided yaw angle for debugging purposes
+- [x] Extract yaw parameter (param1) from command
 
 ## Technical Details (if applicable)
 

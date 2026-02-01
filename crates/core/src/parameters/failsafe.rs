@@ -15,8 +15,8 @@
 //! - https://ardupilot.org/rover/docs/parameters.html#fs-timeout
 //! - https://ardupilot.org/rover/docs/parameters.html#fs-gcs-enable
 
+use super::error::ParameterError;
 use super::storage::{ParamFlags, ParamValue, ParameterStore};
-use crate::platform::Result;
 
 /// Failsafe actions (ArduPilot compatible)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +52,7 @@ impl FailsafeParams {
     /// # Returns
     ///
     /// Ok if all parameters registered successfully
-    pub fn register_defaults(store: &mut ParameterStore) -> Result<()> {
+    pub fn register_defaults(store: &mut ParameterStore) -> Result<(), ParameterError> {
         // FS_ACTION - Default to Hold (1)
         store.register(
             "FS_ACTION",
@@ -124,5 +124,43 @@ mod tests {
 
         assert!(params.is_configured());
         assert!(params.gcs_enable);
+    }
+
+    #[test]
+    fn test_register_defaults() {
+        let mut store = ParameterStore::new();
+        FailsafeParams::register_defaults(&mut store).unwrap();
+
+        assert!(store.get("FS_ACTION").is_some());
+        assert!(store.get("FS_TIMEOUT").is_some());
+        assert!(store.get("FS_GCS_ENABLE").is_some());
+    }
+
+    #[test]
+    fn test_from_store_defaults() {
+        let mut store = ParameterStore::new();
+        FailsafeParams::register_defaults(&mut store).unwrap();
+
+        let params = FailsafeParams::from_store(&store);
+        assert_eq!(params.action, FailsafeAction::Hold as u8);
+        assert!((params.timeout - 5.0).abs() < f32::EPSILON);
+        assert!(params.gcs_enable);
+    }
+
+    #[test]
+    fn test_from_store_custom_values() {
+        let mut store = ParameterStore::new();
+        FailsafeParams::register_defaults(&mut store).unwrap();
+
+        store
+            .set("FS_ACTION", ParamValue::Int(FailsafeAction::RTL as i32))
+            .unwrap();
+        store.set("FS_TIMEOUT", ParamValue::Float(10.0)).unwrap();
+        store.set("FS_GCS_ENABLE", ParamValue::Int(0)).unwrap();
+
+        let params = FailsafeParams::from_store(&store);
+        assert_eq!(params.action, FailsafeAction::RTL as u8);
+        assert!((params.timeout - 10.0).abs() < f32::EPSILON);
+        assert!(!params.gcs_enable);
     }
 }

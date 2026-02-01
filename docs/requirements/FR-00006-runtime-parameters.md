@@ -15,3 +15,5 @@
   - [FR-00113-circle-mode-parameters](FR-00113-circle-mode-parameters.md)
   - [FR-00037-failsafe-parameters](FR-00037-failsafe-parameters.md)
   - [FR-00100-imu-calibration-interface](FR-00100-imu-calibration-interface.md)
+  - [FR-00141-compass-yaw-offset-persistence](FR-00141-compass-yaw-offset-persistence.md)
+  - [FR-00142-parameter-store-host-testable](FR-00142-parameter-store-host-testable.md)

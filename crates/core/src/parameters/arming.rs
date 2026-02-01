@@ -12,26 +12,9 @@
 //! These parameters match ArduPilot's standard arming parameters:
 //! - https://ardupilot.org/rover/docs/parameters.html#arming-check-arm-checks-to-perform
 //! - https://ardupilot.org/rover/docs/parameters.html#arming-options-arming-options
-//!
-//! # Example
-//!
-//! ```no_run
-//! use pico_trail::parameters::{ParameterStore, ParamValue};
-//! use pico_trail::parameters::arming::ArmingParams;
-//! use pico_trail::platform::rp2350::Rp2350Flash;
-//!
-//! let mut flash = Rp2350Flash::new();
-//! let mut store = ParameterStore::load_from_flash(&mut flash).unwrap();
-//!
-//! // Register arming parameters with defaults
-//! ArmingParams::register_defaults(&mut store);
-//!
-//! // Load arming configuration
-//! let arming_config = ArmingParams::from_store(&store);
-//! ```
 
+use super::error::ParameterError;
 use super::storage::{ParamFlags, ParamValue, ParameterStore};
-use crate::platform::Result;
 
 /// ARMING_CHECK bit definitions (ArduPilot compatible)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,7 +95,7 @@ impl ArmingParams {
     /// # Returns
     ///
     /// Ok if all parameters registered successfully
-    pub fn register_defaults(store: &mut ParameterStore) -> Result<()> {
+    pub fn register_defaults(store: &mut ParameterStore) -> Result<(), ParameterError> {
         // ARMING_CHECK - Default to basic safety checks
         store.register(
             "ARMING_CHECK",
@@ -263,5 +246,63 @@ mod tests {
 
         assert!(params.is_option_enabled(ArmingOptionsBits::REQUIRE_GPS));
         assert!(!params.is_option_enabled(ArmingOptionsBits::DISABLE_PREARM));
+    }
+
+    #[test]
+    fn test_register_defaults() {
+        let mut store = ParameterStore::new();
+        ArmingParams::register_defaults(&mut store).unwrap();
+
+        assert!(store.get("ARMING_CHECK").is_some());
+        assert!(store.get("ARMING_OPTIONS").is_some());
+        assert!(store.get("ARMING_REQUIRE").is_some());
+        assert!(store.get("ARMING_ACCTHRESH").is_some());
+        assert!(store.get("ARMING_RUDDER").is_some());
+    }
+
+    #[test]
+    fn test_from_store_defaults() {
+        let mut store = ParameterStore::new();
+        ArmingParams::register_defaults(&mut store).unwrap();
+
+        let params = ArmingParams::from_store(&store);
+        assert_eq!(params.check_bitmask, ArmingCheckBits::DEFAULT);
+        assert_eq!(params.options_bitmask, ArmingOptionsBits::NONE);
+        assert!(params.require);
+        assert!((params.acc_threshold - 0.75).abs() < f32::EPSILON);
+        assert_eq!(params.rudder, ArmingRudder::ArmOrDisarm as u8);
+    }
+
+    #[test]
+    fn test_from_store_custom_values() {
+        let mut store = ParameterStore::new();
+        ArmingParams::register_defaults(&mut store).unwrap();
+
+        store
+            .set("ARMING_CHECK", ParamValue::Int(ArmingCheckBits::ALL as i32))
+            .unwrap();
+        store
+            .set(
+                "ARMING_OPTIONS",
+                ParamValue::Int(ArmingOptionsBits::REQUIRE_GPS as i32),
+            )
+            .unwrap();
+        store.set("ARMING_REQUIRE", ParamValue::Int(0)).unwrap();
+        store
+            .set("ARMING_ACCTHRESH", ParamValue::Float(1.5))
+            .unwrap();
+        store
+            .set(
+                "ARMING_RUDDER",
+                ParamValue::Int(ArmingRudder::Disabled as i32),
+            )
+            .unwrap();
+
+        let params = ArmingParams::from_store(&store);
+        assert_eq!(params.check_bitmask, ArmingCheckBits::ALL);
+        assert_eq!(params.options_bitmask, ArmingOptionsBits::REQUIRE_GPS);
+        assert!(!params.require);
+        assert!((params.acc_threshold - 1.5).abs() < f32::EPSILON);
+        assert_eq!(params.rudder, ArmingRudder::Disabled as u8);
     }
 }

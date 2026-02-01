@@ -21,8 +21,8 @@
 //! - https://ardupilot.org/rover/docs/parameters.html#batt-fs-crt-act
 //! - https://ardupilot.org/rover/docs/parameters.html#batt-volt-mult
 
+use super::error::ParameterError;
 use super::storage::{ParamFlags, ParamValue, ParameterStore};
-use crate::platform::Result;
 
 /// Battery failsafe actions (ArduPilot compatible)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,7 +77,7 @@ impl BatteryParams {
     /// # Returns
     ///
     /// Ok if all parameters registered successfully
-    pub fn register_defaults(store: &mut ParameterStore) -> Result<()> {
+    pub fn register_defaults(store: &mut ParameterStore) -> Result<(), ParameterError> {
         // BATT_ARM_VOLT - Default to 5.0V (minimum voltage to arm)
         store.register("BATT_ARM_VOLT", ParamValue::Float(5.0), ParamFlags::empty())?;
 
@@ -224,7 +224,7 @@ mod tests {
 
     #[test]
     fn test_battery_params_low_voltage_validation() {
-        // LOW disabled (0.0) → valid
+        // LOW disabled (0.0) -> valid
         let params = BatteryParams {
             arm_voltage: 5.0,
             critical_voltage: 3.0,
@@ -235,7 +235,7 @@ mod tests {
         };
         assert!(params.is_configured());
 
-        // LOW > CRT → valid
+        // LOW > CRT -> valid
         let params = BatteryParams {
             arm_voltage: 5.0,
             critical_voltage: 3.0,
@@ -246,7 +246,7 @@ mod tests {
         };
         assert!(params.is_configured());
 
-        // LOW <= CRT → invalid
+        // LOW <= CRT -> invalid
         let params = BatteryParams {
             arm_voltage: 5.0,
             critical_voltage: 3.0,
@@ -256,5 +256,63 @@ mod tests {
             volt_mult: 3.95,
         };
         assert!(!params.is_configured());
+    }
+
+    #[test]
+    fn test_register_defaults() {
+        let mut store = ParameterStore::new();
+        BatteryParams::register_defaults(&mut store).unwrap();
+
+        assert!(store.get("BATT_ARM_VOLT").is_some());
+        assert!(store.get("BATT_CRT_VOLT").is_some());
+        assert!(store.get("BATT_FS_CRT_ACT").is_some());
+        assert!(store.get("BATT_LOW_VOLT").is_some());
+        assert!(store.get("BATT_FS_LOW_ACT").is_some());
+        assert!(store.get("BATT_VOLT_MULT").is_some());
+    }
+
+    #[test]
+    fn test_from_store_defaults() {
+        let mut store = ParameterStore::new();
+        BatteryParams::register_defaults(&mut store).unwrap();
+
+        let params = BatteryParams::from_store(&store);
+        assert!((params.arm_voltage - 5.0).abs() < f32::EPSILON);
+        assert!((params.critical_voltage - 3.0).abs() < f32::EPSILON);
+        assert_eq!(params.critical_action, BatteryFailsafeAction::Hold as u8);
+        assert!((params.low_voltage - 0.0).abs() < f32::EPSILON);
+        assert_eq!(params.low_action, BatteryFailsafeAction::None as u8);
+        assert!((params.volt_mult - 3.95).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_from_store_custom_values() {
+        let mut store = ParameterStore::new();
+        BatteryParams::register_defaults(&mut store).unwrap();
+
+        store.set("BATT_ARM_VOLT", ParamValue::Float(6.0)).unwrap();
+        store.set("BATT_CRT_VOLT", ParamValue::Float(3.5)).unwrap();
+        store
+            .set(
+                "BATT_FS_CRT_ACT",
+                ParamValue::Int(BatteryFailsafeAction::RTL as i32),
+            )
+            .unwrap();
+        store.set("BATT_LOW_VOLT", ParamValue::Float(4.0)).unwrap();
+        store
+            .set(
+                "BATT_FS_LOW_ACT",
+                ParamValue::Int(BatteryFailsafeAction::Hold as i32),
+            )
+            .unwrap();
+        store.set("BATT_VOLT_MULT", ParamValue::Float(4.2)).unwrap();
+
+        let params = BatteryParams::from_store(&store);
+        assert!((params.arm_voltage - 6.0).abs() < f32::EPSILON);
+        assert!((params.critical_voltage - 3.5).abs() < f32::EPSILON);
+        assert_eq!(params.critical_action, BatteryFailsafeAction::RTL as u8);
+        assert!((params.low_voltage - 4.0).abs() < f32::EPSILON);
+        assert_eq!(params.low_action, BatteryFailsafeAction::Hold as u8);
+        assert!((params.volt_mult - 4.2).abs() < f32::EPSILON);
     }
 }

@@ -16,8 +16,8 @@
 //! **IMPORTANT**: String parameters (NET_SSID, NET_PASS) cannot be transmitted via
 //! standard MAVLink PARAM_VALUE messages, which only support float/int types.
 //!
-//! - ❌ `NET_SSID` and `NET_PASS` will NOT appear in QGroundControl/Mission Planner
-//! - ✅ Other parameters (DHCP, IP, etc.) are visible and configurable via GCS
+//! - NET_SSID and NET_PASS will NOT appear in QGroundControl/Mission Planner
+//! - Other parameters (DHCP, IP, etc.) are visible and configurable via GCS
 //! - **Recommended**: Configure SSID/password via `.env` file at build time
 //!
 //! Future enhancement: Implement PARAM_EXT_* messages (MAVLink 2.0) for String support.
@@ -26,26 +26,9 @@
 //!
 //! NET_PASS is marked as HIDDEN, preventing readout via MAVLink PARAM_REQUEST_READ.
 //! However, the password is still stored in Flash and can be extracted from firmware binary.
-//!
-//! # Example
-//!
-//! ```no_run
-//! use pico_trail::parameters::{ParameterStore, ParamValue};
-//! use pico_trail::parameters::wifi::WifiParams;
-//! use pico_trail::platform::rp2350::Rp2350Flash;
-//!
-//! let mut flash = Rp2350Flash::new();
-//! let mut store = ParameterStore::load_from_flash(&mut flash).unwrap();
-//!
-//! // Register WiFi parameters with defaults
-//! WifiParams::register_defaults(&mut store);
-//!
-//! // Load WiFi configuration
-//! let wifi_config = WifiParams::from_store(&store);
-//! ```
 
+use super::error::ParameterError;
 use super::storage::{ParamFlags, ParamValue, ParameterStore};
-use crate::platform::Result;
 use heapless::String;
 
 /// Maximum SSID length (IEEE 802.11 standard)
@@ -92,14 +75,14 @@ impl WifiParams {
     /// # Returns
     ///
     /// Ok if all parameters registered successfully
-    pub fn register_defaults(store: &mut ParameterStore) -> Result<()> {
+    pub fn register_defaults(store: &mut ParameterStore) -> Result<(), ParameterError> {
         // Load defaults from build-time environment variables
-        let default_ssid = env!("NET_SSID");
-        let default_password = env!("NET_PASS");
-        let default_dhcp = env!("NET_DHCP");
-        let default_ip = env!("NET_IP");
-        let default_netmask = env!("NET_NETMASK");
-        let default_gateway = env!("NET_GATEWAY");
+        let default_ssid = option_env!("NET_SSID").unwrap_or("");
+        let default_password = option_env!("NET_PASS").unwrap_or("");
+        let default_dhcp = option_env!("NET_DHCP").unwrap_or("true");
+        let default_ip = option_env!("NET_IP").unwrap_or("0.0.0.0");
+        let default_netmask = option_env!("NET_NETMASK").unwrap_or("255.255.255.0");
+        let default_gateway = option_env!("NET_GATEWAY").unwrap_or("0.0.0.0");
 
         // NET_SSID - WiFi network name (from env or empty)
         let ssid_value = if default_ssid.is_empty() {
@@ -314,6 +297,25 @@ mod tests {
         assert_eq!(params.password.as_str(), "password123");
         assert!(!params.use_dhcp);
         assert_eq!(params.static_ip, [192, 168, 1, 100]);
+    }
+
+    #[test]
+    fn test_wifi_params_from_store_defaults_roundtrip() {
+        let mut store = ParameterStore::new();
+        WifiParams::register_defaults(&mut store).unwrap();
+
+        // Verify all 6 parameters were registered
+        assert!(store.get("NET_SSID").is_some());
+        assert!(store.get("NET_PASS").is_some());
+        assert!(store.get("NET_DHCP").is_some());
+        assert!(store.get("NET_IP").is_some());
+        assert!(store.get("NET_NETMASK").is_some());
+        assert!(store.get("NET_GATEWAY").is_some());
+
+        // Verify from_store reads back without panic
+        let params = WifiParams::from_store(&store);
+        // Netmask default is always 255.255.255.0 regardless of env
+        assert_eq!(params.netmask, [255, 255, 255, 0]);
     }
 
     #[test]

@@ -14,10 +14,12 @@
 - Related Requirements:
   - [FR-00128-fixed-mag-cal-yaw-handler](../requirements/FR-00128-fixed-mag-cal-yaw-handler.md)
   - [FR-00102-large-vehicle-magcal](../requirements/FR-00102-large-vehicle-magcal.md)
+  - [FR-00141-compass-yaw-offset-persistence](../requirements/FR-00141-compass-yaw-offset-persistence.md)
 - Related ADRs:
-  - N/A
+  - [ADR-00035-compass-yaw-offset-calibration](../adr/ADR-00035-compass-yaw-offset-calibration.md)
 - Related Tasks:
   - [T-00034-compass-calibration](../tasks/T-00034-compass-calibration/README.md)
+  - [T-00040-compass-yaw-offset-persistence](../tasks/T-00040-compass-yaw-offset-persistence/README.md)
 
 ## Executive Summary
 

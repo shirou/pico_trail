@@ -13,8 +13,8 @@
 //! - https://ardupilot.org/rover/docs/parameters.html#fence-autoenable
 //! - https://ardupilot.org/rover/docs/parameters.html#fence-action
 
+use super::error::ParameterError;
 use super::storage::{ParamFlags, ParamValue, ParameterStore};
-use crate::platform::Result;
 
 /// Fence auto-enable modes (ArduPilot compatible)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,7 +59,7 @@ impl FenceParams {
     /// # Returns
     ///
     /// Ok if all parameters registered successfully
-    pub fn register_defaults(store: &mut ParameterStore) -> Result<()> {
+    pub fn register_defaults(store: &mut ParameterStore) -> Result<(), ParameterError> {
         // FENCE_AUTOENABLE - Default to EnableOnArm (1)
         store.register(
             "FENCE_AUTOENABLE",
@@ -129,5 +129,45 @@ mod tests {
 
         assert!(params.should_auto_enable());
         assert!(params.is_configured());
+    }
+
+    #[test]
+    fn test_register_defaults() {
+        let mut store = ParameterStore::new();
+        FenceParams::register_defaults(&mut store).unwrap();
+
+        assert!(store.get("FENCE_AUTOENABLE").is_some());
+        assert!(store.get("FENCE_ACTION").is_some());
+    }
+
+    #[test]
+    fn test_from_store_defaults() {
+        let mut store = ParameterStore::new();
+        FenceParams::register_defaults(&mut store).unwrap();
+
+        let params = FenceParams::from_store(&store);
+        assert_eq!(params.auto_enable, FenceAutoEnable::EnableOnArm as u8);
+        assert_eq!(params.action, FenceAction::RTL as u8);
+    }
+
+    #[test]
+    fn test_from_store_custom_values() {
+        let mut store = ParameterStore::new();
+        FenceParams::register_defaults(&mut store).unwrap();
+
+        store
+            .set(
+                "FENCE_AUTOENABLE",
+                ParamValue::Int(FenceAutoEnable::Disabled as i32),
+            )
+            .unwrap();
+        store
+            .set("FENCE_ACTION", ParamValue::Int(FenceAction::Hold as i32))
+            .unwrap();
+
+        let params = FenceParams::from_store(&store);
+        assert_eq!(params.auto_enable, FenceAutoEnable::Disabled as u8);
+        assert_eq!(params.action, FenceAction::Hold as u8);
+        assert!(!params.should_auto_enable());
     }
 }

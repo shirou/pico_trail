@@ -30,24 +30,8 @@ use crate::subsystems::navigation::{
     SimpleNavigationController,
 };
 
-/// Circle orbit direction
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum CircleDirection {
-    /// Clockwise orbit (0 in CIRC_DIR parameter)
-    #[default]
-    Clockwise,
-    /// Counter-clockwise orbit (1 in CIRC_DIR parameter)
-    CounterClockwise,
-}
-
-impl From<i8> for CircleDirection {
-    fn from(value: i8) -> Self {
-        match value {
-            0 => CircleDirection::Clockwise,
-            _ => CircleDirection::CounterClockwise,
-        }
-    }
-}
+// CircleDirection is defined in core and re-exported via crate::parameters::circle
+pub use pico_trail_core::parameters::circle::CircleDirection;
 
 /// Circle mode state
 #[derive(Clone, Copy, Debug)]

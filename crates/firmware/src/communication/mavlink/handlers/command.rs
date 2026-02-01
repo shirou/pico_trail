@@ -503,7 +503,7 @@ impl<V: VehicleType> CommandHandler<V> {
     /// that cannot be rotated. Requires valid 3D GPS fix to determine true heading.
     ///
     /// # Parameters
-    /// - param1: Yaw angle in degrees (0-360, magnetic north = 0)
+    /// - param1: Yaw angle in degrees (0-360, true north = 0)
     /// - param2: CompassMask (bitmask of compasses to calibrate)
     /// - param3: Latitude (optional)
     /// - param4: Longitude (optional)

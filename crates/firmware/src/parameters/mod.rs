@@ -52,24 +52,33 @@
 //! - **Redundancy**: Multiple Flash blocks for reliability
 //! - **CRC Validation**: Data integrity checking
 
-pub mod arming;
-pub mod battery;
 pub mod board;
-pub mod circle;
-pub mod compass;
-pub mod failsafe;
-pub mod fence;
-pub mod loiter;
 pub mod storage;
-pub mod wifi;
 
-pub use arming::ArmingParams;
-pub use battery::BatteryParams;
+// Re-export core parameter group modules (moved from firmware to core)
+pub use pico_trail_core::parameters::arming;
+pub use pico_trail_core::parameters::battery;
+pub use pico_trail_core::parameters::circle;
+pub use pico_trail_core::parameters::compass;
+pub use pico_trail_core::parameters::failsafe;
+pub use pico_trail_core::parameters::fence;
+pub use pico_trail_core::parameters::loiter;
+pub use pico_trail_core::parameters::wifi;
+
+// Re-export core parameter group types
+pub use pico_trail_core::parameters::arming::ArmingParams;
+pub use pico_trail_core::parameters::battery::BatteryParams;
+pub use pico_trail_core::parameters::circle::{CircleDirection, CircleParams};
+pub use pico_trail_core::parameters::compass::CompassParams;
+pub use pico_trail_core::parameters::error::ParameterError;
+pub use pico_trail_core::parameters::failsafe::FailsafeParams;
+pub use pico_trail_core::parameters::fence::FenceParams;
+pub use pico_trail_core::parameters::loiter::LoiterParams;
+pub use pico_trail_core::parameters::storage::{
+    ParamFlags, ParamMetadata, ParamValue, ParameterStore, MAX_STRING_LEN, PARAM_NAME_LEN,
+};
+pub use pico_trail_core::parameters::wifi::WifiParams;
+
+// Local firmware modules
 pub use board::BoardParams;
-pub use circle::CircleParams;
-pub use compass::CompassParams;
-pub use failsafe::FailsafeParams;
-pub use fence::FenceParams;
-pub use loiter::LoiterParams;
-pub use storage::{ParamValue, ParameterStore};
-pub use wifi::WifiParams;
+pub use storage::{load_from_flash, save_to_flash};
