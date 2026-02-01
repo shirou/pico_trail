@@ -396,7 +396,7 @@ spawner.spawn(monitor_task()).unwrap();
 
 ### Measured Performance (RP2350, Pico 2 W)
 
-Based on hardware validation (T-g729p Phase 3):
+Based on hardware validation (T-00001 Phase 3):
 
 | Metric                    | Target  | Measured | Status |
 | ------------------------- | ------- | -------- | ------ |
@@ -618,10 +618,10 @@ async fn main(spawner: Spawner) {
 ## Related Documentation
 
 - [Architecture](architecture.md) - System architecture and component overview
-- [Task Design Document](archive/tasks/T-g729p-embassy-task-scheduler/design.md) - Detailed scheduler design
-- [Task Plan](archive/tasks/T-g729p-embassy-task-scheduler/plan.md) - Implementation plan and validation results
-- [ADR-vywkw](adr/ADR-vywkw-task-scheduler-selection.md) - Scheduler framework selection decision
-- [FR-5inw2](requirements/FR-5inw2-task-scheduler.md) - Task scheduler functional requirements
-- [NFR-ukjvr](requirements/NFR-ukjvr-control-loop-latency.md) - Control loop latency requirement
-- [NFR-3wlo1](requirements/NFR-3wlo1-imu-sampling-rate.md) - IMU sampling rate requirement
+- [Task Design Document](archive/tasks/T-00001-embassy-task-scheduler/design.md) - Detailed scheduler design
+- [Task Plan](archive/tasks/T-00001-embassy-task-scheduler/plan.md) - Implementation plan and validation results
+- [ADR-00005](adr/ADR-00005-task-scheduler-selection.md) - Scheduler framework selection decision
+- [FR-00007](requirements/FR-00007-task-scheduler.md) - Task scheduler functional requirements
+- [NFR-00001](requirements/NFR-00001-control-loop-latency.md) - Control loop latency requirement
+- [NFR-00002](requirements/NFR-00002-imu-sampling-rate.md) - IMU sampling rate requirement
 - [Embassy Documentation](https://embassy.dev/) - Official Embassy framework docs

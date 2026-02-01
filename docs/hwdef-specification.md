@@ -497,9 +497,9 @@ This hwdef format is inspired by ArduPilot's hardware definition system but simp
 
 ## Related Documentation
 
-- [ADR-mcg03: Pin Configuration Management](adr/ADR-mcg03-pin-configuration-management.md)
-- [FR-h47nw: Pin Configuration Management](requirements/FR-h47nw-pin-configuration-management.md)
-- [Task T-po5ns: Pin Configuration Implementation](tasks/T-po5ns-pin-configuration/)
+- [ADR-00016: Pin Configuration Management](adr/ADR-00016-pin-configuration-management.md)
+- [FR-00065: Pin Configuration Management](requirements/FR-00065-pin-configuration-management.md)
+- [Task T-00010: Pin Configuration Implementation](tasks/T-00010-pin-configuration/)
 - [ArduPilot hwdef Reference](https://ardupilot.org/dev/docs/building-the-code.html#board-specific-features)
 - [ArduPilot hwdef Examples](https://github.com/ArduPilot/ardupilot/tree/master/libraries/AP_HAL_ChibiOS/hwdef)
 

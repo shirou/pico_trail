@@ -6,9 +6,9 @@ The AHRS subsystem provides real-time attitude estimation (roll, pitch, yaw) by 
 
 ## Requirements
 
-- **FR-eyuh8**: AHRS Attitude Estimation
-- **ADR-6twis**: DCM Algorithm Selection
-- **NFR-3wlo1**: IMU Sampling Rate (400Hz)
+- **FR-00001**: AHRS Attitude Estimation
+- **ADR-00001**: DCM Algorithm Selection
+- **NFR-00002**: IMU Sampling Rate (400Hz)
 
 ## Architecture
 
@@ -338,7 +338,7 @@ let config = DcmConfig {
 
 ## References
 
-- **ADR-6twis**: AHRS Algorithm Selection
-- **FR-eyuh8**: AHRS Attitude Estimation Requirements
+- **ADR-00001**: AHRS Algorithm Selection
+- **FR-00001**: AHRS Attitude Estimation Requirements
 - **DCM Tutorial**: <http://www.starlino.com/dcm_tutorial.html>
 - **ArduPilot DCM**: <https://github.com/ArduPilot/ardupilot/tree/master/libraries/AP_AHRS>

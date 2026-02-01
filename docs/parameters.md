@@ -165,7 +165,7 @@ if let Some(stats) = registry.storage_stats() {
 
 ### Load Time
 
-- **Target**: < 100ms (FR-a1cuu requirement)
+- **Target**: < 100ms (FR-00006 requirement)
 - **Measured**: 10-50ms on Pico 2 W (Cortex-M33 @ 150 MHz)
 - **Process**:
   1. Scan 4 blocks to find highest sequence number (4 reads)
@@ -444,7 +444,7 @@ probe-rs run --chip RP2350 target/.../param_persistence_hardware_test
 
 ## References
 
-- **Requirements**: [FR-a1cuu-runtime-parameters](requirements/FR-a1cuu-runtime-parameters.md)
-- **ADR**: [ADR-hj79f-storage-strategy](adr/ADR-hj79f-storage-strategy.md)
-- **Task**: [T-ex2h7-parameter-persistence](archive/tasks/T-ex2h7-parameter-persistence/)
+- **Requirements**: [FR-00006-runtime-parameters](requirements/FR-00006-runtime-parameters.md)
+- **ADR**: [ADR-00004-storage-strategy](adr/ADR-00004-storage-strategy.md)
+- **Task**: [T-00003-parameter-persistence](archive/tasks/T-00003-parameter-persistence/)
 - **MAVLink Parameter Protocol**: <https://mavlink.io/en/services/parameter.html>

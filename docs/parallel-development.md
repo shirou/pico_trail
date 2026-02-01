@@ -5,7 +5,7 @@ This guide complements `docs/tdl.md` for contributors who keep multiple git work
 ## Core Practices
 
 - **Generate unique IDs first** – Run `./scripts/tdl-new-id.ts` before copying any template. The script and its options are documented in `docs/tdl.md`.
-- **Start from the official templates** – Copy the template under `docs/templates/`, replace every placeholder, and update Metadata and Links immediately. Follow the template guidance in `docs/templates/README.md`.
+- **Start from the official templates** – Use the TDL skill templates, replace every placeholder, and update Metadata and Links immediately.
 - **Document ad hoc tasks on creation** – When urgent work starts at the task layer without upstream analysis/requirements/ADRs, create the task README right away and keep it linked. The default `bun scripts/trace-status.ts` output will keep flagging the missing upstream relationship until you either add the source document or finish the task.
 
 ## Traceability Checks
