@@ -276,7 +276,7 @@ Critical safety systems:
 
 ### Platform Abstraction Layer
 
-The platform abstraction layer provides zero-cost hardware independence through Rust traits and compile-time dispatch. All platform-specific code is isolated to `crates/firmware/src/platform/` per NFR-nmmu0.
+The platform abstraction layer provides zero-cost hardware independence through Rust traits and compile-time dispatch. All platform-specific code is isolated to `crates/firmware/src/platform/` per NFR-00005.
 
 **Architecture**:
 
@@ -540,9 +540,9 @@ The GPS Operation manager (`crates/firmware/src/devices/gps.rs`) handles polling
 
 For detailed design and implementation, see:
 
-- [ADR-00mjv: I2C0 Multi-Sensor Bus](adr/ADR-00mjv-i2c0-gps-imu-integration.md)
-- [FR-2f599: I2C0 Multi-Sensor Bus Requirements](requirements/FR-2f599-i2c0-multi-sensor-bus.md)
-- [Task T-meox8: I2C0 GPS/IMU Integration](tasks/T-meox8-i2c0-gps-imu-integration/)
+- [ADR-00019: I2C0 Multi-Sensor Bus](adr/ADR-00019-i2c0-gps-imu-integration.md)
+- [FR-00078: I2C0 Multi-Sensor Bus Requirements](requirements/FR-00078-i2c0-multi-sensor-bus.md)
+- [Task T-00015: I2C0 GPS/IMU Integration](tasks/T-00015-i2c0-gps-imu-integration/)
 
 ## Communication
 
@@ -849,7 +849,7 @@ Circle mode provides autonomous circular orbit around a center point. Uses hybri
 3. Delegate path following to SimpleNavigationController
 4. Support stationary mode (CIRC_RADIUS=0)
 
-**References**: ADR-897ov-circle-mode-path-generation, FR-khjpl-circle-mode-implementation
+**References**: ADR-00029-circle-mode-path-generation, FR-00112-circle-mode-implementation
 
 ### Loiter Mode
 
@@ -884,7 +884,7 @@ Loiter mode provides position holding for ground rovers with two behavior types.
    - Navigate back using SimpleNavigationController when correcting
 3. On GPS loss: Degrade to Type 0 (stop motors)
 
-**References**: ADR-8icsq-vehicle-type-separation, FR-aw3h3-rover-loiter-mode
+**References**: ADR-00030-vehicle-type-separation, FR-00118-rover-loiter-mode
 
 ### MAVLink Integration
 
@@ -936,9 +936,9 @@ Planned additions (deferred from current implementation):
 
 - [TDL Process](tdl.md) - Traceable Development Lifecycle
 - Analysis Documents:
-  - [AN-cp76d: ArduPilot Analysis](analysis/AN-cp76d-ardupilot-analysis.md)
-  - [AN-kir7h: Platform Abstraction](analysis/AN-kir7h-platform-abstraction.md)
-  - [AN-5nucb: Core Systems](analysis/AN-5nucb-core-systems.md)
-  - [AN-7ix56: Navigation Approach (S-Curve vs L1)](analysis/AN-7ix56-navigation-approach.md)
+  - [AN-00001: ArduPilot Analysis](analysis/AN-00001-ardupilot-analysis.md)
+  - [AN-00004: Platform Abstraction](analysis/AN-00004-platform-abstraction.md)
+  - [AN-00002: Core Systems](analysis/AN-00002-core-systems.md)
+  - [AN-00003: Navigation Approach (S-Curve vs L1)](analysis/AN-00003-navigation-approach.md)
 - [ADRs](adr/) - Architecture Decision Records
 - [Requirements](requirements/) - Functional and non-functional requirements

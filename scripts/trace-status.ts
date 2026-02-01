@@ -1656,7 +1656,7 @@ type DuplicateIdIssue = {
 function extractIdSuffix(docId: string): string | null {
   const match = docId.match(/^(AN|FR|NFR|ADR|T)-([0-9A-Za-z]+)/);
   if (!match) return null;
-  return match[2].toLowerCase();
+  return `${match[1]}-${match[2].toLowerCase()}`;
 }
 
 function findDuplicateIdIssues(

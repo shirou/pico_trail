@@ -686,14 +686,14 @@ Key modules:
 
 - [WiFi Configuration Guide](wifi-configuration.md) - Detailed WiFi setup for UDP transport
 - [Architecture](architecture.md) - System architecture and components
-- [T-fuytd Task](archive/tasks/T-fuytd-mavlink-communication/) - UART MAVLink implementation
-- [T-oq110 Task](tasks/T-oq110-mavlink-network-transport/) - Network transport implementation
-- [ADR-ggou4](adr/ADR-ggou4-mavlink-implementation.md) - MAVLink architecture decision
-- [ADR-ckv8z](adr/ADR-ckv8z-transport-abstraction.md) - Transport abstraction design
-- [ADR-aul2v](adr/ADR-aul2v-udp-primary-transport.md) - UDP transport decision
-- [ADR-dxdj0](adr/ADR-dxdj0-wifi-config-strategy.md) - WiFi configuration strategy
-- [FR-gpzpz](requirements/FR-gpzpz-mavlink-protocol.md) - MAVLink requirements
-- [FR-ydttj](requirements/FR-ydttj-udp-network-transport.md) - UDP transport requirements
+- [T-00002 Task](archive/tasks/T-00002-mavlink-communication/) - UART MAVLink implementation
+- [T-00006 Task](tasks/T-00006-mavlink-network-transport/) - Network transport implementation
+- [ADR-00002](adr/ADR-00002-mavlink-implementation.md) - MAVLink architecture decision
+- [ADR-00007](adr/ADR-00007-transport-abstraction.md) - Transport abstraction design
+- [ADR-00008](adr/ADR-00008-udp-primary-transport.md) - UDP transport decision
+- [ADR-00009](adr/ADR-00009-wifi-config-strategy.md) - WiFi configuration strategy
+- [FR-00005](requirements/FR-00005-mavlink-protocol.md) - MAVLink requirements
+- [FR-00010](requirements/FR-00010-udp-network-transport.md) - UDP transport requirements
 
 ## License
 
