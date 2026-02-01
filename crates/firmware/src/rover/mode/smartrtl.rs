@@ -217,9 +217,9 @@ impl<'a> Mode for SmartRtlMode<'a> {
         let target = PositionTarget::new(waypoint.latitude, waypoint.longitude);
 
         // Navigate to waypoint
-        let output = self
-            .nav_controller
-            .update(gps.latitude, gps.longitude, &target, heading, dt);
+        let output =
+            self.nav_controller
+                .update(gps.latitude, gps.longitude, &target, heading, dt, None);
 
         // Check for waypoint arrival
         if output.at_target {

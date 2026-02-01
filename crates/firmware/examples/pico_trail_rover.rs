@@ -145,8 +145,8 @@ use pico_trail_firmware::{
     platform::rp2350::{network::WifiConfig, Rp2350Flash},
     subsystems::ahrs::Bno086ExternalAhrs,
     subsystems::navigation::{
-        FusedHeadingSource, HeadingSource, NavigationController, SimpleNavigationController,
-        NAV_OUTPUT,
+        FusedHeadingSource, HeadingSource, HeadingSourceType, NavigationController,
+        SimpleNavigationController, NAV_OUTPUT,
     },
 };
 
@@ -1082,16 +1082,23 @@ async fn motor_control_task(
             right_speed, // Motor 4 (Right Front)
         ];
 
-        // Only log when there's significant input or state change
-        if is_armed && (steering.abs() > 0.05 || throttle.abs() > 0.05) {
-            pico_trail_firmware::log_debug!(
-                "Motor: mode={:?}, steering={}, throttle={}, L={}, R={}",
-                mode,
-                steering,
-                throttle,
-                left_speed,
-                right_speed
-            );
+        // Rate-limited motor log (every ~1s = 100 iterations at 100Hz)
+        // Prevents flooding LOG_CHANNEL which blocks navigation diagnostics
+        static mut MOTOR_LOG_CTR: u32 = 0;
+        unsafe {
+            MOTOR_LOG_CTR += 1;
+            if MOTOR_LOG_CTR >= 100 && is_armed && (steering.abs() > 0.05 || throttle.abs() > 0.05)
+            {
+                MOTOR_LOG_CTR = 0;
+                pico_trail_firmware::log_debug!(
+                    "Motor: mode={:?}, steer={}, thr={}, L={}, R={}",
+                    mode,
+                    steering,
+                    throttle,
+                    left_speed,
+                    right_speed
+                );
+            }
         }
 
         if !is_armed {
@@ -1316,9 +1323,24 @@ async fn navigation_task() {
                     .get_heading()
                     .unwrap_or(current.course_over_ground.unwrap_or(0.0));
 
-                // Compute navigation output
-                let output =
-                    controller.update(current.latitude, current.longitude, &target, heading, 0.02);
+                // Capture heading source type for diagnostics
+                let src_type = heading_source.source_type();
+
+                // Get AHRS yaw rate for D-term (z component in NED = yaw rate in deg/s)
+                let yaw_rate_dps = pico_trail_firmware::subsystems::ahrs::AHRS_STATE
+                    .get_angular_rate()
+                    .z
+                    .to_degrees();
+
+                // Compute navigation output with gyroscope yaw rate for D-term damping
+                let output = controller.update(
+                    current.latitude,
+                    current.longitude,
+                    &target,
+                    heading,
+                    0.02,
+                    Some(yaw_rate_dps),
+                );
 
                 // Update global NAV_OUTPUT
                 NAV_OUTPUT.with_mut(|nav_output| {
@@ -1349,19 +1371,39 @@ async fn navigation_task() {
                     }
                 }
 
-                // Log navigation status periodically (every ~1s = 50 iterations)
+                // Detect spinning: high heading error with low throttle
+                let is_spinning = output.heading_error_deg.abs() > 45.0 && output.throttle < 0.3;
+
+                // Log navigation status periodically
+                // Normal: every ~1s (50 iterations), Spinning: every ~0.2s (10 iterations)
                 static mut LOG_COUNTER: u32 = 0;
+                let log_interval: u32 = if is_spinning { 10 } else { 50 };
                 unsafe {
                     LOG_COUNTER += 1;
-                    if LOG_COUNTER >= 50 {
+                    if LOG_COUNTER >= log_interval {
                         LOG_COUNTER = 0;
-                        pico_trail_firmware::log_debug!(
-                            "Nav: dist={}m, bearing={}°, steering={}, throttle={}, at_target={}",
-                            output.distance_m,
-                            output.bearing_deg,
+
+                        // Heading source as short string for defmt
+                        let src_str = match src_type {
+                            HeadingSourceType::Ahrs => "AHRS",
+                            HeadingSourceType::GpsCog => "GPS",
+                            HeadingSourceType::None => "NONE",
+                        };
+
+                        let gps_cog = current.course_over_ground.unwrap_or(-1.0);
+
+                        pico_trail_firmware::log_info!(
+                            "Nav: hdg={}° err={}° src={} spd={} cog={} yawR={}°/s | steer={} thr={} dist={}m brg={}°",
+                            heading,
+                            output.heading_error_deg,
+                            src_str,
+                            current.speed,
+                            gps_cog,
+                            yaw_rate_dps,
                             output.steering,
                             output.throttle,
-                            output.at_target
+                            output.distance_m,
+                            output.bearing_deg
                         );
                     }
                 }

@@ -12,6 +12,8 @@
 - Related ADRs:
   - [ADR-h3k9f-heading-source-integration](../../adr/ADR-h3k9f-heading-source-integration.md)
   - [ADR-wrcuk-navigation-controller-architecture](../../adr/ADR-wrcuk-navigation-controller-architecture.md)
+- Dependent Tasks:
+  - [T-f4r7a-break-spin-feedback-loop](../T-f4r7a-break-spin-feedback-loop/README.md)
 - Associated Design Document:
   - [design.md](design.md)
 - Associated Plan Document:

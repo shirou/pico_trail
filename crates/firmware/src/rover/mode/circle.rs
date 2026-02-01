@@ -295,9 +295,9 @@ impl<'a> Mode for CircleMode<'a> {
             .ok_or("Failed to calculate target")?;
 
         // Delegate to navigation controller
-        let output = self
-            .nav_controller
-            .update(gps.latitude, gps.longitude, &target, heading, dt);
+        let output =
+            self.nav_controller
+                .update(gps.latitude, gps.longitude, &target, heading, dt, None);
 
         // Apply commands to actuators
         self.actuators.set_steering(output.steering)?;

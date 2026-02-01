@@ -11,6 +11,7 @@
   - [AN-vcxr7-ahrs-navigation-control-integration](AN-vcxr7-ahrs-navigation-control-integration.md)
   - [AN-fgiit-compass-calibration-via-mission-planner](AN-fgiit-compass-calibration-via-mission-planner.md)
   - [AN-7ix56-navigation-approach](AN-7ix56-navigation-approach.md)
+  - [AN-27568-position-target-navigation](AN-27568-position-target-navigation.md)
 - Related Requirements:
   - [FR-erpze-guided-mode-navigation](../requirements/FR-erpze-guided-mode-navigation.md)
   - [FR-2vbe8-navigation-controller](../requirements/FR-2vbe8-navigation-controller.md)
@@ -20,6 +21,7 @@
 - Related Tasks:
   - [T-r9v2k-heading-source-navigation-integration](../tasks/T-r9v2k-heading-source-navigation-integration/README.md)
   - [T-w8x3p-fix-guided-mode-heading-oscillation](../tasks/T-w8x3p-fix-guided-mode-heading-oscillation/README.md)
+  - [T-f4r7a-break-spin-feedback-loop](../tasks/T-f4r7a-break-spin-feedback-loop/README.md)
 
 ## Executive Summary
 

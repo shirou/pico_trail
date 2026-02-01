@@ -175,9 +175,9 @@ impl<'a> Mode for GuidedMode<'a> {
         state.navigation_active = true;
 
         // Navigate to target
-        let output = self
-            .nav_controller
-            .update(gps.latitude, gps.longitude, &target, heading, dt);
+        let output =
+            self.nav_controller
+                .update(gps.latitude, gps.longitude, &target, heading, dt, None);
 
         // Check for arrival
         if output.at_target {

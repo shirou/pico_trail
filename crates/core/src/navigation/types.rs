@@ -70,6 +70,12 @@ pub struct SimpleNavConfig {
     pub max_steering_rate: f32,
     /// Heading error (degrees) at which throttle reaches zero
     pub throttle_heading_error_max: f32,
+    /// Maximum steering magnitude when throttle is near zero (0.0-1.0)
+    pub max_spin_steering: f32,
+    /// Throttle threshold below which spin-in-place limiting applies
+    pub spin_throttle_threshold: f32,
+    /// EMA filter alpha for heading smoothing (0.0 = max smoothing, 1.0 = no filter)
+    pub heading_filter_alpha: f32,
 }
 
 impl Default for SimpleNavConfig {
@@ -79,9 +85,12 @@ impl Default for SimpleNavConfig {
             approach_dist: 10.0,
             max_heading_error: 90.0,
             min_approach_throttle: 0.2,
-            steering_d_gain: 0.005,
-            max_steering_rate: 0.0,
+            steering_d_gain: 0.05,
+            max_steering_rate: 2.0,
             throttle_heading_error_max: 90.0,
+            max_spin_steering: 0.3,
+            spin_throttle_threshold: 0.1,
+            heading_filter_alpha: 0.3,
         }
     }
 }
@@ -122,8 +131,11 @@ mod tests {
         assert!((config.approach_dist - 10.0).abs() < 0.001);
         assert!((config.max_heading_error - 90.0).abs() < 0.001);
         assert!((config.min_approach_throttle - 0.2).abs() < 0.001);
-        assert!((config.steering_d_gain - 0.005).abs() < 0.0001);
-        assert!((config.max_steering_rate - 0.0).abs() < 0.001);
+        assert!((config.steering_d_gain - 0.05).abs() < 0.001);
+        assert!((config.max_steering_rate - 2.0).abs() < 0.001);
         assert!((config.throttle_heading_error_max - 90.0).abs() < 0.001);
+        assert!((config.max_spin_steering - 0.3).abs() < 0.001);
+        assert!((config.spin_throttle_threshold - 0.1).abs() < 0.001);
+        assert!((config.heading_filter_alpha - 0.3).abs() < 0.001);
     }
 }
