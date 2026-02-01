@@ -181,6 +181,7 @@ impl<'a> MissionExecutor for AutoMode<'a> {
             target,
             state.current_heading,
             state.current_dt,
+            None,
         );
 
         // Apply mission speed scaling if DO_CHANGE_SPEED is active (FR-0q1tf)

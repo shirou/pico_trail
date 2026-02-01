@@ -10,6 +10,7 @@
 - Related Analyses:
   - [AN-7ix56-navigation-approach](AN-7ix56-navigation-approach.md)
   - [AN-r86b9-gps-position-telemetry-and-autonomous-navigation-foundation](AN-r86b9-gps-position-telemetry-and-autonomous-navigation-foundation.md)
+  - [AN-lsq0s-guided-mode-heading-oscillation](AN-lsq0s-guided-mode-heading-oscillation.md)
 - Related Requirements:
   - [FR-333ym-gps-waypoint-navigation](../requirements/FR-333ym-gps-waypoint-navigation.md)
   - [FR-sp3at-control-modes](../requirements/FR-sp3at-control-modes.md)
@@ -24,6 +25,7 @@
   - [ADR-wrcuk-navigation-controller-architecture](../adr/ADR-wrcuk-navigation-controller-architecture.md)
 - Related Tasks:
   - [T-tto4f-navigation-controller](../tasks/T-tto4f-navigation-controller/README.md)
+  - [T-f4r7a-break-spin-feedback-loop](../tasks/T-f4r7a-break-spin-feedback-loop/README.md)
 
 ## Executive Summary
 
@@ -479,6 +481,167 @@ fn calculate_steering(current: GpsPosition, target: GpsPosition) -> f32 {
 - **Terrain following**: Not applicable for rover
 - **Spline waypoints**: Future enhancement after basic waypoints work
 - **Obstacle avoidance**: Separate feature outside navigation core
+
+## Field Testing: Post-T-w8x3p Analysis
+
+### Context
+
+T-w8x3p implemented PD steering, heading-error throttle reduction, and heading source hysteresis to address the root causes identified in AN-lsq0s. Field testing shows the spinning problem persists. This section documents additional root causes discovered through code analysis and field observation.
+
+### Observed Behavior (Post-Fix)
+
+- **Spinning persists**: Rover still spins in circles during Guided mode navigation
+- **Intermittent success**: Occasionally navigates straight and reaches the target
+- **Physical vibration**: Spinning causes mechanical vibration (shaking), suspected to corrupt AHRS yaw readings
+- **Confirmed correct**: ENU→NED quaternion conversion verified mathematically (CW positive, 0°=North, 90°=East)
+
+### Additional Root Causes
+
+#### Root Cause 6: Spin-in-Place Positive Feedback Loop (Critical)
+
+When heading error exceeds 90°, throttle drops to 0 (heading-error throttle reduction works). However, steering remains at full output (1.0). `DifferentialDrive::mix(1.0, 0.0)` produces `left=1.0, right=-1.0` — maximum-speed spin in place.
+
+The feedback loop:
+
+```text
+Large heading error (>90°)
+  → throttle = 0, steering = 1.0
+  → full-speed spin in place
+  → vibration from spinning
+  → AHRS yaw noise / drift
+  → heading error stays large or oscillates
+  → spinning continues
+```
+
+This loop is self-sustaining because the spin itself corrupts the heading data needed to stop spinning.
+
+#### Root Cause 7: Slew Rate Limiting Disabled in Defaults (High)
+
+`SimpleNavConfig::default()` sets `max_steering_rate: 0.0`, which disables slew rate limiting entirely. The T-w8x3p design document specified `max_steering_rate: 2.0` but the implementation default was left at 0.0. Without slew rate limiting, steering can jump from -1.0 to +1.0 instantly.
+
+**Location**: `crates/core/src/navigation/types.rs:83`
+
+#### Root Cause 8: D-Gain Effectively Negligible (Medium)
+
+`steering_d_gain: 0.005` is too small to provide meaningful damping at normal heading change rates.
+
+| Heading Rate (°/s) | error_rate | D-term (gain=0.005) | Effect     |
+| ------------------ | ---------- | ------------------- | ---------- |
+| 10                 | 10         | 0.05                | Negligible |
+| 50                 | 50         | 0.25                | Weak       |
+| 200                | 200        | 1.0                 | Meaningful |
+| 500                | 500        | 2.5 (clamped)       | Saturated  |
+
+The D-term only becomes significant at extreme heading rates (>200°/s) that already indicate a spinning condition.
+
+#### Root Cause 9: No Heading Smoothing Filter (Medium)
+
+Raw AHRS yaw is passed directly to the navigation controller without any filtering. Vibration-induced noise in the AHRS heading maps directly to heading error fluctuations. Combined with the P-term (which amplifies any heading error), noise passes through to steering output.
+
+#### Root Cause 10: Priority 3 Heading Fallback (Low-Medium)
+
+`FusedHeadingSource::get_heading()` has a Priority 3 fallback that uses GPS COG even below the speed threshold when AHRS is unhealthy. When spinning in place:
+
+- GPS speed is low → `get_gps_heading()` returns None
+- If vibration causes BNO086 to report unhealthy → AHRS heading unavailable
+- Falls to Priority 3: raw GPS COG, which is essentially random when spinning in place
+- Creates large heading discontinuity
+
+**Location**: `crates/firmware/src/subsystems/navigation/heading.rs:176-181`
+
+#### Root Cause 11: Insufficient Diagnostic Logging (Low)
+
+The navigation log output includes `dist, bearing, steering, throttle, at_target` but omits:
+
+- Actual heading value
+- Heading error
+- Heading source type (GPS COG vs AHRS)
+- Compass yaw offset value
+
+Without these fields, field debugging requires guessing which heading source is active and what heading value the controller sees.
+
+**Location**: `crates/firmware/examples/pico_trail_rover.rs:1358-1365`
+
+### Verified Correct Components
+
+| Component                 | Verification Method | Result                                       |
+| ------------------------- | ------------------- | -------------------------------------------- |
+| ENU→NED quaternion        | Mathematical proof  | CW positive, 0°=North, 90°=East (correct)    |
+| `calculate_bearing`       | Formula review      | Standard great-circle, 0°=North, CW positive |
+| `DifferentialDrive::mix`  | Sign trace          | Positive steering → right turn (correct)     |
+| `wrap_180`                | Edge case review    | Correct wrapping to \[-180, +180]            |
+| Heading source hysteresis | Code review         | Correctly uses upper/lower threshold         |
+| Throttle heading scaling  | Code review         | Correctly reduces to 0 at 90°+               |
+
+### Proposed Mitigations
+
+Listed in priority order:
+
+#### Mitigation 1: Enable Slew Rate Limiting
+
+Set `max_steering_rate` to a non-zero value (2.0 recommended — full range change in 1 second). At 50 Hz, max steering change per frame = 0.04. This prevents instantaneous steering reversals.
+
+**Effort**: Minimal (change default value)
+
+#### Mitigation 2: Limit Spin-in-Place Speed
+
+When throttle is near zero, cap steering output to a lower maximum (e.g., 0.3–0.5 instead of 1.0). This reduces spin speed, reducing vibration, giving the AHRS a better chance to track yaw correctly.
+
+```text
+effective_steering = if throttle < 0.1 {
+    steering.clamp(-MAX_SPIN_STEERING, MAX_SPIN_STEERING)
+} else {
+    steering
+}
+```
+
+**Effort**: Small (add clamping in controller update)
+
+#### Mitigation 3: Heading Exponential Moving Average Filter
+
+Apply a low-pass filter to heading before using it for navigation. This smooths out vibration-induced noise:
+
+```text
+smoothed_heading = alpha * new_heading + (1 - alpha) * prev_heading
+```
+
+With proper angle wrapping. Alpha of 0.3–0.5 (at 50 Hz) provides smoothing while maintaining responsiveness.
+
+**Effort**: Medium (add filter with angle-aware smoothing)
+
+#### Mitigation 4: Use Gyroscope Yaw Rate for D-Term
+
+Instead of computing the derivative from successive heading errors (which amplifies measurement noise), use the BNO086 gyroscope yaw rate directly. The gyroscope rate is already available in NED frame (`angular_rate.z`) and is less affected by vibration-induced heading noise.
+
+**Effort**: Medium (pass angular rate through heading source to controller)
+
+#### Mitigation 5: Improve Diagnostic Logging
+
+Add heading, heading error, and heading source type to navigation log output:
+
+```text
+"Nav: heading={}°, error={}°, src={:?}, dist={}m, steer={}, thr={}"
+```
+
+**Effort**: Minimal
+
+### Updated Architecture Diagram (Post-Mitigations)
+
+```text
+navigation_task (50Hz)
+  ├── heading_source.get_heading()
+  │     ├── GPS speed vs threshold WITH HYSTERESIS
+  │     └── Track using_gps_cog state
+  ├── heading_filter.apply(raw_heading)              ← NEW: EMA filter
+  │     └── smoothed heading (reduces noise)
+  ├── controller.update(lat, lon, target, heading, dt)
+  │     ├── calculate_bearing(current → target)
+  │     ├── heading_error = wrap_180(bearing - heading)
+  │     ├── steering = PD(heading_error, dt) + slew rate limit
+  │     ├── throttle = f(distance) * f(heading_error)
+  │     └── spin_limit: if throttle ≈ 0, cap steering  ← NEW
+  └── NAV_OUTPUT = { steering, throttle }
+```
 
 ## Appendix
 

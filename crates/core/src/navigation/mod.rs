@@ -5,6 +5,7 @@
 pub mod controller;
 pub mod geo;
 pub mod heading;
+pub mod heading_filter;
 pub mod path_recorder;
 mod types;
 

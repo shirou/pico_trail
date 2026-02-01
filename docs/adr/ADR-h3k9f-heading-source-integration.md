@@ -19,6 +19,8 @@
   - [AN-vcxr7-ahrs-navigation-control-integration](../analysis/AN-vcxr7-ahrs-navigation-control-integration.md)
 - Related Tasks:
   - [T-r9v2k-heading-source-navigation-integration](../tasks/T-r9v2k-heading-source-navigation-integration/README.md)
+  - [T-w8x3p-fix-guided-mode-heading-oscillation](../tasks/T-w8x3p-fix-guided-mode-heading-oscillation/README.md)
+  - [T-f4r7a-break-spin-feedback-loop](../tasks/T-f4r7a-break-spin-feedback-loop/README.md)
 
 ## Context
 

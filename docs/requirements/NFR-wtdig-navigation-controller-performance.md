@@ -14,6 +14,7 @@
 - Dependent Requirements: N/A
 - Related Tasks:
   - [T-tto4f-navigation-controller](../tasks/T-tto4f-navigation-controller/README.md)
+  - [T-f4r7a-break-spin-feedback-loop](../tasks/T-f4r7a-break-spin-feedback-loop/README.md)
 
 ## Requirement Statement
 

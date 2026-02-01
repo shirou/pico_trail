@@ -22,6 +22,8 @@
   - [T-tto4f-navigation-controller](../tasks/T-tto4f-navigation-controller/README.md)
   - [T-u8q60-circle-mode-implementation](../tasks/T-u8q60-circle-mode-implementation/README.md)
   - [T-bo6xc-rtl-smartrtl-implementation](../tasks/T-bo6xc-rtl-smartrtl-implementation/README.md)
+  - [T-w8x3p-fix-guided-mode-heading-oscillation](../tasks/T-w8x3p-fix-guided-mode-heading-oscillation/README.md)
+  - [T-f4r7a-break-spin-feedback-loop](../tasks/T-f4r7a-break-spin-feedback-loop/README.md)
 
 ## Context
 

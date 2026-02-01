@@ -19,6 +19,7 @@
   - [FR-pbuh7-guided-mode-arm-start](FR-pbuh7-guided-mode-arm-start.md)
 - Related Tasks:
   - [T-r9v2k-heading-source-navigation-integration](../tasks/T-r9v2k-heading-source-navigation-integration/README.md)
+  - [T-f4r7a-break-spin-feedback-loop](../tasks/T-f4r7a-break-spin-feedback-loop/README.md)
 
 ## Requirement Statement
 

@@ -209,7 +209,7 @@ impl<'a> RoverLoiter<'a> {
             let target = PositionTarget::new(state.loiter_lat, state.loiter_lon);
             let output =
                 self.nav_controller
-                    .update(gps.latitude, gps.longitude, &target, heading, dt);
+                    .update(gps.latitude, gps.longitude, &target, heading, dt, None);
 
             self.actuators.set_steering(output.steering)?;
             self.actuators.set_throttle(output.throttle)?;
