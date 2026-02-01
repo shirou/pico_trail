@@ -64,6 +64,12 @@ pub struct SimpleNavConfig {
     pub max_heading_error: f32,
     /// Minimum throttle during approach (0.0-1.0)
     pub min_approach_throttle: f32,
+    /// D-gain for steering PD controller (ArduPilot: ATC_STR_RAT_D)
+    pub steering_d_gain: f32,
+    /// Maximum steering change per second (slew rate, 0 = unlimited)
+    pub max_steering_rate: f32,
+    /// Heading error (degrees) at which throttle reaches zero
+    pub throttle_heading_error_max: f32,
 }
 
 impl Default for SimpleNavConfig {
@@ -73,6 +79,9 @@ impl Default for SimpleNavConfig {
             approach_dist: 10.0,
             max_heading_error: 90.0,
             min_approach_throttle: 0.2,
+            steering_d_gain: 0.005,
+            max_steering_rate: 0.0,
+            throttle_heading_error_max: 90.0,
         }
     }
 }
@@ -113,5 +122,8 @@ mod tests {
         assert!((config.approach_dist - 10.0).abs() < 0.001);
         assert!((config.max_heading_error - 90.0).abs() < 0.001);
         assert!((config.min_approach_throttle - 0.2).abs() < 0.001);
+        assert!((config.steering_d_gain - 0.005).abs() < 0.0001);
+        assert!((config.max_steering_rate - 0.0).abs() < 0.001);
+        assert!((config.throttle_heading_error_max - 90.0).abs() < 0.001);
     }
 }

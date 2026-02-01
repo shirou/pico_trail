@@ -28,6 +28,8 @@
 //! - **AHRS yaw** when stationary or GPS COG unavailable
 //! - Falls back to GPS COG if AHRS is unhealthy
 
+use core::cell::Cell;
+
 use crate::devices::gps::GpsPosition;
 use crate::subsystems::ahrs::SharedAhrsState;
 
@@ -46,6 +48,7 @@ fn zero_yaw_offset() -> f32 {
 /// - Uses GPS COG when moving fast enough (speed >= threshold)
 /// - Uses AHRS yaw when stationary or slow
 /// - Falls back to GPS COG if AHRS is unhealthy
+/// - Hysteresis prevents rapid switching near the speed threshold
 ///
 /// # Example
 ///
@@ -71,11 +74,18 @@ pub struct FusedHeadingSource {
     /// Provider for compass yaw offset in radians (from Large Vehicle MagCal).
     /// Applied to AHRS yaw to correct heading for navigation.
     yaw_offset_provider: fn() -> f32,
+    /// Hysteresis half-band for speed threshold (m/s)
+    speed_hysteresis: f32,
+    /// Track whether GPS COG is currently the active source
+    using_gps_cog: Cell<bool>,
 }
 
 impl FusedHeadingSource {
     /// Default speed threshold for switching between AHRS and GPS COG
     pub const DEFAULT_SPEED_THRESHOLD: f32 = 1.0;
+
+    /// Default hysteresis half-band (m/s). Set to 0.0 to disable hysteresis.
+    pub const DEFAULT_SPEED_HYSTERESIS: f32 = 0.3;
 
     /// Create a new fused heading source
     ///
@@ -96,6 +106,8 @@ impl FusedHeadingSource {
             gps_provider,
             speed_threshold,
             yaw_offset_provider,
+            speed_hysteresis: Self::DEFAULT_SPEED_HYSTERESIS,
+            using_gps_cog: Cell::new(false),
         }
     }
 
@@ -125,11 +137,21 @@ impl FusedHeadingSource {
         Some(super::wrap_360(yaw_deg))
     }
 
-    /// Get GPS COG if available and speed is above threshold
+    /// Get GPS COG if available and speed is above effective threshold (with hysteresis)
     fn get_gps_heading(&self, gps: &GpsPosition) -> Option<f32> {
-        if gps.speed >= self.speed_threshold {
+        let threshold = if self.using_gps_cog.get() {
+            // Currently using GPS: switch away at lower threshold
+            self.speed_threshold - self.speed_hysteresis
+        } else {
+            // Currently using AHRS: switch to GPS at higher threshold
+            self.speed_threshold + self.speed_hysteresis
+        };
+
+        if gps.speed >= threshold {
+            self.using_gps_cog.set(true);
             gps.course_over_ground
         } else {
+            self.using_gps_cog.set(false);
             None
         }
     }
@@ -177,9 +199,14 @@ impl HeadingSource for FusedHeadingSource {
     fn source_type(&self) -> HeadingSourceType {
         let gps = (self.gps_provider)();
 
-        // Check GPS COG first (priority when moving)
+        // Check GPS COG first (priority when moving, using hysteresis)
         if let Some(ref gps) = gps {
-            if gps.speed >= self.speed_threshold && gps.course_over_ground.is_some() {
+            let threshold = if self.using_gps_cog.get() {
+                self.speed_threshold - self.speed_hysteresis
+            } else {
+                self.speed_threshold + self.speed_hysteresis
+            };
+            if gps.speed >= threshold && gps.course_over_ground.is_some() {
                 return HeadingSourceType::GpsCog;
             }
         }
@@ -242,7 +269,8 @@ mod tests {
         TEST_AHRS_STATE.set_healthy(true);
         TEST_AHRS_STATE.update_euler(0.0, 0.0, core::f32::consts::FRAC_PI_4, 0); // 45°
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         // Should use GPS COG because speed > threshold
         assert_eq!(source.get_heading(), Some(90.0));
@@ -257,7 +285,8 @@ mod tests {
         TEST_AHRS_STATE.set_healthy(true);
         TEST_AHRS_STATE.update_euler(0.0, 0.0, core::f32::consts::FRAC_PI_4, 0); // 45°
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         // Should use AHRS because speed < threshold
         let heading = source.get_heading().unwrap();
@@ -276,7 +305,8 @@ mod tests {
         set_test_gps(Some(create_gps(0.5, Some(180.0))));
         TEST_AHRS_STATE.set_healthy(false);
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         // Should fall back to GPS COG even below threshold
         assert_eq!(source.get_heading(), Some(180.0));
@@ -290,7 +320,8 @@ mod tests {
         set_test_gps(None);
         TEST_AHRS_STATE.set_healthy(false);
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         assert_eq!(source.get_heading(), None);
         assert_eq!(source.source_type(), HeadingSourceType::None);
@@ -304,7 +335,8 @@ mod tests {
         TEST_AHRS_STATE.set_healthy(true);
         TEST_AHRS_STATE.update_euler(0.0, 0.0, -core::f32::consts::FRAC_PI_2, 0); // -90° = 270°
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         let heading = source.get_heading().unwrap();
         assert!(
@@ -323,7 +355,8 @@ mod tests {
         TEST_AHRS_STATE.set_healthy(true);
         TEST_AHRS_STATE.update_euler(0.0, 0.0, 0.0, 0); // 0° (North)
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         // Should use AHRS because GPS COG is None
         let heading = source.get_heading().unwrap();
@@ -335,16 +368,23 @@ mod tests {
 
     #[test]
     fn test_speed_exactly_at_threshold() {
-        // Setup: GPS speed exactly at threshold (1.0 m/s)
+        // Setup: GPS speed exactly at base threshold (1.0 m/s)
+        // With hysteresis 0.3, effective upper threshold = 1.3 when starting from AHRS
         set_test_gps(Some(create_gps(1.0, Some(120.0))));
         TEST_AHRS_STATE.set_healthy(true);
         TEST_AHRS_STATE.update_euler(0.0, 0.0, core::f32::consts::FRAC_PI_4, 0); // 45°
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
-        // At exactly threshold, GPS COG should be used (>= comparison)
-        assert_eq!(source.get_heading(), Some(120.0));
-        assert_eq!(source.source_type(), HeadingSourceType::GpsCog);
+        // Speed 1.0 is below the upper hysteresis threshold (1.3), so AHRS should be used
+        let heading = source.get_heading().unwrap();
+        assert!(
+            (heading - 45.0).abs() < 0.1,
+            "Expected ~45° from AHRS (speed within hysteresis band), got {}",
+            heading
+        );
+        assert_eq!(source.source_type(), HeadingSourceType::Ahrs);
     }
 
     #[test]
@@ -354,7 +394,8 @@ mod tests {
         TEST_AHRS_STATE.set_healthy(true);
         TEST_AHRS_STATE.update_euler(0.0, 0.0, core::f32::consts::FRAC_PI_4, 0); // 45°
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         // Below threshold, AHRS should be used
         let heading = source.get_heading().unwrap();
@@ -374,7 +415,8 @@ mod tests {
         // Set yaw to -5° (355° when normalized)
         TEST_AHRS_STATE.update_euler(0.0, 0.0, -5.0_f32.to_radians(), 0);
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         let heading = source.get_heading().unwrap();
         // Should be normalized to 355°
@@ -392,7 +434,8 @@ mod tests {
         TEST_AHRS_STATE.set_healthy(true);
         TEST_AHRS_STATE.update_euler(0.0, 0.0, -core::f32::consts::PI, 0); // -180°
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         let heading = source.get_heading().unwrap();
         // Should be normalized to 180°
@@ -410,7 +453,8 @@ mod tests {
         TEST_AHRS_STATE.set_healthy(true);
         TEST_AHRS_STATE.update_euler(0.0, 0.0, core::f32::consts::FRAC_PI_2, 0); // 90°
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         // Should use GPS COG (0°) not AHRS (90°)
         assert_eq!(source.get_heading(), Some(0.0));
@@ -423,7 +467,8 @@ mod tests {
         set_test_gps(Some(create_gps(5.0, Some(360.0))));
         TEST_AHRS_STATE.set_healthy(true);
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         // Should use GPS COG
         assert_eq!(source.get_heading(), Some(360.0));
@@ -437,7 +482,8 @@ mod tests {
         TEST_AHRS_STATE.set_healthy(true);
         TEST_AHRS_STATE.update_euler(0.0, 0.0, 0.0, 0); // 0° (North)
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         // Should use AHRS (speed below threshold) not GPS COG
         let heading = source.get_heading().unwrap();
@@ -455,7 +501,8 @@ mod tests {
         set_test_gps(None);
         TEST_AHRS_STATE.set_healthy(true);
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         assert!(source.is_valid());
     }
@@ -466,7 +513,8 @@ mod tests {
         set_test_gps(Some(create_gps(0.5, Some(45.0))));
         TEST_AHRS_STATE.set_healthy(false);
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         assert!(source.is_valid());
     }
@@ -477,7 +525,8 @@ mod tests {
         set_test_gps(Some(create_gps(2.0, None)));
         TEST_AHRS_STATE.set_healthy(false);
 
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
 
         // Without AHRS or COG, should not be valid
         assert!(!source.is_valid());
@@ -510,7 +559,8 @@ mod tests {
         TEST_AHRS_STATE.update_euler(0.0, 0.0, core::f32::consts::FRAC_PI_4, 0); // 45°
 
         // With threshold 2.0, 1.5 m/s is below threshold -> use AHRS
-        let source = FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 2.0, zero_yaw_offset);
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 2.0, zero_yaw_offset);
 
         let heading = source.get_heading().unwrap();
         assert!(
@@ -621,5 +671,89 @@ mod tests {
 
         // GPS COG should be 90° (not affected by yaw offset)
         assert_eq!(source.get_heading(), Some(90.0));
+    }
+
+    // ========== Hysteresis Tests ==========
+
+    #[test]
+    fn test_hysteresis_gps_activates_at_upper_threshold() {
+        // GPS COG should activate at threshold + hysteresis = 1.3 m/s
+        set_test_gps(Some(create_gps(1.3, Some(90.0))));
+        TEST_AHRS_STATE.set_healthy(true);
+        TEST_AHRS_STATE.update_euler(0.0, 0.0, core::f32::consts::FRAC_PI_4, 0); // 45°
+
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+
+        // Speed 1.3 >= upper threshold (1.3) -> GPS COG
+        assert_eq!(source.get_heading(), Some(90.0));
+        assert_eq!(source.source_type(), HeadingSourceType::GpsCog);
+    }
+
+    #[test]
+    fn test_hysteresis_gps_deactivates_at_lower_threshold() {
+        // First, get into GPS COG state by providing high speed
+        set_test_gps(Some(create_gps(2.0, Some(90.0))));
+        TEST_AHRS_STATE.set_healthy(true);
+        TEST_AHRS_STATE.update_euler(0.0, 0.0, core::f32::consts::FRAC_PI_4, 0); // 45°
+
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+
+        // Activate GPS COG
+        assert_eq!(source.get_heading(), Some(90.0));
+
+        // Now drop speed to 0.8 (above lower threshold 0.7) -> should still use GPS COG
+        set_test_gps(Some(create_gps(0.8, Some(120.0))));
+        assert_eq!(source.get_heading(), Some(120.0));
+
+        // Drop speed to 0.6 (below lower threshold 0.7) -> should switch to AHRS
+        set_test_gps(Some(create_gps(0.6, Some(120.0))));
+        let heading = source.get_heading().unwrap();
+        assert!(
+            (heading - 45.0).abs() < 0.1,
+            "Expected ~45° from AHRS after speed dropped below lower threshold, got {}",
+            heading
+        );
+    }
+
+    #[test]
+    fn test_hysteresis_no_flip_flop_within_band() {
+        // Speed oscillating between 0.8 and 1.2 m/s should NOT cause switching
+        // when starting from AHRS (upper threshold = 1.3)
+        set_test_gps(Some(create_gps(0.8, Some(90.0))));
+        TEST_AHRS_STATE.set_healthy(true);
+        TEST_AHRS_STATE.update_euler(0.0, 0.0, core::f32::consts::FRAC_PI_4, 0); // 45°
+
+        let source =
+            FusedHeadingSource::new(&TEST_AHRS_STATE, test_gps_provider, 1.0, zero_yaw_offset);
+
+        // Initial: speed 0.8 < 1.3 (upper) -> AHRS
+        let h1 = source.get_heading().unwrap();
+        assert!((h1 - 45.0).abs() < 0.1, "Expected AHRS at 0.8 m/s");
+
+        // Oscillate to 1.2 -> still < 1.3 -> AHRS
+        set_test_gps(Some(create_gps(1.2, Some(90.0))));
+        let h2 = source.get_heading().unwrap();
+        assert!(
+            (h2 - 45.0).abs() < 0.1,
+            "Expected AHRS at 1.2 m/s (within band)"
+        );
+
+        // Back to 0.8 -> still AHRS
+        set_test_gps(Some(create_gps(0.8, Some(90.0))));
+        let h3 = source.get_heading().unwrap();
+        assert!(
+            (h3 - 45.0).abs() < 0.1,
+            "Expected AHRS at 0.8 m/s (still within band)"
+        );
+    }
+
+    #[test]
+    fn test_hysteresis_default_value() {
+        assert!(
+            (FusedHeadingSource::DEFAULT_SPEED_HYSTERESIS - 0.3).abs() < 0.001,
+            "Default speed hysteresis should be 0.3 m/s"
+        );
     }
 }

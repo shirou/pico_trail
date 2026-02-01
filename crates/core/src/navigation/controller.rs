@@ -48,14 +48,17 @@ pub trait NavigationController {
 ///
 /// # Steering Calculation
 /// - Heading error = bearing_to_target - current_heading (wrapped to +/-180)
-/// - Steering = heading_error / max_heading_error (clamped to +/-1.0)
+/// - PD controller: steering = P(error) + D(error_rate), with slew rate limiting
 ///
 /// # Throttle Calculation
 /// - At target (distance < wp_radius): throttle = 0.0
 /// - In approach zone (distance < approach_dist): throttle scales linearly
 /// - Far from target: throttle = 1.0
+/// - Scaled by heading error: reduced to 0 at max heading error
 pub struct SimpleNavigationController {
     config: SimpleNavConfig,
+    prev_heading_error: f32,
+    prev_steering: f32,
 }
 
 impl SimpleNavigationController {
@@ -63,12 +66,18 @@ impl SimpleNavigationController {
     pub fn new() -> Self {
         Self {
             config: SimpleNavConfig::default(),
+            prev_heading_error: 0.0,
+            prev_steering: 0.0,
         }
     }
 
     /// Create a new SimpleNavigationController with custom configuration
     pub fn with_config(config: SimpleNavConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            prev_heading_error: 0.0,
+            prev_steering: 0.0,
+        }
     }
 
     /// Get the current configuration
@@ -76,9 +85,9 @@ impl SimpleNavigationController {
         &self.config
     }
 
-    /// Calculate throttle based on distance to target
-    fn calculate_throttle(&self, distance: f32) -> f32 {
-        if distance < self.config.wp_radius {
+    /// Calculate throttle based on distance to target, scaled by heading error
+    fn calculate_throttle(&self, distance: f32, heading_error_abs: f32) -> f32 {
+        let distance_throttle = if distance < self.config.wp_radius {
             // At target - stop
             0.0
         } else if distance < self.config.approach_dist {
@@ -90,13 +99,46 @@ impl SimpleNavigationController {
         } else {
             // Far from target - full throttle
             1.0
-        }
+        };
+
+        // Heading error scaling: full throttle at 0 error, 0 at max degrees
+        let heading_scale = if heading_error_abs >= self.config.throttle_heading_error_max {
+            0.0
+        } else {
+            1.0 - (heading_error_abs / self.config.throttle_heading_error_max)
+        };
+
+        (distance_throttle * heading_scale).clamp(0.0, 1.0)
     }
 
-    /// Calculate steering based on heading error
-    fn calculate_steering(&self, heading_error: f32) -> f32 {
-        let steering = heading_error / self.config.max_heading_error;
-        steering.clamp(-1.0, 1.0)
+    /// Calculate steering using PD controller with slew rate limiting
+    fn calculate_steering(&mut self, heading_error: f32, dt: f32) -> f32 {
+        // Proportional term
+        let p_term = heading_error / self.config.max_heading_error;
+
+        // Derivative term (rate of heading error change)
+        let d_term = if dt > 0.0 {
+            let error_rate = (heading_error - self.prev_heading_error) / dt;
+            error_rate * self.config.steering_d_gain
+        } else {
+            0.0
+        };
+        self.prev_heading_error = heading_error;
+
+        // PD output
+        let raw_steering = (p_term + d_term).clamp(-1.0, 1.0);
+
+        // Slew rate limiting
+        let limited_steering = if self.config.max_steering_rate > 0.0 && dt > 0.0 {
+            let max_change = self.config.max_steering_rate * dt;
+            let delta = (raw_steering - self.prev_steering).clamp(-max_change, max_change);
+            self.prev_steering + delta
+        } else {
+            raw_steering
+        };
+        self.prev_steering = limited_steering;
+
+        limited_steering.clamp(-1.0, 1.0)
     }
 }
 
@@ -113,7 +155,7 @@ impl NavigationController for SimpleNavigationController {
         current_lon: f32,
         target: &PositionTarget,
         heading: f32,
-        _dt: f32,
+        dt: f32,
     ) -> NavigationOutput {
         // Calculate bearing and distance to target
         let bearing =
@@ -127,9 +169,9 @@ impl NavigationController for SimpleNavigationController {
         // Check if at target
         let at_target = distance < self.config.wp_radius;
 
-        // Calculate steering and throttle
-        let mut steering = self.calculate_steering(heading_error);
-        let throttle = self.calculate_throttle(distance);
+        // Calculate steering (PD + slew rate) and throttle (distance * heading error)
+        let mut steering = self.calculate_steering(heading_error, dt);
+        let throttle = self.calculate_throttle(distance, heading_error.abs());
 
         // Safety: ensure outputs are in valid ranges and handle NaN
         steering = sanitize_output(steering, -1.0, 1.0, 0.0);
@@ -146,7 +188,8 @@ impl NavigationController for SimpleNavigationController {
     }
 
     fn reset(&mut self) {
-        // SimpleNavigationController has no accumulated state to reset
+        self.prev_heading_error = 0.0;
+        self.prev_steering = 0.0;
     }
 }
 
@@ -384,6 +427,9 @@ mod tests {
             approach_dist: 20.0,
             max_heading_error: 45.0,
             min_approach_throttle: 0.3,
+            steering_d_gain: 0.01,
+            max_steering_rate: 3.0,
+            throttle_heading_error_max: 60.0,
         };
         let controller = SimpleNavigationController::with_config(config);
 
@@ -403,6 +449,180 @@ mod tests {
             output.distance_m > 110_000.0 && output.distance_m < 112_000.0,
             "Distance should be ~111km, got {}km",
             output.distance_m / 1000.0
+        );
+    }
+
+    // ========== PD Steering Tests ==========
+
+    #[test]
+    fn test_d_term_opposes_increasing_error() {
+        // When error increases, D-term should add to steering correction.
+        // When error decreases, D-term should reduce steering correction.
+        // Use very small D-gain to avoid clamping at +/-1.0.
+        let config = SimpleNavConfig {
+            steering_d_gain: 0.0001,
+            max_steering_rate: 0.0, // disable slew rate for this test
+            ..SimpleNavConfig::default()
+        };
+        let mut controller = SimpleNavigationController::with_config(config);
+
+        // Warm up: set prev_heading_error to 10
+        let target_north = PositionTarget::new(0.0009, 0.0); // ~100m north
+        controller.update(0.0, 0.0, &target_north, 350.0, 0.02); // error ~10°
+
+        // Call with error increasing (10 → 20): D-term adds to P-term
+        let output_increasing = controller.update(0.0, 0.0, &target_north, 340.0, 0.02); // error ~20°
+
+        // Reset and set prev to 30
+        controller.reset();
+        controller.update(0.0, 0.0, &target_north, 330.0, 0.02); // error ~30°
+
+        // Call with error decreasing (30 → 20): D-term subtracts from P-term
+        let output_decreasing = controller.update(0.0, 0.0, &target_north, 340.0, 0.02); // error ~20°
+
+        // Same ~20° error, but increasing vs decreasing: increasing should produce more steering
+        assert!(
+            output_increasing.steering > output_decreasing.steering,
+            "Increasing error should produce more steering than decreasing: {} vs {}",
+            output_increasing.steering,
+            output_decreasing.steering
+        );
+    }
+
+    #[test]
+    fn test_slew_rate_limits_steering_change() {
+        let config = SimpleNavConfig {
+            max_steering_rate: 1.0, // max 1.0/s change
+            steering_d_gain: 0.0,   // disable D-term for cleaner test
+            ..SimpleNavConfig::default()
+        };
+        let mut controller = SimpleNavigationController::with_config(config);
+        let dt = 0.02; // 50Hz
+
+        // First update with 0 heading error (steering ~0)
+        let target_north = PositionTarget::new(1.0, 0.0);
+        controller.update(0.0, 0.0, &target_north, 0.0, dt);
+
+        // Sudden large heading error demanding full steering
+        let target_west = PositionTarget::new(0.0, -1.0);
+        let output = controller.update(0.0, 0.0, &target_west, 0.0, dt);
+
+        // max_change = 1.0 * 0.02 = 0.02 per step from ~0
+        let max_expected = 1.0 * dt;
+        assert!(
+            output.steering.abs() <= max_expected + 0.01,
+            "Steering change should be limited by slew rate, got {}",
+            output.steering
+        );
+    }
+
+    #[test]
+    fn test_reset_clears_derivative_state() {
+        let mut controller = SimpleNavigationController::new();
+
+        // Build up some state
+        let target = PositionTarget::new(0.0, 1.0); // East
+        controller.update(0.0, 0.0, &target, 0.0, 0.02);
+
+        // Reset
+        controller.reset();
+
+        // After reset, prev_heading_error and prev_steering should be 0
+        // First update after reset should behave like fresh controller
+        let target_north = PositionTarget::new(1.0, 0.0);
+        let output = controller.update(0.0, 0.0, &target_north, 0.0, 0.02);
+        assert!(
+            output.steering.abs() < 0.1,
+            "After reset, steering for target ahead should be ~0, got {}",
+            output.steering
+        );
+    }
+
+    #[test]
+    fn test_dt_zero_disables_d_term() {
+        let config = SimpleNavConfig {
+            steering_d_gain: 0.01,
+            max_steering_rate: 0.0,
+            ..SimpleNavConfig::default()
+        };
+        let mut controller = SimpleNavigationController::with_config(config);
+
+        // With dt=0, D-term should be 0 (safe fallback)
+        let target = PositionTarget::new(0.0, 1.0); // East (90 degrees heading error)
+        let output = controller.update(0.0, 0.0, &target, 0.0, 0.0);
+
+        // Should only have P-term: ~90/90 = 1.0
+        assert!(
+            output.steering > 0.9,
+            "With dt=0, should still have P-term steering, got {}",
+            output.steering
+        );
+    }
+
+    // ========== Throttle Heading Error Tests ==========
+
+    #[test]
+    fn test_throttle_zero_at_90_degree_error() {
+        let mut controller = SimpleNavigationController::new();
+        let (lat, lon) = make_position(0.0, 0.0);
+        // Target east, heading north -> 90 degree error
+        let target = PositionTarget::new(0.0, 1.0); // East
+        let heading = 0.0;
+
+        let output = controller.update(lat, lon, &target, heading, 0.02);
+        assert!(
+            output.throttle < 0.05,
+            "Throttle should be ~0 at 90 degree heading error, got {}",
+            output.throttle
+        );
+    }
+
+    #[test]
+    fn test_throttle_full_at_zero_error() {
+        let mut controller = SimpleNavigationController::new();
+        let (lat, lon) = make_position(0.0, 0.0);
+        // Target north, heading north -> 0 error, far away
+        let target = PositionTarget::new(0.0009, 0.0); // ~100m north
+        let heading = 0.0;
+
+        let output = controller.update(lat, lon, &target, heading, 0.02);
+        assert!(
+            (output.throttle - 1.0).abs() < 0.01,
+            "Throttle should be 1.0 at 0 heading error far from target, got {}",
+            output.throttle
+        );
+    }
+
+    #[test]
+    fn test_throttle_scales_with_heading_error() {
+        let mut controller = SimpleNavigationController::new();
+        let (lat, lon) = make_position(0.0, 0.0);
+        // Target slightly east of north (~45 degree bearing)
+        let target = PositionTarget::new(0.001, 0.001);
+        let heading = 0.0;
+
+        let output = controller.update(lat, lon, &target, heading, 0.02);
+        // Heading error ~45 degrees, throttle should be ~50% of distance-based throttle
+        assert!(
+            output.throttle > 0.2 && output.throttle < 0.8,
+            "Throttle should be partially reduced at ~45 degree error, got {}",
+            output.throttle
+        );
+    }
+
+    #[test]
+    fn test_throttle_zero_at_180_degree_error() {
+        let mut controller = SimpleNavigationController::new();
+        let (lat, lon) = make_position(0.0, 0.0);
+        // Target south, heading north -> 180 degree error
+        let target = PositionTarget::new(-0.001, 0.0); // South
+        let heading = 0.0;
+
+        let output = controller.update(lat, lon, &target, heading, 0.02);
+        assert!(
+            output.throttle < 0.01,
+            "Throttle should be 0 at 180 degree heading error, got {}",
+            output.throttle
         );
     }
 }
