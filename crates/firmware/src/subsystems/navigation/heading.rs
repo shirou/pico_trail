@@ -148,8 +148,13 @@ impl FusedHeadingSource {
         };
 
         if gps.speed >= threshold {
-            self.using_gps_cog.set(true);
-            gps.course_over_ground
+            if let Some(cog) = gps.course_over_ground {
+                self.using_gps_cog.set(true);
+                Some(cog)
+            } else {
+                self.using_gps_cog.set(false);
+                None
+            }
         } else {
             self.using_gps_cog.set(false);
             None

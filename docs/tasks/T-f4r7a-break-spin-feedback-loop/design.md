@@ -147,7 +147,7 @@ New config field in `SimpleNavConfig`:
 pub heading_filter_alpha: f32, // default: 0.3
 ```
 
-The filter is applied in the firmware-level navigation task before passing heading to the controller. The `HeadingFilter` struct lives in `crates/core` to enable unit testing without embassy dependencies.
+The filter is applied inside `SimpleNavigationController::update()` in the `crates/core` navigation controller. The firmware-level navigation task passes the raw fused heading into the controller, which owns and applies the `HeadingFilter` (also in `crates/core`) to enable unit testing without embassy dependencies.
 
 ### Component 4: Gyroscope Yaw Rate for D-Term (Root Cause 8)
 

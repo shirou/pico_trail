@@ -57,7 +57,7 @@ pub trait NavigationController {
 /// - At target (distance < wp_radius): throttle = 0.0
 /// - In approach zone (distance < approach_dist): throttle scales linearly
 /// - Far from target: throttle = 1.0
-/// - Scaled by heading error: reduced to 0 at max heading error
+/// - Scaled by heading error: reduced to 0 when |heading error| >= throttle_heading_error_max
 pub struct SimpleNavigationController {
     config: SimpleNavConfig,
     prev_heading_error: f32,

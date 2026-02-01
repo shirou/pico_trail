@@ -69,8 +69,8 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 ### Tasks
 
 - [x] **Add config fields to `SimpleNavConfig`**
-  - [x] Add `steering_d_gain: f32` field (default: 0.005)
-  - [x] Add `max_steering_rate: f32` field (default: 0.0, disabled by default)
+  - [x] Add `steering_d_gain: f32` field (default: 0.05)
+  - [x] Add `max_steering_rate: f32` field (default: 2.0)
   - [x] Update `Default` impl with new field defaults
 - [x] **Add state fields to `SimpleNavigationController`**
   - [x] Add `prev_heading_error: f32` field (init: 0.0)
