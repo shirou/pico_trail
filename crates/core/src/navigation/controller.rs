@@ -117,7 +117,14 @@ impl SimpleNavigationController {
             1.0 - (heading_error_abs / self.config.throttle_heading_error_max)
         };
 
-        (distance_throttle * heading_scale).clamp(0.0, 1.0)
+        let mut throttle = (distance_throttle * heading_scale).clamp(0.0, 1.0);
+
+        // Arc turn throttle floor: maintain forward motion for moderate heading errors
+        if heading_error_abs < self.config.pivot_turn_angle && distance > self.config.wp_radius {
+            throttle = throttle.max(self.config.arc_turn_min_throttle);
+        }
+
+        throttle
     }
 
     /// Calculate steering using PD controller with slew rate limiting
@@ -481,6 +488,8 @@ mod tests {
             max_spin_steering: 0.5,
             spin_throttle_threshold: 0.15,
             heading_filter_alpha: 0.5,
+            pivot_turn_angle: 60.0,
+            arc_turn_min_throttle: 0.15,
         };
         let controller = SimpleNavigationController::with_config(config);
 
@@ -835,6 +844,184 @@ mod tests {
             output.steering < 0.0,
             "At 30 deg/s yaw rate, D-term should produce negative steering (damping), got {}",
             output.steering
+        );
+    }
+
+    // ========== Pivot Turn / Arc Turn Throttle Floor Tests (FR-00144, FR-00145, NFR-00093) ==========
+
+    #[test]
+    fn test_arc_turn_floor_below_pivot_angle() {
+        // Heading error below pivot_turn_angle: throttle >= arc_turn_min_throttle
+        let config = SimpleNavConfig {
+            pivot_turn_angle: 60.0,
+            arc_turn_min_throttle: 0.15,
+            throttle_heading_error_max: 90.0,
+            ..SimpleNavConfig::default()
+        };
+        let controller = SimpleNavigationController::with_config(config);
+
+        // At 50° error (below 60° pivot angle), far from target
+        let throttle = controller.calculate_throttle(100.0, 50.0);
+        assert!(
+            throttle >= 0.15,
+            "Throttle should be >= arc_turn_min_throttle when below pivot angle, got {}",
+            throttle
+        );
+    }
+
+    #[test]
+    fn test_arc_turn_floor_above_pivot_angle() {
+        // Heading error above pivot_turn_angle: throttle follows existing curve
+        let config = SimpleNavConfig {
+            pivot_turn_angle: 60.0,
+            arc_turn_min_throttle: 0.15,
+            throttle_heading_error_max: 90.0,
+            ..SimpleNavConfig::default()
+        };
+        let controller = SimpleNavigationController::with_config(config);
+
+        // At 80° error (above 60° pivot angle), far from target
+        // Natural throttle: 1.0 * (1 - 80/90) = 0.111
+        let throttle = controller.calculate_throttle(100.0, 80.0);
+        assert!(
+            throttle < 0.15,
+            "Throttle should follow natural curve (below floor) above pivot angle, got {}",
+            throttle
+        );
+    }
+
+    #[test]
+    fn test_arc_turn_floor_disabled_with_zero_pivot_angle() {
+        // pivot_turn_angle=0 disables the feature (current behavior preserved)
+        let config = SimpleNavConfig {
+            pivot_turn_angle: 0.0,
+            arc_turn_min_throttle: 0.15,
+            throttle_heading_error_max: 90.0,
+            ..SimpleNavConfig::default()
+        };
+        let controller = SimpleNavigationController::with_config(config);
+
+        // At 80° error, natural throttle ~ 0.111
+        let throttle = controller.calculate_throttle(100.0, 80.0);
+        assert!(
+            throttle < 0.15,
+            "With pivot_turn_angle=0, floor should never apply, got {}",
+            throttle
+        );
+
+        // At 30° error, natural throttle ~ 0.667 (still above floor, so same either way)
+        let throttle_low = controller.calculate_throttle(100.0, 30.0);
+        let natural = 1.0 - 30.0 / 90.0;
+        assert!(
+            (throttle_low - natural).abs() < 0.01,
+            "With pivot_turn_angle=0, throttle should equal natural curve, got {} vs {}",
+            throttle_low,
+            natural
+        );
+    }
+
+    #[test]
+    fn test_arc_turn_floor_always_active_with_180_pivot_angle() {
+        // pivot_turn_angle=180: floor always applies when not at target
+        let config = SimpleNavConfig {
+            pivot_turn_angle: 180.0,
+            arc_turn_min_throttle: 0.15,
+            throttle_heading_error_max: 90.0,
+            ..SimpleNavConfig::default()
+        };
+        let controller = SimpleNavigationController::with_config(config);
+
+        // At 89° error, natural throttle ~ 0.011
+        let throttle = controller.calculate_throttle(100.0, 89.0);
+        assert!(
+            throttle >= 0.15,
+            "With pivot_turn_angle=180, floor should always apply, got {}",
+            throttle
+        );
+    }
+
+    #[test]
+    fn test_arc_turn_floor_not_applied_at_target() {
+        // Floor does NOT apply when distance <= wp_radius (at target)
+        let config = SimpleNavConfig {
+            wp_radius: 2.0,
+            pivot_turn_angle: 60.0,
+            arc_turn_min_throttle: 0.15,
+            ..SimpleNavConfig::default()
+        };
+        let controller = SimpleNavigationController::with_config(config);
+
+        // Distance 1.5m (within wp_radius of 2.0), heading error 30° (below pivot angle)
+        let throttle = controller.calculate_throttle(1.5, 30.0);
+        assert!(
+            throttle < 0.01,
+            "Floor should not apply at target (distance <= wp_radius), got {}",
+            throttle
+        );
+    }
+
+    #[test]
+    fn test_arc_turn_floor_uses_max_not_replace() {
+        // Floor uses max() - does not reduce natural throttle when it is higher
+        let config = SimpleNavConfig {
+            pivot_turn_angle: 60.0,
+            arc_turn_min_throttle: 0.15,
+            throttle_heading_error_max: 90.0,
+            ..SimpleNavConfig::default()
+        };
+        let controller = SimpleNavigationController::with_config(config);
+
+        // At 10° error, natural throttle ~ 0.889 (well above 0.15 floor)
+        let throttle = controller.calculate_throttle(100.0, 10.0);
+        let natural = 1.0 - 10.0 / 90.0;
+        assert!(
+            (throttle - natural).abs() < 0.01,
+            "Floor should not reduce throttle above floor value, got {} vs natural {}",
+            throttle,
+            natural
+        );
+    }
+
+    #[test]
+    fn test_arc_turn_transition_continuity_default_config() {
+        // NFR-00093: throttle at 59.9° vs 60.1° with default config → delta < 0.1
+        let config = SimpleNavConfig::default();
+        let controller = SimpleNavigationController::with_config(config);
+
+        let throttle_below = controller.calculate_throttle(100.0, 59.9);
+        let throttle_above = controller.calculate_throttle(100.0, 60.1);
+
+        let delta = (throttle_below - throttle_above).abs();
+        assert!(
+            delta < 0.1,
+            "Transition at boundary should be continuous (delta < 0.1), got delta={} (below={}, above={})",
+            delta,
+            throttle_below,
+            throttle_above
+        );
+    }
+
+    #[test]
+    fn test_arc_turn_transition_continuity_custom_config() {
+        // NFR-00093: continuity with non-default config
+        let config = SimpleNavConfig {
+            pivot_turn_angle: 45.0,
+            arc_turn_min_throttle: 0.2,
+            throttle_heading_error_max: 90.0,
+            ..SimpleNavConfig::default()
+        };
+        let controller = SimpleNavigationController::with_config(config);
+
+        let throttle_below = controller.calculate_throttle(100.0, 44.9);
+        let throttle_above = controller.calculate_throttle(100.0, 45.1);
+
+        let delta = (throttle_below - throttle_above).abs();
+        assert!(
+            delta < 0.1,
+            "Transition at boundary should be continuous (delta < 0.1), got delta={} (below={}, above={})",
+            delta,
+            throttle_below,
+            throttle_above
         );
     }
 }

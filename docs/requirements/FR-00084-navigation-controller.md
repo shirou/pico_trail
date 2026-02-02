@@ -22,12 +22,15 @@
   - [FR-00090-mission-waypoint-navigation](FR-00090-mission-waypoint-navigation.md)
   - [NFR-00070-navigation-update-rate](NFR-00070-navigation-update-rate.md)
   - [NFR-00069-navigation-controller-performance](NFR-00069-navigation-controller-performance.md)
+  - [FR-00144-configurable-pivot-turn-threshold](FR-00144-configurable-pivot-turn-threshold.md)
+  - [FR-00145-arc-turn-minimum-throttle](FR-00145-arc-turn-minimum-throttle.md)
 - Related ADRs:
   - [ADR-00022-navigation-controller-architecture](../adr/ADR-00022-navigation-controller-architecture.md)
 - Related Tasks:
   - [T-00018-navigation-controller](../tasks/T-00018-navigation-controller/README.md)
   - [T-00033-heading-source-navigation-integration](../tasks/T-00033-heading-source-navigation-integration/README.md)
   - [T-00039-break-spin-feedback-loop](../tasks/T-00039-break-spin-feedback-loop/README.md)
+  - [T-00042-configurable-turn-behavior](../tasks/T-00042-configurable-turn-behavior/README.md)
 
 ## Requirement Statement
 
