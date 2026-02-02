@@ -30,12 +30,12 @@ As a firmware developer, I want the parameter migration to be transparent, so th
 
 ## Acceptance Criteria
 
-- [ ] `./scripts/build-rp2350.sh pico_trail_rover` succeeds after migration
-- [ ] All existing `cargo test --lib` tests continue to pass
-- [ ] No firmware source files require import path changes (re-exports maintain compatibility)
-- [ ] `ParameterStore` flash persistence (`load_from_flash`, `save_to_flash`) continues to work on RP2350
+- [x] `./scripts/build-rp2350.sh pico_trail_rover` succeeds after migration
+- [x] All existing `cargo test --lib` tests continue to pass
+- [x] No firmware source files require import path changes (re-exports maintain compatibility)
+- [x] `ParameterStore` flash persistence (`load_from_flash`, `save_to_flash`) continues to work on RP2350
 - [ ] Parameter values stored in flash before migration are readable after migration (no format change)
-- [ ] MAVLink `PARAM_SET` / `PARAM_VALUE` protocol behavior is unchanged
+- [x] MAVLink `PARAM_SET` / `PARAM_VALUE` protocol behavior is unchanged
 
 ## Technical Details (if applicable)
 

@@ -5,7 +5,7 @@
 
 use crate::platform::{FlashInterface, Result};
 use pico_trail_core::parameters::{
-    calculate_crc32, validate_crc32, Parameter, ParameterBlockHeader, MAX_PARAMS,
+    calculate_crc32, validate_crc32, Parameter, ParameterBlockHeader, MAX_PARAMS_PER_BLOCK,
 };
 
 /// Flash block addresses for parameter storage
@@ -93,14 +93,14 @@ impl<F: FlashInterface> FlashParamStorage<F> {
     ///
     /// Returns error if:
     /// - Block ID is out of range
-    /// - Too many parameters (> MAX_PARAMS)
+    /// - Too many parameters (> MAX_PARAMS_PER_BLOCK)
     /// - Flash erase/write fails
     pub fn write_block(&mut self, block_id: u8, params: &[Parameter], sequence: u16) -> Result<()> {
         if block_id as usize >= PARAM_BLOCK_ADDRESSES.len() {
             return Err(crate::platform::error::FlashError::InvalidAddress.into());
         }
 
-        if params.len() > MAX_PARAMS {
+        if params.len() > MAX_PARAMS_PER_BLOCK {
             return Err(crate::platform::error::FlashError::WriteFailed.into());
         }
 
@@ -114,7 +114,8 @@ impl<F: FlashInterface> FlashParamStorage<F> {
         let header_bytes = header.to_bytes();
 
         // Serialize parameters
-        let mut param_bytes = heapless::Vec::<u8, { MAX_PARAMS * Parameter::SIZE }>::new();
+        let mut param_bytes =
+            heapless::Vec::<u8, { MAX_PARAMS_PER_BLOCK * Parameter::SIZE }>::new();
         for param in params {
             let bytes = param.to_bytes();
             param_bytes
@@ -125,7 +126,7 @@ impl<F: FlashInterface> FlashParamStorage<F> {
         // Calculate CRC over header + params
         let mut crc_data = heapless::Vec::<
             u8,
-            { ParameterBlockHeader::SIZE + MAX_PARAMS * Parameter::SIZE },
+            { ParameterBlockHeader::SIZE + MAX_PARAMS_PER_BLOCK * Parameter::SIZE },
         >::new();
         crc_data
             .extend_from_slice(&header_bytes)
@@ -183,7 +184,7 @@ impl<F: FlashInterface> FlashParamStorage<F> {
         block_id: u8,
     ) -> Result<(
         ParameterBlockHeader,
-        heapless::Vec<Parameter, MAX_PARAMS>,
+        heapless::Vec<Parameter, MAX_PARAMS_PER_BLOCK>,
         bool,
     )> {
         if block_id as usize >= PARAM_BLOCK_ADDRESSES.len() {
@@ -207,7 +208,7 @@ impl<F: FlashInterface> FlashParamStorage<F> {
         let param_count = header.param_count as usize;
         let param_data_size = param_count * Parameter::SIZE;
 
-        let mut param_buf = heapless::Vec::<u8, { MAX_PARAMS * Parameter::SIZE }>::new();
+        let mut param_buf = heapless::Vec::<u8, { MAX_PARAMS_PER_BLOCK * Parameter::SIZE }>::new();
         param_buf.resize(param_data_size, 0).ok();
 
         if param_count > 0 {
@@ -216,7 +217,7 @@ impl<F: FlashInterface> FlashParamStorage<F> {
         }
 
         // Parse parameters
-        let mut params = heapless::Vec::<Parameter, MAX_PARAMS>::new();
+        let mut params = heapless::Vec::<Parameter, MAX_PARAMS_PER_BLOCK>::new();
         for i in 0..param_count {
             let offset = i * Parameter::SIZE;
             let param = Parameter::from_bytes(&param_buf[offset..offset + Parameter::SIZE])
@@ -235,7 +236,7 @@ impl<F: FlashInterface> FlashParamStorage<F> {
         // Validate CRC
         let mut crc_data = heapless::Vec::<
             u8,
-            { ParameterBlockHeader::SIZE + MAX_PARAMS * Parameter::SIZE },
+            { ParameterBlockHeader::SIZE + MAX_PARAMS_PER_BLOCK * Parameter::SIZE },
         >::new();
         crc_data.extend_from_slice(&header_buf).ok();
         crc_data.extend_from_slice(&param_buf).ok();
@@ -322,7 +323,7 @@ mod tests {
         let mut storage = FlashParamStorage::new(flash);
 
         // Write parameters
-        let params = heapless::Vec::<Parameter, MAX_PARAMS>::from_slice(&[
+        let params = heapless::Vec::<Parameter, MAX_PARAMS_PER_BLOCK>::from_slice(&[
             Parameter::new_f32(0x12345678, core::f32::consts::PI),
             Parameter::new_u32(0xABCDEF00, 12345),
         ])
@@ -348,8 +349,10 @@ mod tests {
 
         // Write parameters
         let params =
-            heapless::Vec::<Parameter, MAX_PARAMS>::from_slice(&[Parameter::new_f32(0, 1.0)])
-                .unwrap();
+            heapless::Vec::<Parameter, MAX_PARAMS_PER_BLOCK>::from_slice(&[Parameter::new_f32(
+                0, 1.0,
+            )])
+            .unwrap();
 
         storage.write_block(0, &params, 1).unwrap();
 
@@ -370,10 +373,9 @@ mod tests {
 
         // Write to all 4 blocks
         for block_id in 0..4 {
-            let params = heapless::Vec::<Parameter, MAX_PARAMS>::from_slice(&[Parameter::new_u32(
-                block_id as u32,
-                block_id as u32,
-            )])
+            let params = heapless::Vec::<Parameter, MAX_PARAMS_PER_BLOCK>::from_slice(&[
+                Parameter::new_u32(block_id as u32, block_id as u32),
+            ])
             .unwrap();
 
             storage
@@ -396,7 +398,7 @@ mod tests {
         let mut storage = FlashParamStorage::new(flash);
 
         // Write empty parameter list
-        let params = heapless::Vec::<Parameter, MAX_PARAMS>::new();
+        let params = heapless::Vec::<Parameter, MAX_PARAMS_PER_BLOCK>::new();
         storage.write_block(0, &params, 0).unwrap();
 
         // Read back
@@ -411,7 +413,7 @@ mod tests {
         let flash = MockFlash::new();
         let mut storage = FlashParamStorage::new(flash);
 
-        let params = heapless::Vec::<Parameter, MAX_PARAMS>::new();
+        let params = heapless::Vec::<Parameter, MAX_PARAMS_PER_BLOCK>::new();
 
         // Block ID out of range
         let result = storage.write_block(4, &params, 0);
@@ -427,8 +429,10 @@ mod tests {
         let mut storage = FlashParamStorage::new(flash);
 
         let params =
-            heapless::Vec::<Parameter, MAX_PARAMS>::from_slice(&[Parameter::new_f32(0, 1.0)])
-                .unwrap();
+            heapless::Vec::<Parameter, MAX_PARAMS_PER_BLOCK>::from_slice(&[Parameter::new_f32(
+                0, 1.0,
+            )])
+            .unwrap();
 
         // No active block initially
         assert_eq!(storage.find_active_block(), None);
@@ -473,8 +477,10 @@ mod tests {
         let mut storage = FlashParamStorage::new(flash);
 
         let params =
-            heapless::Vec::<Parameter, MAX_PARAMS>::from_slice(&[Parameter::new_f32(0, 1.0)])
-                .unwrap();
+            heapless::Vec::<Parameter, MAX_PARAMS_PER_BLOCK>::from_slice(&[Parameter::new_f32(
+                0, 1.0,
+            )])
+            .unwrap();
 
         // Write multiple blocks
         storage.write_block(0, &params, 1).unwrap();
@@ -496,8 +502,10 @@ mod tests {
         let mut storage = FlashParamStorage::new(flash);
 
         let params =
-            heapless::Vec::<Parameter, MAX_PARAMS>::from_slice(&[Parameter::new_f32(0, 1.0)])
-                .unwrap();
+            heapless::Vec::<Parameter, MAX_PARAMS_PER_BLOCK>::from_slice(&[Parameter::new_f32(
+                0, 1.0,
+            )])
+            .unwrap();
 
         // Initial stats
         let stats = storage.get_stats();
@@ -533,8 +541,10 @@ mod tests {
         let mut storage = FlashParamStorage::new(flash);
 
         let params =
-            heapless::Vec::<Parameter, MAX_PARAMS>::from_slice(&[Parameter::new_f32(0, 1.0)])
-                .unwrap();
+            heapless::Vec::<Parameter, MAX_PARAMS_PER_BLOCK>::from_slice(&[Parameter::new_f32(
+                0, 1.0,
+            )])
+            .unwrap();
 
         // Write to all blocks
         storage.write_block(0, &params, 1).unwrap();

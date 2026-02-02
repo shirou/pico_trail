@@ -20,7 +20,9 @@ pub mod wifi;
 
 pub use arming::ArmingParams;
 pub use battery::BatteryParams;
-pub use block::{hash_param_name, Parameter, ParameterBlockHeader, ParameterFlags};
+pub use block::{
+    hash_param_name, Parameter, ParameterBlockHeader, ParameterFlags, MAX_PARAMS_PER_BLOCK,
+};
 pub use circle::{CircleDirection, CircleParams};
 pub use compass::CompassParams;
 pub use crc::{calculate_crc32, validate_crc32};

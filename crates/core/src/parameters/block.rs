@@ -11,8 +11,8 @@ pub const PARAM_MAGIC: u32 = 0x50415241;
 /// Parameter format version
 pub const PARAM_VERSION: u16 = 1;
 
-/// Maximum number of parameters per block
-pub const MAX_PARAMS: usize = 200;
+/// Maximum number of parameters per flash block
+pub const MAX_PARAMS_PER_BLOCK: usize = 200;
 
 /// Parameter block header
 ///
@@ -89,7 +89,7 @@ impl ParameterBlockHeader {
     pub fn is_valid(&self) -> bool {
         self.magic == PARAM_MAGIC
             && self.version == PARAM_VERSION
-            && self.param_count <= MAX_PARAMS as u16
+            && self.param_count <= MAX_PARAMS_PER_BLOCK as u16
     }
 }
 
@@ -239,7 +239,7 @@ mod tests {
 
         // Too many params
         header.magic = PARAM_MAGIC;
-        header.param_count = (MAX_PARAMS + 1) as u16;
+        header.param_count = (MAX_PARAMS_PER_BLOCK + 1) as u16;
         assert!(!header.is_valid());
     }
 

@@ -84,9 +84,9 @@ pub struct ParamMetadata {
 /// Flash persistence is handled by free functions in the firmware crate.
 pub struct ParameterStore {
     /// Parameter values
-    pub parameters: FnvIndexMap<String<PARAM_NAME_LEN>, ParamValue, MAX_PARAMS>,
+    parameters: FnvIndexMap<String<PARAM_NAME_LEN>, ParamValue, MAX_PARAMS>,
     /// Parameter metadata
-    pub metadata: FnvIndexMap<String<PARAM_NAME_LEN>, ParamMetadata, MAX_PARAMS>,
+    metadata: FnvIndexMap<String<PARAM_NAME_LEN>, ParamMetadata, MAX_PARAMS>,
     /// Dirty flag (needs Flash write)
     dirty: bool,
 }
@@ -196,6 +196,44 @@ impl ParameterStore {
     /// Clear dirty flag (called after successful flash save)
     pub fn clear_dirty(&mut self) {
         self.dirty = false;
+    }
+
+    /// Get total parameter count (including hidden parameters)
+    pub fn len(&self) -> usize {
+        self.parameters.len()
+    }
+
+    /// Check if the store is empty
+    pub fn is_empty(&self) -> bool {
+        self.parameters.is_empty()
+    }
+
+    /// Iterate over all parameters (including hidden) as (name, value) pairs
+    ///
+    /// Used by Flash persistence for serialization.
+    pub fn iter_all(&self) -> impl Iterator<Item = (&String<PARAM_NAME_LEN>, &ParamValue)> {
+        self.parameters.iter()
+    }
+
+    /// Get metadata for a parameter by name
+    pub fn get_metadata(&self, name: &str) -> Option<&ParamMetadata> {
+        let mut key: String<PARAM_NAME_LEN> = String::new();
+        key.push_str(name).ok()?;
+        self.metadata.get(&key)
+    }
+
+    /// Insert a parameter directly without validation
+    ///
+    /// Used by Flash persistence for deserialization. Bypasses read-only
+    /// and existence checks since data comes from a trusted source (Flash).
+    pub fn insert_raw(
+        &mut self,
+        name: String<PARAM_NAME_LEN>,
+        value: ParamValue,
+        flags: ParamFlags,
+    ) {
+        self.parameters.insert(name.clone(), value).ok();
+        self.metadata.insert(name, ParamMetadata { flags }).ok();
     }
 }
 

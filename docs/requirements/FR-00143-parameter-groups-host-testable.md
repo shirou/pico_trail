@@ -36,18 +36,18 @@ As a developer, I want to add or modify parameter groups and immediately validat
 
 ## Acceptance Criteria
 
-- [ ] `CompassParams` type is defined in `pico_trail_core` and testable on host
-- [ ] `ArmingParams` type is defined in `pico_trail_core` and testable on host
-- [ ] `BatteryParams` type is defined in `pico_trail_core` and testable on host
-- [ ] `FailsafeParams` type is defined in `pico_trail_core` and testable on host
-- [ ] `FenceParams` type is defined in `pico_trail_core` and testable on host
-- [ ] `LoiterParams` type is defined in `pico_trail_core` and testable on host
-- [ ] `CircleParams` type is defined in `pico_trail_core` and testable on host
-- [ ] `WifiParams` type is defined in `pico_trail_core` and testable on host
-- [ ] `BoardParams` remains in firmware crate (architecture-dependent)
-- [ ] Each parameter group has `register_defaults()` and `from_store()` unit tests in core
-- [ ] `cargo test --lib` runs and passes all parameter group tests
-- [ ] Existing firmware code compiles without changes to parameter group usage patterns
+- [x] `CompassParams` type is defined in `pico_trail_core` and testable on host
+- [x] `ArmingParams` type is defined in `pico_trail_core` and testable on host
+- [x] `BatteryParams` type is defined in `pico_trail_core` and testable on host
+- [x] `FailsafeParams` type is defined in `pico_trail_core` and testable on host
+- [x] `FenceParams` type is defined in `pico_trail_core` and testable on host
+- [x] `LoiterParams` type is defined in `pico_trail_core` and testable on host
+- [x] `CircleParams` type is defined in `pico_trail_core` and testable on host
+- [x] `WifiParams` type is defined in `pico_trail_core` and testable on host
+- [x] `BoardParams` remains in firmware crate (architecture-dependent)
+- [x] Each parameter group has `register_defaults()` and `from_store()` unit tests in core
+- [x] `cargo test --lib` runs and passes all parameter group tests
+- [x] Existing firmware code compiles without changes to parameter group usage patterns
 
 ## Technical Details (if applicable)
 

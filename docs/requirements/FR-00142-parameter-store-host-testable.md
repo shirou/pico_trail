@@ -36,14 +36,14 @@ As a developer, I want to run parameter store unit tests via `cargo test --lib` 
 
 ## Acceptance Criteria
 
-- [ ] `ParameterStore` type is defined in `pico_trail_core` crate
-- [ ] Core operations (`new`, `get`, `set`, `register`, `Default`, `count`, `iter_names`, `is_hidden`, `is_dirty`, `clear_dirty`) compile and run on host target
-- [ ] `ParamValue` type is unified: single authoritative definition in core crate covering all variants (Float, Int, Bool, String, Ipv4)
-- [ ] `ParamFlags` type is defined in core crate
-- [ ] A core-level error type (`ParameterError`) replaces `PlatformError::InvalidConfig` for parameter operations
-- [ ] `cargo test --lib` runs and passes parameter store registration, get, set, and validation tests
-- [ ] Flash persistence methods remain in firmware crate (not moved to core)
-- [ ] Firmware crate re-exports or imports core parameter types seamlessly
+- [x] `ParameterStore` type is defined in `pico_trail_core` crate
+- [x] Core operations (`new`, `get`, `set`, `register`, `Default`, `count`, `iter_names`, `is_hidden`, `is_dirty`, `clear_dirty`) compile and run on host target
+- [x] `ParamValue` type is unified: single authoritative definition in core crate covering all variants (Float, Int, Bool, String, Ipv4)
+- [x] `ParamFlags` type is defined in core crate
+- [x] A core-level error type (`ParameterError`) replaces `PlatformError::InvalidConfig` for parameter operations
+- [x] `cargo test --lib` runs and passes parameter store registration, get, set, and validation tests
+- [x] Flash persistence methods remain in firmware crate (not moved to core)
+- [x] Firmware crate re-exports or imports core parameter types seamlessly
 
 ## Technical Details (if applicable)
 

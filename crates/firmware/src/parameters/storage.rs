@@ -237,8 +237,7 @@ fn load_from_block<F: FlashInterface>(flash: &mut F, address: u32) -> Result<Par
         // Deserialize value
         match deserialize_value(type_id, &buf, &mut offset) {
             Ok(value) => {
-                store.parameters.insert(name.clone(), value).ok();
-                store.metadata.insert(name, ParamMetadata { flags }).ok();
+                store.insert_raw(name, value, flags);
             }
             Err(_) => break,
         }
@@ -267,14 +266,14 @@ pub fn save_to_flash<F: FlashInterface>(store: &mut ParameterStore, flash: &mut 
     buf[4..8].copy_from_slice(&PARAM_VERSION.to_le_bytes());
 
     // Write parameter count
-    let param_count = store.parameters.len() as u32;
+    let param_count = store.len() as u32;
     buf[8..12].copy_from_slice(&param_count.to_le_bytes());
 
     // Write parameters
     let mut offset = 12;
     let mut temp_buf = Vec::<u8, 256>::new();
 
-    for (name, value) in &store.parameters {
+    for (name, value) in store.iter_all() {
         // Write name (16 bytes, null-terminated)
         let name_bytes = name.as_bytes();
         let copy_len = core::cmp::min(name_bytes.len(), PARAM_NAME_LEN);
@@ -287,8 +286,7 @@ pub fn save_to_flash<F: FlashInterface>(store: &mut ParameterStore, flash: &mut 
 
         // Write flags
         let metadata_flags = store
-            .metadata
-            .get(name)
+            .get_metadata(name.as_str())
             .map(|m| m.flags)
             .unwrap_or(ParamFlags::empty());
         buf[offset] = metadata_flags.bits();

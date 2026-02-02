@@ -12,7 +12,7 @@ pub mod storage;
 // Re-export core types
 pub use pico_trail_core::parameters::{
     calculate_crc32, hash_param_name, validate_crc32, Parameter, ParameterBlockHeader,
-    ParameterFlags, MAX_PARAMS,
+    ParameterFlags, MAX_PARAMS_PER_BLOCK,
 };
 pub use registry::{ParamMetadata, ParamType, ParamValue, ParameterRegistry, RegistryError};
 pub use saver::{ParamSaver, SaveRequest};
