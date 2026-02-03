@@ -934,7 +934,6 @@ Planned additions (deferred from current implementation):
 
 ## Related Documentation
 
-- [TDL Process](tdl.md) - Traceable Development Lifecycle
 - Analysis Documents:
   - [AN-00001: ArduPilot Analysis](analysis/AN-00001-ardupilot-analysis.md)
   - [AN-00004: Platform Abstraction](analysis/AN-00004-platform-abstraction.md)

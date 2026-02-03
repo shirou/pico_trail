@@ -14,6 +14,7 @@ pub mod error;
 pub mod failsafe;
 pub mod fence;
 pub mod loiter;
+pub mod navigation;
 pub mod registry;
 pub mod storage;
 pub mod wifi;
@@ -30,6 +31,7 @@ pub use error::ParameterError;
 pub use failsafe::FailsafeParams;
 pub use fence::FenceParams;
 pub use loiter::LoiterParams;
+pub use navigation::NavigationParams;
 pub use registry::{ParamType, RegistryError};
 pub use storage::{ParamFlags, ParamMetadata, ParamValue, ParameterStore};
 pub use storage::{

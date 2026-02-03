@@ -22,6 +22,7 @@
   - [T-00033-heading-source-navigation-integration](../tasks/T-00033-heading-source-navigation-integration/README.md)
   - [T-00038-fix-guided-mode-heading-oscillation](../tasks/T-00038-fix-guided-mode-heading-oscillation/README.md)
   - [T-00039-break-spin-feedback-loop](../tasks/T-00039-break-spin-feedback-loop/README.md)
+  - [T-00042-configurable-turn-behavior](../tasks/T-00042-configurable-turn-behavior/README.md)
 
 ## Executive Summary
 

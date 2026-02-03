@@ -76,6 +76,14 @@ pub struct SimpleNavConfig {
     pub spin_throttle_threshold: f32,
     /// EMA filter alpha for heading smoothing (0.0 = max smoothing, 1.0 = no filter)
     pub heading_filter_alpha: f32,
+    /// Heading error threshold for pivot turns (degrees, ArduPilot: WP_PIVOT_ANGLE).
+    /// Below this angle, arc_turn_min_throttle is enforced.
+    /// Set to 0 to always allow pivot turns (current behavior).
+    /// Set to 180 to never allow pivot turns.
+    pub pivot_turn_angle: f32,
+    /// Minimum throttle during arc turns (0.0-1.0).
+    /// Only applies when heading error < pivot_turn_angle and distance > wp_radius.
+    pub arc_turn_min_throttle: f32,
 }
 
 impl Default for SimpleNavConfig {
@@ -91,6 +99,8 @@ impl Default for SimpleNavConfig {
             max_spin_steering: 0.3,
             spin_throttle_threshold: 0.1,
             heading_filter_alpha: 0.3,
+            pivot_turn_angle: 60.0,
+            arc_turn_min_throttle: 0.15,
         }
     }
 }
