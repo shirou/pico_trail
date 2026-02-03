@@ -22,6 +22,9 @@ Add two config fields to `SimpleNavConfig` and a throttle floor to `calculate_th
 - [x] Transition at boundary is continuous (< 0.1 throttle delta)
 - [x] `pivot_turn_angle=0` disables feature (current behavior preserved)
 - [x] All existing tests pass; no regressions
+- [x] `NavigationParams` registered in parameter store with all 12 fields
+- [x] `to_nav_config()` converts `NavigationParams` → `SimpleNavConfig`
+- [x] Parameters configurable at runtime via MAVLink GCS
 
 ## Background and Current State
 
@@ -133,6 +136,41 @@ At the boundary (60°), natural throttle is 0.333, well above the 0.15 floor. Th
 - Zero additional memory (2 f32 config fields = 8 bytes in struct, already stack-allocated)
 - Negligible CPU impact (< 1us on RP2350)
 
+### Component: `NavigationParams` Parameter Group
+
+**File**: `crates/core/src/parameters/navigation.rs` (new)
+
+Follows the established `LoiterParams` pattern. Provides `register_defaults()`, `from_store()`, `to_nav_config()`, and `is_valid()`.
+
+#### Parameter Name Mapping
+
+| SimpleNavConfig Field        | Parameter Name   | ArduPilot Standard | Default | Range      |
+| ---------------------------- | ---------------- | ------------------ | ------- | ---------- |
+| `wp_radius`                  | `WP_RADIUS`      | Yes                | 2.0     | 0.5–100.0  |
+| `approach_dist`              | `WP_APPR_DIST`   | No                 | 10.0    | 1.0–200.0  |
+| `max_heading_error`          | `ATC_HDG_ERR`    | No                 | 90.0    | 10.0–180.0 |
+| `min_approach_throttle`      | `WP_APPR_THR`    | No                 | 0.2     | 0.0–1.0    |
+| `steering_d_gain`            | `ATC_STR_RAT_D`  | Yes                | 0.05    | 0.0–1.0    |
+| `max_steering_rate`          | `ATC_STR_SMAX`   | No                 | 2.0     | 0.0–10.0   |
+| `throttle_heading_error_max` | `ATC_THR_HERR`   | No                 | 90.0    | 10.0–180.0 |
+| `max_spin_steering`          | `ATC_SPIN_MAX`   | No                 | 0.3     | 0.0–1.0    |
+| `spin_throttle_threshold`    | `ATC_SPIN_THR`   | No                 | 0.1     | 0.0–1.0    |
+| `heading_filter_alpha`       | `ATC_HDG_FILT`   | No                 | 0.3     | 0.0–1.0    |
+| `pivot_turn_angle`           | `WP_PIVOT_ANGLE` | Yes                | 60.0    | 0.0–180.0  |
+| `arc_turn_min_throttle`      | `WP_ARC_THR`     | No                 | 0.15    | 0.0–1.0    |
+
+#### Registration
+
+Add to `ParamHandler::new()` in `crates/firmware/src/communication/mavlink/handlers/param.rs`:
+
+```rust
+let _ = crate::parameters::NavigationParams::register_defaults(&mut store);
+```
+
+#### Conversion
+
+`NavigationParams::to_nav_config()` converts the parameter store representation to the runtime `SimpleNavConfig` used by `SimpleNavigationController`. This keeps navigation logic decoupled from parameter storage.
+
 ## Alternatives Considered
 
 1. **Modify `DifferentialDrive::mix()`**: Prevent inner wheel reversal at kinematics level. Rejected — changes Manual mode behavior, violates mix() contract.
@@ -153,6 +191,14 @@ A throttle floor in `calculate_throttle()` is the simplest approach: 2 config fi
 - **At target**: `distance <= wp_radius` → verify floor does not apply
 - **Approach zone interaction**: Distance in approach zone with large heading error → verify correct throttle
 - **Existing tests**: All current navigation tests pass unchanged
+
+### Parameter Store Tests
+
+- **Default registration**: `register_defaults()` populates all 12 parameters
+- **Custom values**: `from_store()` reads overridden values correctly
+- **Clamping**: Out-of-range values clamped to valid ranges
+- **Conversion**: `to_nav_config()` produces matching `SimpleNavConfig`
+- **Validation**: `is_valid()` rejects invalid parameter combinations
 
 ### Embedded Verification
 

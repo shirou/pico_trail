@@ -15,6 +15,7 @@
   - [FR-00144-configurable-pivot-turn-threshold](../requirements/FR-00144-configurable-pivot-turn-threshold.md)
   - [FR-00145-arc-turn-minimum-throttle](../requirements/FR-00145-arc-turn-minimum-throttle.md)
   - [NFR-00093-arc-pivot-transition-continuity](../requirements/NFR-00093-arc-pivot-transition-continuity.md)
+  - [FR-00146-navigation-parameter-store](../requirements/FR-00146-navigation-parameter-store.md)
   - [FR-00084-navigation-controller](../requirements/FR-00084-navigation-controller.md)
   - [FR-00083-guided-mode-navigation](../requirements/FR-00083-guided-mode-navigation.md)
   - [FR-00082-auto-mode-mission-execution](../requirements/FR-00082-auto-mode-mission-execution.md)
@@ -194,6 +195,10 @@ This means:
   - Rationale: Forward throttle during arc turns produces more efficient path to waypoints than pivot turns
   - Acceptance Criteria: Default 0.15; floor applies only when heading error < pivot_turn_angle AND distance > wp_radius; floor does not apply at target
 
+- [ ] **FR-TBD-3**: All navigation controller parameters (`SimpleNavConfig` fields) shall be registered in the parameter store, enabling runtime configuration via MAVLink-compatible GCS tools. Parameters shall follow the existing `register_defaults()` / `from_store()` pattern and use ArduPilot-standard names where available.
+  - Rationale: Other subsystems (Loiter, Circle, Arming, Battery) already support runtime configuration; navigation parameters should be consistent
+  - Acceptance Criteria: All 12 SimpleNavConfig fields registered; standard ArduPilot names used where applicable; values persist across reboots
+
 ### Non-Functional Requirements
 
 - [ ] **NFR-TBD-1**: The transition between arc turn and pivot turn behavior shall be continuous, with no abrupt throttle discontinuity at the `pivot_turn_angle` boundary
@@ -201,9 +206,45 @@ This means:
   - Rationale: Throttle discontinuities cause jerky vehicle behavior
   - Target: Throttle values at heading error just below and just above `pivot_turn_angle` differ by < 0.1
 
+## Parameter Store Integration
+
+All `SimpleNavConfig` fields are currently hardcoded defaults with no runtime configurability. Other subsystems (Loiter, Arming, Battery, Failsafe, Fence, Compass) already register parameters with `ParameterStore` using the `register_defaults()` / `from_store()` pattern, making them adjustable via Mission Planner or QGroundControl. Navigation parameters should follow the same pattern.
+
+### Parameter Naming
+
+Parameters with ArduPilot equivalents use standard names. Internal parameters use `WP_` (waypoint navigation) or `ATC_` (attitude/steering control) prefixes following ArduPilot conventions.
+
+| SimpleNavConfig Field        | Parameter Name   | ArduPilot Standard | Default | Range      | Unit    |
+| ---------------------------- | ---------------- | ------------------ | ------- | ---------- | ------- |
+| `wp_radius`                  | `WP_RADIUS`      | Yes                | 2.0     | 0.5–100.0  | meters  |
+| `approach_dist`              | `WP_APPR_DIST`   | No                 | 10.0    | 1.0–200.0  | meters  |
+| `max_heading_error`          | `ATC_HDG_ERR`    | No                 | 90.0    | 10.0–180.0 | degrees |
+| `min_approach_throttle`      | `WP_APPR_THR`    | No                 | 0.2     | 0.0–1.0    | ratio   |
+| `steering_d_gain`            | `ATC_STR_RAT_D`  | Yes                | 0.05    | 0.0–1.0    | –       |
+| `max_steering_rate`          | `ATC_STR_SMAX`   | No                 | 2.0     | 0.0–10.0   | /sec    |
+| `throttle_heading_error_max` | `ATC_THR_HERR`   | No                 | 90.0    | 10.0–180.0 | degrees |
+| `max_spin_steering`          | `ATC_SPIN_MAX`   | No                 | 0.3     | 0.0–1.0    | ratio   |
+| `spin_throttle_threshold`    | `ATC_SPIN_THR`   | No                 | 0.1     | 0.0–1.0    | ratio   |
+| `heading_filter_alpha`       | `ATC_HDG_FILT`   | No                 | 0.3     | 0.0–1.0    | ratio   |
+| `pivot_turn_angle`           | `WP_PIVOT_ANGLE` | Yes                | 60.0    | 0.0–180.0  | degrees |
+| `arc_turn_min_throttle`      | `WP_ARC_THR`     | No                 | 0.15    | 0.0–1.0    | ratio   |
+
+### Implementation Pattern
+
+Follow the existing parameter group pattern (`LoiterParams`, `CircleParams`):
+
+1. Create `crates/core/src/parameters/navigation.rs` with `NavigationParams` struct
+2. Implement `register_defaults()`, `from_store()`, `is_valid()`, and conversion to `SimpleNavConfig`
+3. Register in `ParamHandler::new()` alongside other parameter groups
+4. Load from store in navigation initialization
+
+### Relationship to SimpleNavConfig
+
+`NavigationParams` serves as the parameter store interface; `SimpleNavConfig` remains the runtime struct used by `SimpleNavigationController`. A `to_nav_config()` conversion method bridges the two, keeping navigation logic decoupled from parameter storage.
+
 ## Open Questions
 
-- [ ] Should `pivot_turn_angle` be exposed as an ArduPilot `WP_PIVOT_ANGLE` parameter via MAVLink, or remain a compile-time config?
+- [x] Should `pivot_turn_angle` be exposed as an ArduPilot `WP_PIVOT_ANGLE` parameter via MAVLink, or remain a compile-time config? → **Yes, register in parameter store along with all navigation parameters**
 - [ ] Is the default `arc_turn_min_throttle` of 0.15 appropriate for the Freenove 4WD rover's motor characteristics?
 
 ## Recommendations
@@ -219,6 +260,10 @@ This is the minimal effective solution:
 - Follows ArduPilot `WP_PIVOT_ANGLE` concept
 - Backward compatible (`pivot_turn_angle=0` preserves current behavior)
 - Naturally continuous with default configuration
+
+### Additional Recommendation
+
+Register all `SimpleNavConfig` fields in the parameter store as `NavigationParams`, following the established `register_defaults()` / `from_store()` pattern. This enables runtime tuning via GCS (Mission Planner, QGroundControl) without recompilation.
 
 ### Out of Scope
 

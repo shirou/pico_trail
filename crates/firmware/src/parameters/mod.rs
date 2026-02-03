@@ -63,6 +63,7 @@ pub use pico_trail_core::parameters::compass;
 pub use pico_trail_core::parameters::failsafe;
 pub use pico_trail_core::parameters::fence;
 pub use pico_trail_core::parameters::loiter;
+pub use pico_trail_core::parameters::navigation;
 pub use pico_trail_core::parameters::wifi;
 
 // Re-export core parameter group types
@@ -74,6 +75,7 @@ pub use pico_trail_core::parameters::error::ParameterError;
 pub use pico_trail_core::parameters::failsafe::FailsafeParams;
 pub use pico_trail_core::parameters::fence::FenceParams;
 pub use pico_trail_core::parameters::loiter::LoiterParams;
+pub use pico_trail_core::parameters::navigation::NavigationParams;
 pub use pico_trail_core::parameters::storage::{
     ParamFlags, ParamMetadata, ParamValue, ParameterStore, MAX_STRING_LEN, PARAM_NAME_LEN,
 };

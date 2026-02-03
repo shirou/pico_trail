@@ -13,6 +13,7 @@
   - [FR-00084-navigation-controller](FR-00084-navigation-controller.md)
 - Dependent Requirements:
   - [FR-00145-arc-turn-minimum-throttle](FR-00145-arc-turn-minimum-throttle.md)
+  - [FR-00146-navigation-parameter-store](FR-00146-navigation-parameter-store.md)
   - [NFR-00093-arc-pivot-transition-continuity](NFR-00093-arc-pivot-transition-continuity.md)
 - Related ADRs:
   - N/A – To be created during task design
@@ -42,6 +43,8 @@ As a rover operator, I want to configure the heading error threshold at which pi
 - [ ] Setting `pivot_turn_angle=0.0` preserves current behavior (always allow pivots)
 - [ ] Setting `pivot_turn_angle=180.0` prevents all pivot turns
 - [ ] Behavior is consistent across all autonomous modes (Guided, Auto, RTL, SmartRTL, Loiter, Circle)
+- [ ] `WP_PIVOT_ANGLE` registered in parameter store with default 60.0°
+- [ ] Value configurable at runtime via MAVLink PARAM_SET
 - [ ] Unit tests verify threshold boundary behavior
 
 ## Technical Details (if applicable)

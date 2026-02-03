@@ -13,6 +13,7 @@
   - [FR-00084-navigation-controller](FR-00084-navigation-controller.md)
   - [FR-00144-configurable-pivot-turn-threshold](FR-00144-configurable-pivot-turn-threshold.md)
 - Dependent Requirements:
+  - [FR-00146-navigation-parameter-store](FR-00146-navigation-parameter-store.md)
   - [NFR-00093-arc-pivot-transition-continuity](NFR-00093-arc-pivot-transition-continuity.md)
 - Related ADRs:
   - N/A – To be created during task design
@@ -40,6 +41,8 @@ As a rover operator, I want the rover to maintain a minimum forward speed during
 - [ ] Throttle floor applies only when heading error < `pivot_turn_angle` AND distance > `wp_radius`
 - [ ] Throttle floor does NOT apply when vehicle is at target (distance <= `wp_radius`)
 - [ ] `arc_turn_min_throttle` > `spin_throttle_threshold` (0.15 > 0.1) ensures spin-cap does not activate during arc turns
+- [ ] `WP_ARC_THR` registered in parameter store with default 0.15
+- [ ] Value configurable at runtime via MAVLink PARAM_SET
 - [ ] Unit tests verify floor activation and deactivation conditions
 
 ## Technical Details (if applicable)

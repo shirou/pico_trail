@@ -14,6 +14,7 @@
   - [FR-00144-configurable-pivot-turn-threshold](../../requirements/FR-00144-configurable-pivot-turn-threshold.md)
   - [FR-00145-arc-turn-minimum-throttle](../../requirements/FR-00145-arc-turn-minimum-throttle.md)
   - [NFR-00093-arc-pivot-transition-continuity](../../requirements/NFR-00093-arc-pivot-transition-continuity.md)
+  - [FR-00146-navigation-parameter-store](../../requirements/FR-00146-navigation-parameter-store.md)
   - [FR-00084-navigation-controller](../../requirements/FR-00084-navigation-controller.md)
 - Related ADRs:
   - [ADR-00022-navigation-controller-architecture](../../adr/ADR-00022-navigation-controller-architecture.md)
@@ -36,10 +37,11 @@ Add configurable pivot turn angle threshold and arc turn minimum throttle to `Si
   - Modify `calculate_throttle()` to apply throttle floor during arc turns
   - Unit tests for boundary behavior, continuity, and edge cases
   - Verify all autonomous modes use the shared controller (no per-mode changes needed)
+  - Register all `SimpleNavConfig` fields in parameter store as `NavigationParams`
+  - Parameters configurable at runtime via MAVLink GCS
 - Out of scope:
   - `WP_PIVOT_RATE` (turn rate during pivot turns)
   - `DifferentialDrive::mix()` modifications
-  - MAVLink parameter exposure of `WP_PIVOT_ANGLE`
   - Full turn rate PID controller
 
 ## Success Metrics
@@ -49,4 +51,6 @@ Add configurable pivot turn angle threshold and arc turn minimum throttle to `Si
 - `pivot_turn_angle=0` preserves current behavior exactly
 - Transition at boundary is continuous (throttle delta < 0.1)
 - All existing navigation tests pass
+- All 12 `SimpleNavConfig` fields registered in parameter store
+- Parameters visible and editable in GCS
 - Embedded build compiles successfully

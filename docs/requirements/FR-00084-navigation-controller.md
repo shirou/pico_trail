@@ -24,6 +24,7 @@
   - [NFR-00069-navigation-controller-performance](NFR-00069-navigation-controller-performance.md)
   - [FR-00144-configurable-pivot-turn-threshold](FR-00144-configurable-pivot-turn-threshold.md)
   - [FR-00145-arc-turn-minimum-throttle](FR-00145-arc-turn-minimum-throttle.md)
+  - [FR-00146-navigation-parameter-store](FR-00146-navigation-parameter-store.md)
 - Related ADRs:
   - [ADR-00022-navigation-controller-architecture](../adr/ADR-00022-navigation-controller-architecture.md)
 - Related Tasks:

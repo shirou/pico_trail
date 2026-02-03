@@ -91,6 +91,9 @@ impl ParamHandler {
         // Register board pin parameters with hwdef defaults
         let _ = crate::parameters::BoardParams::register_defaults(&mut store);
 
+        // Register navigation controller parameters
+        let _ = crate::parameters::NavigationParams::register_defaults(&mut store);
+
         // Register default MAVLink stream rate parameters
         // SR_* parameters control telemetry stream rates (Hz)
         let _ = store.register(

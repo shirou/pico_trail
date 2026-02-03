@@ -12,7 +12,7 @@
 
 ## Overview
 
-Add `pivot_turn_angle` and `arc_turn_min_throttle` to `SimpleNavConfig`, and modify `calculate_throttle()` to enforce a throttle floor during arc turns. Single phase — the change is small and self-contained.
+Add `pivot_turn_angle` and `arc_turn_min_throttle` to `SimpleNavConfig`, modify `calculate_throttle()` to enforce a throttle floor during arc turns, and register all navigation parameters in the parameter store as `NavigationParams`.
 
 ## Success Metrics
 
@@ -23,11 +23,13 @@ Add `pivot_turn_angle` and `arc_turn_min_throttle` to `SimpleNavConfig`, and mod
 - [x] `pivot_turn_angle=0` preserves current behavior
 - [x] All existing tests pass; no regressions
 - [x] Embedded build compiles
+- [x] All 12 `SimpleNavConfig` fields registered in parameter store
+- [x] Parameters configurable at runtime via MAVLink GCS
 
 ## Scope
 
-- Goal: Configurable pivot turn threshold with arc turn throttle floor
-- Non-Goals: WP_PIVOT_RATE, DifferentialDrive changes, MAVLink parameter exposure
+- Goal: Configurable pivot turn threshold with arc turn throttle floor; navigation parameter store registration
+- Non-Goals: WP_PIVOT_RATE, DifferentialDrive changes
 - Assumptions: All autonomous modes share `SimpleNavigationController`
 - Constraints: no_std, f32, < 1ms per update on RP2350
 
@@ -39,7 +41,8 @@ Add `pivot_turn_angle` and `arc_turn_min_throttle` to `SimpleNavConfig`, and mod
 
 ## Plan Summary
 
-- Phase 1 -- Add config fields, implement throttle floor, unit tests, verify build
+- Phase 1 -- Add config fields, implement throttle floor, unit tests, verify build **(complete)**
+- Phase 2 -- Create `NavigationParams` parameter group, register in store, unit tests, verify build **(complete)**
 
 ### Phase Status Tracking
 
@@ -47,7 +50,7 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ---
 
-## Phase 1: Config Fields + Throttle Floor + Tests
+## Phase 1: Config Fields + Throttle Floor + Tests (Complete)
 
 ### Goal
 
@@ -97,15 +100,6 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 - Modified `crates/core/src/navigation/types.rs`
 - Modified `crates/core/src/navigation/controller.rs`
 
-### Verification
-
-```bash
-cargo fmt
-cargo clippy --all-targets -- -D warnings
-cargo test --lib --quiet
-./scripts/build-rp2350.sh pico_trail_rover
-```
-
 ### Acceptance Criteria (Phase Gate)
 
 - All FR-00144 acceptance criteria met (threshold behavior, defaults, edge cases)
@@ -118,6 +112,91 @@ cargo test --lib --quiet
 
 - `pivot_turn_angle = 0.0` disables the feature entirely (current behavior)
 - `arc_turn_min_throttle = 0.0` makes the floor a no-op
+
+---
+
+## Phase 2: Navigation Parameter Store Registration
+
+### Goal
+
+- Create `NavigationParams` parameter group in `crates/core/src/parameters/navigation.rs`
+- Register all 12 `SimpleNavConfig` fields in the parameter store
+- Add `to_nav_config()` conversion and `is_valid()` validation
+- Register in `ParamHandler::new()` for MAVLink GCS access
+- Unit tests for registration, loading, clamping, conversion, and validation
+
+### Inputs
+
+- Source Code to Create:
+  - `crates/core/src/parameters/navigation.rs` -- New parameter group
+- Source Code to Modify:
+  - `crates/core/src/parameters/mod.rs` -- Add `navigation` module and re-export
+  - `crates/firmware/src/communication/mavlink/handlers/param.rs` -- Register `NavigationParams`
+
+### Tasks
+
+- [x] **Create `NavigationParams` struct**
+  - [x] Define struct with fields matching all 12 `SimpleNavConfig` fields
+  - [x] Add constants for defaults, min/max ranges
+  - [x] Implement `Default`
+- [x] **Implement `register_defaults()`**
+  - [x] Register all 12 parameters with ArduPilot-compatible names
+  - [x] Use `ParamValue::Float` for all parameters
+- [x] **Implement `from_store()`**
+  - [x] Load each parameter with range clamping
+  - [x] Handle missing values with defaults
+  - [x] Handle both `Float` and `Int` variants (MAVLink PARAM_SET sends floats)
+- [x] **Implement `to_nav_config()`**
+  - [x] Convert `NavigationParams` → `SimpleNavConfig`
+- [x] **Implement `is_valid()`**
+  - [x] Validate range constraints
+  - [x] Validate consistency (e.g., `approach_dist > wp_radius`)
+- [x] **Register in `parameters/mod.rs`**
+  - [x] Add `pub mod navigation;`
+  - [x] Re-export `NavigationParams`
+- [x] **Register in `ParamHandler::new()`**
+  - [x] Add `NavigationParams::register_defaults(&mut store)` call
+- [x] **Unit tests (FR-00146)**
+  - [x] Test: `register_defaults()` populates all 12 parameters
+  - [x] Test: `from_store()` reads default values correctly
+  - [x] Test: `from_store()` reads custom values correctly
+  - [x] Test: Out-of-range values are clamped
+  - [x] Test: `to_nav_config()` produces matching `SimpleNavConfig`
+  - [x] Test: `is_valid()` accepts valid parameters
+  - [x] Test: `is_valid()` rejects invalid parameters
+- [x] **Verification**
+  - [x] `cargo fmt`
+  - [x] `cargo clippy --all-targets -- -D warnings`
+  - [x] `cargo test --lib --quiet`
+  - [x] `./scripts/build-rp2350.sh pico_trail_rover`
+
+### Deliverables
+
+- New `crates/core/src/parameters/navigation.rs`
+- Modified `crates/core/src/parameters/mod.rs`
+- Modified `crates/firmware/src/communication/mavlink/handlers/param.rs`
+
+### Verification
+
+```bash
+cargo fmt
+cargo clippy --all-targets -- -D warnings
+cargo test --lib --quiet
+./scripts/build-rp2350.sh pico_trail_rover
+```
+
+### Acceptance Criteria (Phase Gate)
+
+- All FR-00146 acceptance criteria met (12 parameters registered, configurable via GCS)
+- FR-00144 parameter store criteria met (WP_PIVOT_ANGLE in store)
+- FR-00145 parameter store criteria met (WP_ARC_THR in store)
+- All existing tests pass unchanged
+- Embedded build succeeds
+
+### Rollback/Fallback
+
+- If parameter store fails to load, `SimpleNavConfig::default()` provides safe fallback
+- Individual parameters fall back to defaults if missing from store
 
 ---
 
