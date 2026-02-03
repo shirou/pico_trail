@@ -26,7 +26,7 @@ During arc turns (heading error below pivot threshold), the navigation controlle
 
 ## Rationale
 
-When `calculate_throttle()` reduces throttle based on heading error, the natural curve can produce very low throttle values even when the heading error is below the pivot threshold. For example, at 75° heading error (below the default 60° pivot angle would not apply, but at higher angles within the arc range), throttle can drop to near-zero, effectively producing a pivot turn despite being in the arc turn range.
+When `calculate_throttle()` reduces throttle based on heading error, the natural curve can produce very low throttle values even when the heading error is below the pivot threshold. For example, at 50° heading error (below the default 60° pivot angle threshold, so a pivot turn would not apply), throttle can drop to near-zero, effectively producing a pivot-like turn despite being in the arc turn range.
 
 A configurable minimum throttle floor ensures forward motion is maintained during arc turns, producing smoother and more efficient paths to waypoints.
 

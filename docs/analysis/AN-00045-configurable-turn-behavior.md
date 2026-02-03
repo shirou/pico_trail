@@ -173,7 +173,7 @@ This means:
 - Just below 60°: throttle = 0.333 (natural curve, above floor)
 - Just above 60°: throttle = 0.333 (natural curve, floor no longer applies)
 - **Zero discontinuity at the boundary** with default settings
-- The floor only activates deeper in the arc turn range (heading error > \~77° where natural throttle drops below 0.15)
+- With default settings, the floor acts as a safety net but does not actually activate, because within the arc turn range (`heading_error < pivot_turn_angle = 60°`) the natural throttle never falls below the floor value of 0.15.
 
 ## Risk Assessment
 

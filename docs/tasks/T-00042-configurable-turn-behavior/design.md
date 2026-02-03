@@ -113,16 +113,16 @@ arc_turn_min_throttle: 0.15,
 
 With defaults (`pivot_turn_angle=60°`, `throttle_heading_error_max=90°`):
 
-| Heading Error | Natural Throttle | Floor Active | Effective Throttle |
-| ------------- | ---------------- | ------------ | ------------------ |
-| 0°            | 1.00             | Yes (idle)   | 1.00               |
-| 30°           | 0.67             | Yes (idle)   | 0.67               |
-| 59.9°         | 0.334            | Yes (idle)   | 0.334              |
-| 60.1°         | 0.332            | No           | 0.332              |
-| 77°           | 0.14             | No           | 0.14               |
-| 90°           | 0.00             | No           | 0.00               |
+| Heading Error | Natural Throttle | Floor Condition / Effect | Effective Throttle |
+| ------------- | ---------------- | ------------------------ | ------------------ |
+| 0°            | 1.00             | Met (no change)          | 1.00               |
+| 30°           | 0.67             | Met (no change)          | 0.67               |
+| 59.9°         | 0.334            | Met (no change)          | 0.334              |
+| 60.1°         | 0.332            | Not met                  | 0.332              |
+| 77°           | 0.14             | Not met                  | 0.14               |
+| 90°           | 0.00             | Not met                  | 0.00               |
 
-At the boundary (60°), natural throttle is 0.333, well above the 0.15 floor. The floor only activates at \~77° where natural throttle drops below 0.15, but above 60° the floor is already disabled. **Zero discontinuity.**
+At the boundary (60°), natural throttle is 0.333, well above the 0.15 floor. For heading errors below 60°, the floor condition is met but `max(natural, floor)` never changes the throttle because natural throttle stays above 0.15; for heading errors at or above 60°, the floor condition is not met and the floor is disabled. In both regions, the effective throttle follows the same linear curve, yielding **zero discontinuity.**
 
 ### Error Handling
 
