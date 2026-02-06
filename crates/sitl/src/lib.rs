@@ -6,7 +6,7 @@ pub mod types;
 pub mod vehicle;
 
 pub use adapter::{LightweightAdapter, LightweightConfig, SimulatorAdapter, SimulatorCapabilities};
-pub use bridge::{SitlBridge, TimeMode};
+pub use bridge::{SitlBridge, TimeCoordinator, TimeMode};
 pub use error::SimulatorError;
 pub use platform::SitlPlatform;
 pub use types::{ActuatorCommands, SensorData, VehicleId};

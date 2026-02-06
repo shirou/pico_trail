@@ -47,6 +47,11 @@ impl AdapterRegistry {
     pub fn get_mut(&mut self, name: &str) -> Option<&mut Box<dyn SimulatorAdapter>> {
         self.adapters.get_mut(name)
     }
+
+    /// Get a clone of all adapter names (avoids borrow issues during iteration).
+    pub fn adapter_names(&self) -> Vec<String> {
+        self.adapters.keys().cloned().collect()
+    }
 }
 
 impl Default for AdapterRegistry {

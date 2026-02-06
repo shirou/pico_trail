@@ -27,6 +27,12 @@ pub enum SimulatorError {
     #[error("Vehicle not assigned to adapter: {0}")]
     VehicleNotAssigned(VehicleId),
 
+    #[error("MAVLink port {port} already in use by {existing_vehicle}")]
+    PortConflict {
+        port: u16,
+        existing_vehicle: VehicleId,
+    },
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }
