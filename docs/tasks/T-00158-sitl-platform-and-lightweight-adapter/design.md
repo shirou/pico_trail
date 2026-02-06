@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Design
-- Status: Draft
+- Status: Complete
 
 ## Links
 
@@ -16,11 +16,11 @@ Implement two components that together provide a minimum viable SITL environment
 
 ## Success Metrics
 
-- [ ] `SitlPlatform` implements `Platform` trait
-- [ ] Sensor injection and actuator collection work correctly
-- [ ] `LightweightAdapter` passes kinematics tests
-- [ ] Deterministic mode produces repeatable results
-- [ ] No external dependencies required for testing
+- [x] `SitlPlatform` implements `Platform` trait
+- [x] Sensor injection and actuator collection work correctly
+- [x] `LightweightAdapter` passes kinematics tests
+- [x] Deterministic mode produces repeatable results
+- [x] No external dependencies required for testing
 
 ## Background and Current State
 

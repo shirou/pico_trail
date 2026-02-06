@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Implementation Plan
-- Status: Draft
+- Status: Complete
 
 ## Links
 
@@ -16,11 +16,11 @@ Implement `SitlPlatform` and `LightweightAdapter` in 2 phases. Phase 1 creates t
 
 ## Success Metrics
 
-- [ ] `SitlPlatform` implements `Platform` trait
-- [ ] Sensor injection and actuator collection work correctly
-- [ ] `LightweightAdapter` passes kinematics tests
-- [ ] Deterministic mode produces repeatable results
-- [ ] No external dependencies required for testing
+- [x] `SitlPlatform` implements `Platform` trait
+- [x] Sensor injection and actuator collection work correctly
+- [x] `LightweightAdapter` passes kinematics tests
+- [x] Deterministic mode produces repeatable results
+- [x] No external dependencies required for testing
 
 ## Scope
 
@@ -31,9 +31,9 @@ Implement `SitlPlatform` and `LightweightAdapter` in 2 phases. Phase 1 creates t
 
 ## ADR & Legacy Alignment
 
-- [ ] Follow ADR-00003 Platform trait patterns
-- [ ] Follow MockPlatform patterns for peripheral wrappers
-- [ ] No modifications to existing crates/core or crates/firmware
+- [x] Follow ADR-00003 Platform trait patterns
+- [x] Follow MockPlatform patterns for peripheral wrappers
+- [x] No modifications to existing crates/core or crates/firmware
 
 ## Plan Summary
 
@@ -68,41 +68,41 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ### Tasks
 
-- [ ] **Implement SitlTimeSource**
-  - [ ] Wrap `Arc<AtomicU64>` for shared sim time
-  - [ ] Implement `TimerInterface` trait (`now_us()`, `delay_us()`)
-- [ ] **Implement SitlUart**
-  - [ ] Ring buffer for RX/TX
-  - [ ] `read()`, `write()` methods
-  - [ ] Connect to MAVLink handler (future phase)
-- [ ] **Implement SitlPwm**
-  - [ ] Store duty cycle (0.0-1.0)
-  - [ ] `set_duty()`, `get_duty()` methods
-- [ ] **Implement SitlGpio**
-  - [ ] Store pin state (high/low)
-  - [ ] Input/output direction
-- [ ] **Implement SitlPlatform**
-  - [ ] Implement all `Platform` trait methods
-  - [ ] `create_uart()` - return SitlUart
-  - [ ] `create_pwm()` - return SitlPwm, track for actuator collection
-  - [ ] `create_gpio()` - return SitlGpio
-  - [ ] `read_battery_adc()` - return configurable value
-  - [ ] `timer()` - return SitlTimeSource reference
-- [ ] **Sensor injection**
-  - [ ] `inject_sensors(&SensorData)` - update internal state
-  - [ ] Thread-safe with Mutex
-- [ ] **Actuator collection**
-  - [ ] `collect_actuator_commands()` - read PWM values, return ActuatorCommands
-- [ ] **Unit tests**
-  - [ ] Test Platform trait implementation compiles
-  - [ ] Test UART read/write
-  - [ ] Test PWM duty cycle
-  - [ ] Test sensor injection
-  - [ ] Test actuator collection
-- [ ] **Verification**
-  - [ ] `cargo fmt`
-  - [ ] `cargo clippy --all-targets -- -D warnings`
-  - [ ] `cargo test -p pico_trail_sitl --lib`
+- [x] **Implement SitlTimeSource**
+  - [x] Wrap `Arc<AtomicU64>` for shared sim time
+  - [x] Implement `TimerInterface` trait (`now_us()`, `delay_us()`)
+- [x] **Implement SitlUart**
+  - [x] Ring buffer for RX/TX
+  - [x] `read()`, `write()` methods
+  - [x] Connect to MAVLink handler (future phase)
+- [x] **Implement SitlPwm**
+  - [x] Store duty cycle (0.0-1.0)
+  - [x] `set_duty()`, `get_duty()` methods
+- [x] **Implement SitlGpio**
+  - [x] Store pin state (high/low)
+  - [x] Input/output direction
+- [x] **Implement SitlPlatform**
+  - [x] Implement all `Platform` trait methods
+  - [x] `create_uart()` - return SitlUart
+  - [x] `create_pwm()` - return SitlPwm, track for actuator collection
+  - [x] `create_gpio()` - return SitlGpio
+  - [x] `read_battery_adc()` - return configurable value
+  - [x] `timer()` - return SitlTimeSource reference
+- [x] **Sensor injection**
+  - [x] `inject_sensors(&SensorData)` - update internal state
+  - [x] Thread-safe with Mutex
+- [x] **Actuator collection**
+  - [x] `collect_actuator_commands()` - read PWM values, return ActuatorCommands
+- [x] **Unit tests**
+  - [x] Test Platform trait implementation compiles
+  - [x] Test UART read/write
+  - [x] Test PWM duty cycle
+  - [x] Test sensor injection
+  - [x] Test actuator collection
+- [x] **Verification**
+  - [x] `cargo fmt`
+  - [x] `cargo clippy --all-targets -- -D warnings`
+  - [x] `cargo test -p pico_trail_sitl --lib`
 
 ### Deliverables
 
@@ -136,42 +136,42 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ### Tasks
 
-- [ ] **Define LightweightConfig**
-  - [ ] `wheel_base: f32` (default 0.15)
-  - [ ] `max_speed: f32` (default 1.0)
-  - [ ] `max_turn_rate: f32` (default 2.0)
-  - [ ] GPS noise, IMU noise, compass noise parameters
-  - [ ] `seed: Option<u64>` for deterministic mode
-- [ ] **Implement internal state**
-  - [ ] Position (x, y) in meters
-  - [ ] Heading in radians
-  - [ ] Velocity vector
-  - [ ] Motor commands (left, right)
-- [ ] **Implement kinematics integration**
-  - [ ] Differential drive model
-  - [ ] `v = (v_left + v_right) / 2`
-  - [ ] `omega = (v_right - v_left) / wheel_base`
-  - [ ] Position/heading update
-- [ ] **Implement sensor synthesis**
-  - [ ] IMU from motion (accel from velocity change, gyro from rotation)
-  - [ ] GPS from position with noise
-  - [ ] Compass from heading with noise
-- [ ] **Implement SimulatorAdapter trait**
-  - [ ] `connect()` - initialize RNG, reset state
-  - [ ] `receive_sensors()` - return synthesized sensors
-  - [ ] `send_actuators()` - store motor commands
-  - [ ] `step()` - integrate kinematics
-  - [ ] `supports_lockstep()` - return true
-- [ ] **Unit tests**
-  - [ ] Test kinematics: straight line motion
-  - [ ] Test kinematics: rotation in place
-  - [ ] Test kinematics: arc turn
-  - [ ] Test deterministic mode: same seed = same results
-  - [ ] Test noise: outputs vary with noise enabled
-- [ ] **Verification**
-  - [ ] `cargo fmt`
-  - [ ] `cargo clippy --all-targets -- -D warnings`
-  - [ ] `cargo test -p pico_trail_sitl --lib`
+- [x] **Define LightweightConfig**
+  - [x] `wheel_base: f32` (default 0.15)
+  - [x] `max_speed: f32` (default 1.0)
+  - [x] `max_turn_rate: f32` (default 2.0)
+  - [x] GPS noise, IMU noise, compass noise parameters
+  - [x] `seed: Option<u64>` for deterministic mode
+- [x] **Implement internal state**
+  - [x] Position (x, y) in meters
+  - [x] Heading in radians
+  - [x] Velocity vector
+  - [x] Motor commands (left, right)
+- [x] **Implement kinematics integration**
+  - [x] Differential drive model
+  - [x] `v = (v_left + v_right) / 2`
+  - [x] `omega = (v_right - v_left) / wheel_base`
+  - [x] Position/heading update
+- [x] **Implement sensor synthesis**
+  - [x] IMU from motion (accel from velocity change, gyro from rotation)
+  - [x] GPS from position with noise
+  - [x] Compass from heading with noise
+- [x] **Implement SimulatorAdapter trait**
+  - [x] `connect()` - initialize RNG, reset state
+  - [x] `receive_sensors()` - return synthesized sensors
+  - [x] `send_actuators()` - store motor commands
+  - [x] `step()` - integrate kinematics
+  - [x] `supports_lockstep()` - return true
+- [x] **Unit tests**
+  - [x] Test kinematics: straight line motion
+  - [x] Test kinematics: rotation in place
+  - [x] Test kinematics: arc turn
+  - [x] Test deterministic mode: same seed = same results
+  - [x] Test noise: outputs vary with noise enabled
+- [x] **Verification**
+  - [x] `cargo fmt`
+  - [x] `cargo clippy --all-targets -- -D warnings`
+  - [x] `cargo test -p pico_trail_sitl --lib`
 
 ### Deliverables
 
@@ -192,12 +192,12 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ## Definition of Done
 
-- [ ] All phases completed
-- [ ] `cargo fmt`
-- [ ] `cargo clippy --all-targets -- -D warnings`
-- [ ] `cargo test -p pico_trail_sitl --lib`
-- [ ] `./scripts/build-rp2350.sh pico_trail_rover` (verify no impact on embedded)
-- [ ] No `unsafe` code
-- [ ] Plan checkboxes marked
-- [ ] Task README status updated to Implementation Complete
-- [ ] Traceability check: `bun scripts/trace-status.ts --check`
+- [x] All phases completed
+- [x] `cargo fmt`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test -p pico_trail_sitl --lib`
+- [x] `./scripts/build-rp2350.sh pico_trail_rover` (verify no impact on embedded)
+- [x] No `unsafe` code
+- [x] Plan checkboxes marked
+- [x] Task README status updated to Implementation Complete
+- [x] Traceability check: `bun scripts/trace-status.ts --check`

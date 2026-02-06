@@ -10,6 +10,7 @@ keywords = ["sitl", "simulation", "autopilot", "testing"]
 
 [dependencies]
 async-trait = "0.1"
+rand = "0.8"
 thiserror = "2"
 
 [dev-dependencies]

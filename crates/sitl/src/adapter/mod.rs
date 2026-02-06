@@ -1,8 +1,10 @@
 pub mod capabilities;
+pub mod lightweight;
 
 use async_trait::async_trait;
 
 pub use capabilities::{SensorCapabilities, SimulatorCapabilities};
+pub use lightweight::{LightweightAdapter, LightweightConfig};
 
 use crate::error::SimulatorError;
 use crate::types::{ActuatorCommands, SensorData};
