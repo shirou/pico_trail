@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Design
-- Status: Draft
+- Status: Implementation Complete
 
 ## Links
 
@@ -16,11 +16,11 @@ Define the core SITL abstractions and bridge orchestrator that form the foundati
 
 ## Success Metrics
 
-- [ ] `SimulatorAdapter` trait defined and object-safe
-- [ ] `SitlBridge` manages adapters and vehicles
-- [ ] Normalized data types compile and can be instantiated
-- [ ] Error types cover all failure modes
-- [ ] New adapters require 0 lines of bridge change
+- [x] `SimulatorAdapter` trait defined and object-safe
+- [x] `SitlBridge` manages adapters and vehicles
+- [x] Normalized data types compile and can be instantiated
+- [x] Error types cover all failure modes
+- [x] New adapters require 0 lines of bridge change
 
 ## Background and Current State
 

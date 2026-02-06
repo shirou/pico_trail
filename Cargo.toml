@@ -2,10 +2,12 @@
 members = [
     "crates/core",
     "crates/firmware",
+    "crates/sitl",
 ]
-# Only check core crate by default (firmware requires embedded target)
+# Only check core and sitl crates by default (firmware requires embedded target)
 default-members = [
     "crates/core",
+    "crates/sitl",
 ]
 resolver = "2"
 

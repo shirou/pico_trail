@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Implementation Plan
-- Status: Draft
+- Status: Implementation Complete
 
 ## Links
 
@@ -16,11 +16,11 @@ Implement the SITL crate foundation in 2 phases: core abstractions (trait, types
 
 ## Success Metrics
 
-- [ ] `SimulatorAdapter` trait defined and object-safe
-- [ ] `SitlBridge` manages adapters and vehicles
-- [ ] Normalized data types compile and can be instantiated
-- [ ] Error types cover all failure modes
-- [ ] New adapters require 0 lines of bridge change
+- [x] `SimulatorAdapter` trait defined and object-safe
+- [x] `SitlBridge` manages adapters and vehicles
+- [x] Normalized data types compile and can be instantiated
+- [x] Error types cover all failure modes
+- [x] New adapters require 0 lines of bridge change
 
 ## Scope
 
@@ -31,9 +31,9 @@ Implement the SITL crate foundation in 2 phases: core abstractions (trait, types
 
 ## ADR & Legacy Alignment
 
-- [ ] Confirm ADR-00156-sitl-pluggable-adapter-architecture is referenced
-- [ ] Follow ADR-00003 Platform trait patterns
-- [ ] No modifications to existing crates/core or crates/firmware
+- [x] Confirm ADR-00156-sitl-pluggable-adapter-architecture is referenced
+- [x] Follow ADR-00003 Platform trait patterns
+- [x] No modifications to existing crates/core or crates/firmware
 
 ## Plan Summary
 
@@ -69,38 +69,38 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ### Tasks
 
-- [ ] **Create crate structure**
-  - [ ] Create `crates/sitl/Cargo.toml` with dependencies (tokio, async-trait, serde, thiserror)
-  - [ ] Create `crates/sitl/src/lib.rs` with module declarations
-  - [ ] Add `sitl` to workspace in root `Cargo.toml`
-- [ ] **Define error types**
-  - [ ] Create `SimulatorError` enum in `error.rs`
-  - [ ] Derive `thiserror::Error` for error messages
-- [ ] **Define data types**
-  - [ ] `VehicleId(u8)` with Debug, Clone, Copy, PartialEq, Eq, Hash
-  - [ ] `SensorData` struct with optional sensor fields
-  - [ ] `ImuData`, `GpsData`, `CompassData`, `BarometerData` structs
-  - [ ] `ActuatorCommands` struct with motors/servos vectors
-  - [ ] `GpsFixType` enum
-- [ ] **Define SimulatorAdapter trait**
-  - [ ] Use `#[async_trait]` for async methods
-  - [ ] Add `Send + Sync` bounds for object safety
-  - [ ] `adapter_type()`, `name()` for identification
-  - [ ] `connect()`, `disconnect()`, `is_connected()` for lifecycle
-  - [ ] `receive_sensors()`, `send_actuators()` for data exchange
-  - [ ] `step()`, `sim_time_us()`, `supports_lockstep()` for time control
-  - [ ] `capabilities()` for feature discovery
-- [ ] **Define SimulatorCapabilities**
-  - [ ] `SensorCapabilities` struct (imu, gps, compass, etc. booleans)
-  - [ ] `SimulatorCapabilities` struct (sensors, max_rate_hz, multi_vehicle, terrain, wind)
-- [ ] **Unit tests**
-  - [ ] Test `VehicleId` derives work correctly
-  - [ ] Test `SensorData` can be constructed and cloned
-  - [ ] Test trait is object-safe (`Box<dyn SimulatorAdapter>` compiles)
-- [ ] **Verification**
-  - [ ] `cargo fmt`
-  - [ ] `cargo clippy --all-targets -- -D warnings`
-  - [ ] `cargo test -p pico_trail_sitl --lib`
+- [x] **Create crate structure**
+  - [x] Create `crates/sitl/Cargo.toml` with dependencies (tokio, async-trait, serde, thiserror)
+  - [x] Create `crates/sitl/src/lib.rs` with module declarations
+  - [x] Add `sitl` to workspace in root `Cargo.toml`
+- [x] **Define error types**
+  - [x] Create `SimulatorError` enum in `error.rs`
+  - [x] Derive `thiserror::Error` for error messages
+- [x] **Define data types**
+  - [x] `VehicleId(u8)` with Debug, Clone, Copy, PartialEq, Eq, Hash
+  - [x] `SensorData` struct with optional sensor fields
+  - [x] `ImuData`, `GpsData`, `CompassData`, `BarometerData` structs
+  - [x] `ActuatorCommands` struct with motors/servos vectors
+  - [x] `GpsFixType` enum
+- [x] **Define SimulatorAdapter trait**
+  - [x] Use `#[async_trait]` for async methods
+  - [x] Add `Send + Sync` bounds for object safety
+  - [x] `adapter_type()`, `name()` for identification
+  - [x] `connect()`, `disconnect()`, `is_connected()` for lifecycle
+  - [x] `receive_sensors()`, `send_actuators()` for data exchange
+  - [x] `step()`, `sim_time_us()`, `supports_lockstep()` for time control
+  - [x] `capabilities()` for feature discovery
+- [x] **Define SimulatorCapabilities**
+  - [x] `SensorCapabilities` struct (imu, gps, compass, etc. booleans)
+  - [x] `SimulatorCapabilities` struct (sensors, max_rate_hz, multi_vehicle, terrain, wind)
+- [x] **Unit tests**
+  - [x] Test `VehicleId` derives work correctly
+  - [x] Test `SensorData` can be constructed and cloned
+  - [x] Test trait is object-safe (`Box<dyn SimulatorAdapter>` compiles)
+- [x] **Verification**
+  - [x] `cargo fmt`
+  - [x] `cargo clippy --all-targets -- -D warnings`
+  - [x] `cargo test -p pico_trail_sitl --lib`
 
 ### Deliverables
 
@@ -139,39 +139,39 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ### Tasks
 
-- [ ] **Define TimeMode enum**
-  - [ ] `FreeRunning`
-  - [ ] `Lockstep { step_size_us: u64 }`
-  - [ ] `Scaled { factor: f32 }`
-- [ ] **Define VehicleConfig struct**
-  - [ ] `id: VehicleId`
-  - [ ] `mavlink_port: u16` (default 14550 + id)
-  - [ ] `vehicle_type: VehicleType`
-  - [ ] `initial_position: Option<GeoPosition>`
-- [ ] **Implement SitlBridge**
-  - [ ] `new()` constructor
-  - [ ] `register_adapter()` - add to HashMap, error on duplicate
-  - [ ] `unregister_adapter()` - remove, error if not found
-  - [ ] `list_adapters()` - return names
-  - [ ] `get_adapter()` / `get_adapter_mut()` - lookup by name
-- [ ] **Implement vehicle management**
-  - [ ] `spawn_vehicle()` - create VehicleInstance, add to map
-  - [ ] `despawn_vehicle()` - remove from map
-  - [ ] `assign_vehicle_to_adapter()` - update mapping
-  - [ ] `list_vehicles()` - return VehicleIds
-- [ ] **Implement basic step**
-  - [ ] `step()` - placeholder for single iteration
-  - [ ] `set_time_mode()` - configure time mode
-- [ ] **Unit tests**
-  - [ ] Test adapter registration/unregistration
-  - [ ] Test duplicate adapter name error
-  - [ ] Test vehicle spawn/despawn
-  - [ ] Test vehicle-adapter assignment
-  - [ ] Test list operations
-- [ ] **Verification**
-  - [ ] `cargo fmt`
-  - [ ] `cargo clippy --all-targets -- -D warnings`
-  - [ ] `cargo test -p pico_trail_sitl --lib`
+- [x] **Define TimeMode enum**
+  - [x] `FreeRunning`
+  - [x] `Lockstep { step_size_us: u64 }`
+  - [x] `Scaled { factor: f32 }`
+- [x] **Define VehicleConfig struct**
+  - [x] `id: VehicleId`
+  - [x] `mavlink_port: u16` (default 14550 + id)
+  - [x] `vehicle_type: VehicleType`
+  - [x] `initial_position: Option<GeoPosition>`
+- [x] **Implement SitlBridge**
+  - [x] `new()` constructor
+  - [x] `register_adapter()` - add to HashMap, error on duplicate
+  - [x] `unregister_adapter()` - remove, error if not found
+  - [x] `list_adapters()` - return names
+  - [x] `get_adapter()` / `get_adapter_mut()` - lookup by name
+- [x] **Implement vehicle management**
+  - [x] `spawn_vehicle()` - create VehicleInstance, add to map
+  - [x] `despawn_vehicle()` - remove from map
+  - [x] `assign_vehicle_to_adapter()` - update mapping
+  - [x] `list_vehicles()` - return VehicleIds
+- [x] **Implement basic step**
+  - [x] `step()` - placeholder for single iteration
+  - [x] `set_time_mode()` - configure time mode
+- [x] **Unit tests**
+  - [x] Test adapter registration/unregistration
+  - [x] Test duplicate adapter name error
+  - [x] Test vehicle spawn/despawn
+  - [x] Test vehicle-adapter assignment
+  - [x] Test list operations
+- [x] **Verification**
+  - [x] `cargo fmt`
+  - [x] `cargo clippy --all-targets -- -D warnings`
+  - [x] `cargo test -p pico_trail_sitl --lib`
 
 ### Deliverables
 
@@ -191,12 +191,12 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ## Definition of Done
 
-- [ ] All phases completed
-- [ ] `cargo fmt`
-- [ ] `cargo clippy --all-targets -- -D warnings`
-- [ ] `cargo test -p pico_trail_sitl --lib`
-- [ ] `./scripts/build-rp2350.sh pico_trail_rover` (verify no impact on embedded)
-- [ ] No `unsafe` code in sitl crate
-- [ ] Plan checkboxes marked
-- [ ] Task README status updated to Implementation Complete
-- [ ] Traceability check: `bun scripts/trace-status.ts --check`
+- [x] All phases completed
+- [x] `cargo fmt`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test -p pico_trail_sitl --lib`
+- [x] `./scripts/build-rp2350.sh pico_trail_rover` (verify no impact on embedded)
+- [x] No `unsafe` code in sitl crate
+- [x] Plan checkboxes marked
+- [x] Task README status updated to Implementation Complete
+- [x] Traceability check: `bun scripts/trace-status.ts --check`

@@ -1,0 +1,16 @@
+[package]
+name = "pico_trail_sitl"
+version = "0.1.0"
+edition = "2021"
+authors = ["shirou <shirou.faw@gmail.com>"]
+license = "Apache-2.0"
+description = "SITL (Software-In-The-Loop) simulator integration for pico_trail autopilot"
+repository = "https://github.com/shirou/pico_trail"
+keywords = ["sitl", "simulation", "autopilot", "testing"]
+
+[dependencies]
+async-trait = "0.1"
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
