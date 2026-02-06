@@ -1,9 +1,11 @@
 pub mod capabilities;
+pub mod gazebo;
 pub mod lightweight;
 
 use async_trait::async_trait;
 
 pub use capabilities::{SensorCapabilities, SimulatorCapabilities};
+pub use gazebo::{GazeboAdapter, GazeboConfig};
 pub use lightweight::{LightweightAdapter, LightweightConfig};
 
 use crate::error::SimulatorError;

@@ -29,16 +29,16 @@ As a developer, I want to run pico_trail in Gazebo with realistic physics and 3D
 
 ## Acceptance Criteria
 
-- [ ] `GazeboAdapter` implements `SimulatorAdapter` trait
-- [ ] Configurable UDP ports for sensor receive and actuator send
-- [ ] JSON sensor data parsing (IMU, GPS, compass fields)
-- [ ] JSON actuator command serialization
-- [ ] Compatible with `ardupilot_gazebo` plugin (unmodified)
-- [ ] Supports lockstep synchronization via protocol
-- [ ] Connection timeout and reconnection handling
-- [ ] Error handling for malformed JSON or network failures
-- [ ] Configurable Gazebo server address
-- [ ] Unit tests with mock UDP socket
+- [x] `GazeboAdapter` implements `SimulatorAdapter` trait
+- [x] Configurable UDP ports for sensor receive and actuator send
+- [x] JSON sensor data parsing (IMU, GPS, compass fields)
+- [x] JSON actuator command serialization
+- [x] Compatible with `ardupilot_gazebo` plugin (unmodified)
+- [x] Supports lockstep synchronization via protocol
+- [x] Connection timeout and reconnection handling
+- [x] Error handling for malformed JSON or network failures
+- [x] Configurable Gazebo server address
+- [x] Unit tests with mock UDP socket
 - [ ] Integration test with actual Gazebo (CI optional)
 
 ## Technical Details (if applicable)

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Implementation Plan
-- Status: Draft
+- Status: Implementation Complete
 
 ## Links
 
@@ -16,10 +16,10 @@ Implement `GazeboAdapter` with UDP/JSON protocol in a single phase. The adapter 
 
 ## Success Metrics
 
-- [ ] `GazeboAdapter` implements `SimulatorAdapter` trait
-- [ ] JSON protocol matches ardupilot_gazebo format
-- [ ] UDP socket management with timeout handling
-- [ ] Unit tests pass with mock sockets
+- [x] `GazeboAdapter` implements `SimulatorAdapter` trait
+- [x] JSON protocol matches ardupilot_gazebo format
+- [x] UDP socket management with timeout handling
+- [x] Unit tests pass with mock sockets
 
 ## Scope
 
@@ -30,8 +30,8 @@ Implement `GazeboAdapter` with UDP/JSON protocol in a single phase. The adapter 
 
 ## ADR & Legacy Alignment
 
-- [ ] Confirm ADR-00156-sitl-pluggable-adapter-architecture is referenced
-- [ ] No modifications to existing crates/core or crates/firmware
+- [x] Confirm ADR-00156-sitl-pluggable-adapter-architecture is referenced
+- [x] No modifications to existing crates/core or crates/firmware
 
 ## Plan Summary
 
@@ -63,41 +63,41 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ### Tasks
 
-- [ ] **Define GazeboConfig**
-  - [ ] `sensor_port: u16` (default 9002)
-  - [ ] `actuator_port: u16` (default 9003)
-  - [ ] `server_addr: SocketAddr`
-  - [ ] `ardupilot_compat: bool`
-  - [ ] `timeout_ms: u32`
-- [ ] **Implement UDP socket management**
-  - [ ] Async UDP with tokio
-  - [ ] Separate sockets for sensors and actuators
-  - [ ] Timeout handling
-- [ ] **Implement JSON parsing**
-  - [ ] Parse sensor JSON to `SensorData`
-  - [ ] Handle ardupilot_gazebo format
-  - [ ] Error handling for malformed JSON
-- [ ] **Implement JSON serialization**
-  - [ ] Serialize `ActuatorCommands` to JSON
-  - [ ] Convert normalized motor values to PWM (1000-2000)
-- [ ] **Implement SimulatorAdapter trait**
-  - [ ] `connect()` - bind sockets
-  - [ ] `disconnect()` - close sockets
-  - [ ] `receive_sensors()` - UDP recv + parse
-  - [ ] `send_actuators()` - serialize + UDP send
-  - [ ] `step()` - send step signal for lockstep
-  - [ ] `supports_lockstep()` - return true
-- [ ] **Unit tests (mock socket)**
-  - [ ] Test JSON parsing
-  - [ ] Test JSON serialization
-  - [ ] Test PWM conversion
+- [x] **Define GazeboConfig**
+  - [x] `sensor_port: u16` (default 9002)
+  - [x] `actuator_port: u16` (default 9003)
+  - [x] `server_addr: SocketAddr`
+  - [x] `ardupilot_compat: bool`
+  - [x] `timeout_ms: u32`
+- [x] **Implement UDP socket management**
+  - [x] Async UDP with tokio
+  - [x] Separate sockets for sensors and actuators
+  - [x] Timeout handling
+- [x] **Implement JSON parsing**
+  - [x] Parse sensor JSON to `SensorData`
+  - [x] Handle ardupilot_gazebo format
+  - [x] Error handling for malformed JSON
+- [x] **Implement JSON serialization**
+  - [x] Serialize `ActuatorCommands` to JSON
+  - [x] Convert normalized motor values to PWM (1000-2000)
+- [x] **Implement SimulatorAdapter trait**
+  - [x] `connect()` - bind sockets
+  - [x] `disconnect()` - close sockets
+  - [x] `receive_sensors()` - UDP recv + parse
+  - [x] `send_actuators()` - serialize + UDP send
+  - [x] `step()` - send step signal for lockstep
+  - [x] `supports_lockstep()` - return true
+- [x] **Unit tests (mock socket)**
+  - [x] Test JSON parsing
+  - [x] Test JSON serialization
+  - [x] Test PWM conversion
 - [ ] **Integration tests (optional, requires Gazebo)**
   - [ ] Document Gazebo setup
   - [ ] Test connection to real Gazebo
-- [ ] **Verification**
-  - [ ] `cargo fmt`
-  - [ ] `cargo clippy --all-targets -- -D warnings`
-  - [ ] `cargo test -p pico_trail_sitl --lib`
+- [x] **Verification**
+  - [x] `cargo fmt`
+  - [x] `cargo clippy --all-targets -- -D warnings`
+  - [x] `cargo test -p pico_trail_sitl --lib`
 
 ### Deliverables
 
@@ -118,12 +118,12 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ## Definition of Done
 
-- [ ] All phases completed
-- [ ] `cargo fmt`
-- [ ] `cargo clippy --all-targets -- -D warnings`
-- [ ] `cargo test -p pico_trail_sitl --lib`
-- [ ] `./scripts/build-rp2350.sh pico_trail_rover` (verify no impact on embedded)
-- [ ] No `unsafe` code
-- [ ] Plan checkboxes marked
-- [ ] Task README status updated to Implementation Complete
-- [ ] Traceability check: `bun scripts/trace-status.ts --check`
+- [x] All phases completed
+- [x] `cargo fmt`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test -p pico_trail_sitl --lib`
+- [x] `./scripts/build-rp2350.sh pico_trail_rover` (verify no impact on embedded)
+- [x] No `unsafe` code
+- [x] Plan checkboxes marked
+- [x] Task README status updated to Implementation Complete
+- [x] Traceability check: `bun scripts/trace-status.ts --check`
