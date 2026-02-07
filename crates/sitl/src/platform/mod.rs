@@ -166,6 +166,15 @@ impl SitlPlatform {
         sensor.take()
     }
 
+    /// Peek at the current sensor data without consuming it.
+    ///
+    /// Unlike `take_sensors()`, this clones the data so it remains available
+    /// for subsequent reads.
+    pub fn peek_sensors(&self) -> Option<SensorData> {
+        let sensor = self.sensor_data.lock().unwrap();
+        sensor.clone()
+    }
+
     // --- Actuator collection (platform → bridge) ---
 
     /// Collect actuator commands from PWM channel duty cycles.
