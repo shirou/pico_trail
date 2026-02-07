@@ -1,5 +1,7 @@
 use core::fmt;
 
+pub use pico_trail_core::navigation::GpsFixType;
+
 /// Vehicle identifier (matches MAVLink system ID range).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VehicleId(pub u8);
@@ -8,17 +10,6 @@ impl fmt::Display for VehicleId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Vehicle({})", self.0)
     }
-}
-
-/// GPS fix type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GpsFixType {
-    NoFix,
-    Fix2D,
-    Fix3D,
-    DGps,
-    RtkFloat,
-    RtkFixed,
 }
 
 /// IMU sensor data.

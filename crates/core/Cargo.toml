@@ -31,6 +31,9 @@ crc = "3.2"
 # Critical section for thread-safe global state access (scheduler stats)
 critical-section = "1.2"
 
+# Optional: defmt formatting support for embedded targets
+defmt = { version = "0.3", optional = true }
+
 [dev-dependencies]
 # Host test dependencies - enable std feature for critical-section
 critical-section = { version = "1.2", features = ["std"] }

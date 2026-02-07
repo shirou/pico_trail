@@ -13,4 +13,4 @@ pub use geo::{
     calculate_bearing, calculate_distance, haversine_distance_bearing, normalize_angle,
     offset_position, wrap_180, wrap_360,
 };
-pub use types::{NavigationOutput, PositionTarget, SimpleNavConfig};
+pub use types::{GpsFixType, NavigationOutput, PositionTarget, SimpleNavConfig};

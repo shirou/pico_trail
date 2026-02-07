@@ -5,6 +5,27 @@
 //! - `NavigationOutput`: Output from navigation controller
 //! - `SimpleNavConfig`: Configuration for simple navigation controller
 
+/// GPS fix type.
+///
+/// Variants are ordered by quality — `NoFix` is worst, `RtkFixed` is best —
+/// so comparisons like `fix_type >= GpsFixType::Fix3D` work correctly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum GpsFixType {
+    /// No GPS fix available.
+    NoFix,
+    /// 2D fix (latitude, longitude only).
+    Fix2D,
+    /// 3D fix (latitude, longitude, altitude).
+    Fix3D,
+    /// Differential GPS (SBAS-aided 3D).
+    DGps,
+    /// RTK float solution.
+    RtkFloat,
+    /// RTK fixed solution (highest precision).
+    RtkFixed,
+}
+
 /// Target position for navigation
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PositionTarget {

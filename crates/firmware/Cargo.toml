@@ -13,7 +13,7 @@ categories = ["embedded", "no-std"]
 
 [dependencies]
 # Core business logic (workspace dependency)
-pico_trail_core = { path = "../core" }
+pico_trail_core = { path = "../core", features = ["defmt"] }
 
 # Cortex-M dependencies (always enabled for RP2350)
 cortex-m = "0.7"

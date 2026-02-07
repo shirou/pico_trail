@@ -92,6 +92,9 @@ fn convert_gps_fix_type(fix_type: DeviceGpsFixType) -> GpsFixType {
         DeviceGpsFixType::NoFix => GpsFixType::GPS_FIX_TYPE_NO_FIX,
         DeviceGpsFixType::Fix2D => GpsFixType::GPS_FIX_TYPE_2D_FIX,
         DeviceGpsFixType::Fix3D => GpsFixType::GPS_FIX_TYPE_3D_FIX,
+        DeviceGpsFixType::DGps => GpsFixType::GPS_FIX_TYPE_DGPS,
+        DeviceGpsFixType::RtkFloat => GpsFixType::GPS_FIX_TYPE_RTK_FLOAT,
+        DeviceGpsFixType::RtkFixed => GpsFixType::GPS_FIX_TYPE_RTK_FIXED,
     }
 }
 

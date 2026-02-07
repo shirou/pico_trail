@@ -92,17 +92,7 @@ const fn const_parse_f32(s: &str) -> f32 {
     }
 }
 
-/// GPS fix type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum GpsFixType {
-    /// No GPS fix
-    NoFix,
-    /// 2D fix (latitude, longitude only)
-    Fix2D,
-    /// 3D fix (latitude, longitude, altitude)
-    Fix3D,
-}
+pub use pico_trail_core::navigation::GpsFixType;
 
 /// GPS position data
 #[derive(Debug, Clone, Copy, PartialEq)]
