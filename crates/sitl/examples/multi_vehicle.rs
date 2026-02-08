@@ -2,7 +2,9 @@
 //!
 //! Creates a bridge with 3 lightweight adapters and vehicles, assigns each
 //! vehicle to its adapter, and runs a continuous loop sending MAVLink telemetry
-//! on UDP ports 14551–14553 for Mission Planner integration.
+//! on a single TCP port for Mission Planner integration.
+//!
+//! Mission Planner auto-detects all 3 vehicles via their distinct system_id.
 //!
 //! Run with: `cargo run -p pico_trail_sitl --example multi_vehicle`
 
@@ -12,7 +14,7 @@ use pico_trail_sitl::{
 };
 
 const VEHICLE_COUNT: u8 = 3;
-const BASE_MAVLINK_PORT: u16 = 14551;
+const MAVLINK_PORT: u16 = 14550;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -22,8 +24,10 @@ async fn main() {
     let mut bridge = SitlBridge::new();
     bridge.set_time_mode(TimeMode::Scaled { factor: 1.0 });
 
+    // Single GCS link for all vehicles
+    let mut gcs = GcsLink::new(MAVLINK_PORT).expect("Failed to bind MAVLink TCP port");
+
     // 2. Register adapters, spawn vehicles, and assign them
-    let mut gcs_links = Vec::new();
     for i in 1..=VEHICLE_COUNT {
         let adapter_name = format!("sim{i}");
         let config = LightweightConfig {
@@ -59,29 +63,25 @@ async fn main() {
         vehicle.platform.set_pwm_duty(0, 0.75);
         vehicle.platform.set_pwm_duty(1, 0.75);
 
-        // Create GCS link for MAVLink telemetry
-        let port = BASE_MAVLINK_PORT + (i - 1) as u16;
-        let gcs = GcsLink::new(i, port).expect("Failed to bind MAVLink UDP port");
-        gcs_links.push(gcs);
+        gcs.register_vehicle(i);
 
-        println!("Vehicle {i}: spawned, adapter '{adapter_name}', MAVLink port {port}");
+        println!("Vehicle {i}: spawned, adapter '{adapter_name}'");
     }
-    println!(
-        "\nWaiting for Mission Planner connections on UDP ports {BASE_MAVLINK_PORT}–{}...",
-        BASE_MAVLINK_PORT + (VEHICLE_COUNT - 1) as u16
-    );
+    println!("\nWaiting for Mission Planner TCP connection on port {MAVLINK_PORT}...");
     println!("Press Ctrl+C to stop.\n");
 
-    // Track per-vehicle connection status for logging
-    let mut was_connected = vec![false; VEHICLE_COUNT as usize];
+    let mut was_connected = false;
 
     // 3. Run continuous simulation loop at 100 Hz
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(10));
     let mut step_count: u64 = 0;
 
+    let ctrl_c = tokio::signal::ctrl_c();
+    tokio::pin!(ctrl_c);
+
     loop {
         tokio::select! {
-            _ = tokio::signal::ctrl_c() => {
+            _ = &mut ctrl_c => {
                 println!("\nShutdown requested.");
                 break;
             }
@@ -91,27 +91,30 @@ async fn main() {
 
                 let sim_time = bridge.sim_time_us();
 
+                gcs.poll_and_heartbeat(sim_time);
+
                 for i in 1..=VEHICLE_COUNT {
-                    let idx = (i - 1) as usize;
                     let vehicle = bridge.get_vehicle(VehicleId(i)).unwrap();
-
                     if let Some(sensors) = vehicle.platform.peek_sensors() {
-                        gcs_links[idx].update(&sensors, sim_time);
+                        gcs.send_telemetry(i, &sensors, sim_time);
                     }
+                }
 
-                    // Log when a GCS connects
-                    if gcs_links[idx].is_connected() && !was_connected[idx] {
-                        was_connected[idx] = true;
-                        println!("Vehicle {i}: GCS connected");
-                    }
+                if gcs.is_connected() && !was_connected {
+                    was_connected = true;
+                    println!("GCS connected");
+                }
+                if !gcs.is_connected() && was_connected {
+                    was_connected = false;
+                    println!("GCS disconnected");
                 }
 
                 // Print summary every 10 seconds (1000 steps at 100 Hz)
                 if step_count.is_multiple_of(1000) {
                     let secs = sim_time / 1_000_000;
-                    let connected: usize = was_connected.iter().filter(|c| **c).count();
                     println!(
-                        "[{secs}s] {step_count} steps, {connected}/{VEHICLE_COUNT} GCS connected"
+                        "[{secs}s] {step_count} steps, GCS {}",
+                        if gcs.is_connected() { "connected" } else { "waiting" }
                     );
                 }
             }

@@ -14,9 +14,6 @@ rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-mavlink = { version = "0.17.0", default-features = false, features = ["std", "common"] }
+mavlink = { version = "0.17.0", default-features = false, features = ["std", "common", "emit-extensions"] }
 pico_trail_core = { path = "../core" }
-tokio = { version = "1", features = ["net", "time"] }
-
-[dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt", "signal"] }
+tokio = { version = "1", features = ["net", "time", "macros", "rt", "signal"] }

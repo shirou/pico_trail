@@ -1,0 +1,26 @@
+FROM ghcr.io/j-rivero/gazebo:harmonic-full
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake git libgz-sim8-dev rapidjson-dev libopencv-dev \
+        libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build ardupilot_gazebo plugin
+WORKDIR /gz_ws/src
+RUN git clone --depth 1 https://github.com/ArduPilot/ardupilot_gazebo.git
+WORKDIR /gz_ws/src/ardupilot_gazebo/build
+RUN cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    && make -j"$(nproc)" \
+    && make install
+
+# Rover models from ArduPilot SITL_Models
+WORKDIR /gz_ws/src
+RUN git clone --depth 1 --filter=blob:none --sparse \
+        https://github.com/ArduPilot/SITL_Models.git \
+    && cd SITL_Models && git sparse-checkout set Gazebo/models Gazebo/worlds
+
+ENV GZ_SIM_SYSTEM_PLUGIN_PATH=/gz_ws/src/ardupilot_gazebo/build
+ENV GZ_SIM_RESOURCE_PATH=/gz_ws/src/SITL_Models/Gazebo/models:/gz_ws/src/ardupilot_gazebo/models:/gz_ws/src/ardupilot_gazebo/worlds:/gz_ws/src/SITL_Models/Gazebo/worlds
+
+WORKDIR /worlds
+

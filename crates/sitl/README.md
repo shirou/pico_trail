@@ -4,7 +4,7 @@ Software-In-The-Loop (SITL) simulator integration for the pico_trail autopilot.
 
 ## Overview
 
-This crate provides a simulation environment that mirrors the firmware's `Platform` abstraction, enabling testing of autopilot logic on the host without embedded hardware. The core component is `SitlBridge`, which orchestrates adapters, vehicles, and timing.
+This crate provides a simulation environment that mirrors the firmware's `Platform` abstraction, enabling testing of autopilot logic on the host without embedded hardware. The core component is `SitlBridge`, which orchestrates adapters, vehicles, and timing. A built-in `GcsLink` multiplexes MAVLink telemetry for all vehicles over a single TCP connection, so Mission Planner auto-detects every vehicle without extra configuration.
 
 ### Adapters
 
@@ -112,8 +112,7 @@ async fn main() {
     let mut bridge = SitlBridge::new();
 
     let config = GazeboConfig {
-        sensor_port: 9002,
-        actuator_port: 9003,
+        gazebo_addr: "127.0.0.1:9002".parse().unwrap(),
         ..Default::default()
     };
     let adapter = GazeboAdapter::new("gazebo1", VehicleId(1), config);
@@ -140,15 +139,42 @@ This section describes how to run 3 simulated rovers using Gazebo Harmonic and t
 
 ### Prerequisites
 
-- [Gazebo Harmonic](https://gazebosim.org/docs/harmonic/install) (gz-sim 8.x)
+- [Gazebo Harmonic](https://gazebosim.org/docs/harmonic/install) (gz-sim 8.x) — native install or Docker (see below)
 - [ardupilot_gazebo](https://github.com/ArduPilot/ardupilot_gazebo) plugin (for sensor/actuator UDP bridge)
 - Rust toolchain with `cargo`
 
 ### 1. Prepare the Gazebo World
 
-Create a world file that spawns 3 rover models, each configured with the `ardupilot_gazebo` plugin on separate UDP port pairs.
+The `r1_rover` model from [ArduPilot/SITL\_Models](https://github.com/ArduPilot/SITL_Models) has `ArduPilotPlugin` with `fdm_port_in` hardcoded to 9002. For multi-vehicle, each rover needs a unique port, so we generate per-vehicle model copies.
 
-Save the following as `worlds/multi_rover.sdf`:
+Save the following as `scripts/setup_gazebo_models.sh`:
+
+```bash
+#!/bin/bash
+# Generate per-vehicle r1_rover models with unique fdm_port_in values.
+# Usage: ./scripts/setup_gazebo_models.sh [COUNT] [BASE_PORT] [STRIDE]
+
+COUNT=${1:-3}
+BASE_PORT=${2:-9002}
+STRIDE=${3:-10}
+
+MODELS_SRC="${GZ_SIM_RESOURCE_PATH%%:*}"  # first path entry
+if [ ! -d "$MODELS_SRC/r1_rover" ]; then
+    echo "Error: r1_rover model not found in $MODELS_SRC" >&2
+    exit 1
+fi
+
+for i in $(seq 1 "$COUNT"); do
+    PORT=$(( BASE_PORT + (i - 1) * STRIDE ))
+    DEST="$MODELS_SRC/r1_rover_$i"
+    cp -r "$MODELS_SRC/r1_rover" "$DEST"
+    sed -i "s|<fdm_port_in>9002</fdm_port_in>|<fdm_port_in>${PORT}</fdm_port_in>|" "$DEST/model.sdf"
+    sed -i "s|<name>r1_rover</name>|<name>r1_rover_$i</name>|" "$DEST/model.config"
+    echo "Created r1_rover_$i (fdm_port_in=$PORT)"
+done
+```
+
+Then save the following as `worlds/multi_rover.sdf`:
 
 ```xml
 <?xml version="1.0" ?>
@@ -168,186 +194,175 @@ Save the following as `worlds/multi_rover.sdf`:
       <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Ground Plane</uri>
     </include>
 
-    <!-- Rover 1: sensor_port=9002, actuator_port=9003 -->
+    <!-- Rover 1: fdm_port_in=9002 -->
     <include>
-      <uri>model://rover</uri>
+      <uri>model://r1_rover_1</uri>
       <name>rover1</name>
       <pose>0 0 0.1 0 0 0</pose>
-      <plugin filename="libArduPilotPlugin.so" name="ardupilot_gazebo::Plugin">
-        <fdm_addr>127.0.0.1</fdm_addr>
-        <fdm_port_in>9003</fdm_port_in>
-        <fdm_port_out>9002</fdm_port_out>
-      </plugin>
     </include>
 
-    <!-- Rover 2: sensor_port=9012, actuator_port=9013 -->
+    <!-- Rover 2: fdm_port_in=9012 -->
     <include>
-      <uri>model://rover</uri>
+      <uri>model://r1_rover_2</uri>
       <name>rover2</name>
       <pose>3 0 0.1 0 0 0</pose>
-      <plugin filename="libArduPilotPlugin.so" name="ardupilot_gazebo::Plugin">
-        <fdm_addr>127.0.0.1</fdm_addr>
-        <fdm_port_in>9013</fdm_port_in>
-        <fdm_port_out>9012</fdm_port_out>
-      </plugin>
     </include>
 
-    <!-- Rover 3: sensor_port=9022, actuator_port=9023 -->
+    <!-- Rover 3: fdm_port_in=9022 -->
     <include>
-      <uri>model://rover</uri>
+      <uri>model://r1_rover_3</uri>
       <name>rover3</name>
       <pose>6 0 0.1 0 0 0</pose>
-      <plugin filename="libArduPilotPlugin.so" name="ardupilot_gazebo::Plugin">
-        <fdm_addr>127.0.0.1</fdm_addr>
-        <fdm_port_in>9023</fdm_port_in>
-        <fdm_port_out>9022</fdm_port_out>
-      </plugin>
     </include>
   </world>
 </sdf>
 ```
 
-Port convention: each vehicle uses `base + (id - 1) * 10` for the sensor port and `base + 1` for the actuator port.
+Port convention: each vehicle uses `base + (id - 1) * 10` for its `fdm_port_in`. The ArduPilot plugin auto-detects the response port.
 
-| Vehicle | Sensor Port (Gazebo → SITL) | Actuator Port (SITL → Gazebo) |
-| ------- | --------------------------- | ----------------------------- |
-| 1       | 9002                        | 9003                          |
-| 2       | 9012                        | 9013                          |
-| 3       | 9022                        | 9023                          |
+| Vehicle | Gazebo `fdm_port_in` |
+| ------- | -------------------- |
+| 1       | 9002                 |
+| 2       | 9012                 |
+| 3       | 9022                 |
 
 ### 2. Launch Gazebo
+
+#### Option A: Native install
 
 ```bash
 gz sim worlds/multi_rover.sdf
 ```
 
-Gazebo starts and waits for actuator commands on the configured ports.
+#### Option B: Docker (recommended)
+
+The Docker Hub `gazebo` image is Gazebo Classic only. For Gazebo Harmonic use the [OCI images](https://github.com/j-rivero/gz_oci_images) as a base.
+
+Save the following as `docker/Dockerfile.gazebo`:
+
+```dockerfile
+FROM ghcr.io/j-rivero/gazebo:harmonic-full
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake git libgz-sim8-dev rapidjson-dev libopencv-dev \
+        libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build ardupilot_gazebo plugin
+WORKDIR /gz_ws/src
+RUN git clone --depth 1 https://github.com/ArduPilot/ardupilot_gazebo.git
+WORKDIR /gz_ws/src/ardupilot_gazebo/build
+RUN cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    && make -j"$(nproc)" \
+    && make install
+
+# Rover models from ArduPilot SITL_Models
+WORKDIR /gz_ws/src
+RUN git clone --depth 1 --filter=blob:none --sparse \
+        https://github.com/ArduPilot/SITL_Models.git \
+    && cd SITL_Models && git sparse-checkout set Gazebo/models Gazebo/worlds
+
+ENV GZ_SIM_SYSTEM_PLUGIN_PATH=/gz_ws/src/ardupilot_gazebo/build
+ENV GZ_SIM_RESOURCE_PATH=/gz_ws/src/SITL_Models/Gazebo/models:/gz_ws/src/ardupilot_gazebo/models:/gz_ws/src/ardupilot_gazebo/worlds:/gz_ws/src/SITL_Models/Gazebo/worlds
+
+WORKDIR /worlds
+```
+
+Build once:
+
+```bash
+docker build -t gazebo-ardupilot -f docker/Dockerfile.gazebo .
+```
+
+Run with GUI (X11 forwarding):
+
+```bash
+xhost +local:docker
+
+docker run --rm -it \
+    --network host \
+    -e DISPLAY=$DISPLAY \
+    -v /tmp/.X11-unix:/tmp/.X11-unix \
+    -v "$(pwd)/worlds:/worlds" \
+    -v "$(pwd)/scripts:/scripts" \
+    gazebo-ardupilot \
+    bash -c "/scripts/setup_gazebo_models.sh 3 9002 10 && gz sim /worlds/multi_rover.sdf"
+```
+
+For NVIDIA GPU, add `--gpus all` and `--runtime=nvidia`:
+
+```bash
+docker run --rm -it \
+    --network host \
+    --gpus all --runtime=nvidia \
+    -e DISPLAY=$DISPLAY \
+    -v /tmp/.X11-unix:/tmp/.X11-unix \
+    -v "$(pwd)/worlds:/worlds" \
+    -v "$(pwd)/scripts:/scripts" \
+    gazebo-ardupilot \
+    bash -c "/scripts/setup_gazebo_models.sh 3 9002 10 && gz sim /worlds/multi_rover.sdf"
+```
+
+`--network host` shares UDP ports with the host so that `gazebo_bridge` can communicate directly.
+
+After launch, Gazebo starts and waits for actuator commands on the configured ports.
 
 ### 3. Run the SITL Bridge
 
-Create a Rust program (or add to an example) that connects 3 `GazeboAdapter` instances to the running Gazebo world:
+The `gazebo_bridge` binary connects `GazeboAdapter` instances to the running Gazebo world. All vehicles share a single MAVLink TCP port for GCS communication.
 
-```rust
-use pico_trail_sitl::adapter::{GazeboAdapter, GazeboConfig};
-use pico_trail_sitl::{
-    GcsLink, SitlBridge, TimeMode, VehicleConfig, VehicleId, VehicleType,
-};
+```bash
+# 3 vehicles (default), MAVLink on TCP :14550
+cargo run -p pico_trail_sitl --bin gazebo_bridge
 
-const VEHICLE_COUNT: u8 = 3;
-const SENSOR_PORT_BASE: u16 = 9002;
-const PORT_STRIDE: u16 = 10;
-const MAVLINK_PORT_BASE: u16 = 14551;
+# 5 vehicles
+cargo run -p pico_trail_sitl --bin gazebo_bridge -- -n 5
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
-    println!("=== pico_trail SITL — 3 Rovers with Gazebo ===\n");
+# Custom port configuration
+cargo run -p pico_trail_sitl --bin gazebo_bridge -- -n 3 --gazebo-port-base 9002 --port-stride 10
 
-    let mut bridge = SitlBridge::new();
-    bridge.set_time_mode(TimeMode::Scaled { factor: 1.0 });
+# Custom MAVLink TCP port
+cargo run -p pico_trail_sitl --bin gazebo_bridge -- --mavlink-port 14551
 
-    let mut gcs_links = Vec::new();
-
-    for i in 1..=VEHICLE_COUNT {
-        let id = VehicleId(i);
-        let adapter_name = format!("gazebo{i}");
-
-        let sensor_port = SENSOR_PORT_BASE + (i as u16 - 1) * PORT_STRIDE;
-        let actuator_port = sensor_port + 1;
-
-        let config = GazeboConfig {
-            sensor_port,
-            actuator_port,
-            server_addr: format!("127.0.0.1:{actuator_port}").parse().unwrap(),
-            ..Default::default()
-        };
-        let adapter = GazeboAdapter::new(&adapter_name, id, config);
-        bridge.register_adapter(Box::new(adapter)).unwrap();
-
-        let vehicle_config = VehicleConfig::new(id, VehicleType::Rover);
-        bridge.spawn_vehicle(vehicle_config).unwrap();
-        bridge.assign_vehicle_to_adapter(id, &adapter_name).unwrap();
-
-        bridge
-            .get_adapter_mut(&adapter_name)
-            .unwrap()
-            .connect()
-            .await
-            .unwrap();
-
-        // Set up PWM channels
-        let v = bridge.get_vehicle(id).unwrap();
-        v.platform.create_pwm(0, 50).unwrap(); // left motor
-        v.platform.create_pwm(1, 50).unwrap(); // right motor
-
-        // GCS telemetry (Mission Planner / QGroundControl)
-        let mav_port = MAVLINK_PORT_BASE + (i - 1) as u16;
-        gcs_links.push(GcsLink::new(i, mav_port).unwrap());
-
-        println!(
-            "Vehicle {i}: sensor={sensor_port}, actuator={actuator_port}, MAVLink={mav_port}"
-        );
-    }
-
-    println!("\nBridge running. Press Ctrl+C to stop.\n");
-
-    let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(10));
-
-    loop {
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => break,
-            _ = interval.tick() => {
-                bridge.step().await.unwrap();
-                let sim_time = bridge.sim_time_us();
-
-                for i in 1..=VEHICLE_COUNT {
-                    let idx = (i - 1) as usize;
-                    let vehicle = bridge.get_vehicle(VehicleId(i)).unwrap();
-                    if let Some(sensors) = vehicle.platform.peek_sensors() {
-                        gcs_links[idx].update(&sensors, sim_time);
-                    }
-                }
-            }
-        }
-    }
-
-    println!("Shutdown.");
-}
+# Show all options
+cargo run -p pico_trail_sitl --bin gazebo_bridge -- --help
 ```
+
+Source: `src/bin/gazebo_bridge.rs`
 
 ### 4. Connect a Ground Control Station
 
-While both Gazebo and the SITL bridge are running, connect Mission Planner or QGroundControl to the MAVLink UDP ports:
+While both Gazebo and the SITL bridge are running, connect Mission Planner or QGroundControl to the MAVLink TCP port. All vehicles share a single TCP connection — the GCS auto-detects them via distinct MAVLink `system_id` values.
 
-| Vehicle | UDP Port |
-| ------- | -------- |
-| 1       | 14551    |
-| 2       | 14552    |
-| 3       | 14553    |
+Default port: **14550** (configurable via `--mavlink-port`).
 
-In **Mission Planner**: use CTRL+L → Add UDP connections to each port.
+In **Mission Planner**: Connection type → TCP, then enter `127.0.0.1` and port `14550`. All vehicles appear automatically in the vehicle selector dropdown.
 
-In **QGroundControl**: Settings → Comm Links → Add UDP connections to each port.
+In **QGroundControl**: Settings → Comm Links → Add a TCP connection to `127.0.0.1:14550`. All vehicles are discovered automatically.
 
 ### Architecture
 
 ```text
 Gazebo Harmonic (gz-sim)
-  rover1        rover2        rover3
-  :9002/:9003   :9012/:9013   :9022/:9023
-    |               |               |
-    v               v               v
-+-------------+-------------+-------------+
-| GazeboAdapter| GazeboAdapter| GazeboAdapter|
-| "gazebo1"   | "gazebo2"   | "gazebo3"   |
-+------+------+------+------+------+------+
-       |             |             |
-   Vehicle 1     Vehicle 2     Vehicle 3
-   SitlPlatform  SitlPlatform  SitlPlatform
-       |             |             |
-   GcsLink :14551  GcsLink :14552  GcsLink :14553
-       |             |             |
-       v             v             v
-   Mission Planner / QGroundControl
+  r1_rover_1      r1_rover_2      r1_rover_3
+  fdm_port:9002   fdm_port:9012   fdm_port:9022
+    |                |                |
+    v (UDP)          v (UDP)          v (UDP)
++---------------+---------------+---------------+
+| GazeboAdapter | GazeboAdapter | GazeboAdapter |
+| "gazebo1"     | "gazebo2"     | "gazebo3"     |
++-------+-------+-------+-------+-------+-------+
+        |               |               |
+    Vehicle 1       Vehicle 2       Vehicle 3
+    SitlPlatform    SitlPlatform    SitlPlatform
+        \               |               /
+         \              |              /
+          +--- GcsLink (TCP :14550) --+
+                        |
+                        v
+              Mission Planner / QGC
+           (auto-detects all vehicles
+            via MAVLink system_id)
 ```
 
 ### Troubleshooting
@@ -355,7 +370,7 @@ Gazebo Harmonic (gz-sim)
 - **"Failed to bind sensor socket"**: Another process is using the port. Check with `ss -ulnp | grep 900`.
 - **No sensor data received**: Verify Gazebo is running and the `ardupilot_gazebo` plugin is loaded. Check the Gazebo console for plugin errors.
 - **Vehicles not moving**: Ensure PWM channels are created and duty is set (see step 3 code). Verify the rover model in Gazebo responds to actuator commands.
-- **GCS not connecting**: Confirm the MAVLink ports (14551–14553) are not blocked by a firewall.
+- **GCS not connecting**: Confirm the MAVLink TCP port (default 14550) is not blocked by a firewall. On WSL2, use TCP (not UDP) — UDP return packets may not reach the Windows host.
 
 ## Running tests
 
