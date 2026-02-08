@@ -175,6 +175,12 @@ impl LightweightAdapter {
         let gps = self.synthesize_gps();
         let compass = self.synthesize_compass();
 
+        // Convert math-convention heading (0=east, CCW) to NED yaw (0=north, CW)
+        let ned_yaw = core::f32::consts::FRAC_PI_2 - self.state.heading;
+        // Quaternion [w, x, y, z] for pure yaw rotation (level vehicle)
+        let half_yaw = ned_yaw / 2.0;
+        let attitude_quat = Some([half_yaw.cos(), 0.0, 0.0, half_yaw.sin()]);
+
         SensorData {
             timestamp_us: self.sim_time_us,
             vehicle_id: self.vehicle_id,
@@ -182,6 +188,7 @@ impl LightweightAdapter {
             gps,
             compass: Some(compass),
             barometer: None,
+            attitude_quat,
         }
     }
 

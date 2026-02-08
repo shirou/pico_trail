@@ -274,6 +274,7 @@ mod tests {
             gps: None,
             compass: None,
             barometer: None,
+            attitude_quat: None,
         };
         platform.inject_sensors(&data);
 
@@ -341,6 +342,7 @@ mod tests {
             }),
             compass: None,
             barometer: None,
+            attitude_quat: None,
         };
         platform.inject_sensors(&data);
 

@@ -75,6 +75,8 @@ pub struct SensorData {
     pub compass: Option<CompassData>,
     /// Barometer data.
     pub barometer: Option<BarometerData>,
+    /// Attitude quaternion [w, x, y, z] from simulator (NED frame).
+    pub attitude_quat: Option<[f32; 4]>,
 }
 
 /// Actuator commands sent to a simulator.
