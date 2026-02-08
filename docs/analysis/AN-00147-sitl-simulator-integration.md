@@ -24,13 +24,17 @@
   - [NFR-00095-sitl-latency](../requirements/NFR-00095-sitl-latency.md)
   - [NFR-00096-sitl-lightweight-no-deps](../requirements/NFR-00096-sitl-lightweight-no-deps.md)
   - [NFR-00097-sitl-adapter-extensibility](../requirements/NFR-00097-sitl-adapter-extensibility.md)
+  - [FR-00162-sitl-gcs-command-reception](../requirements/FR-00162-sitl-gcs-command-reception.md)
+  - [FR-00163-sitl-autopilot-loop-integration](../requirements/FR-00163-sitl-autopilot-loop-integration.md)
 - Related ADRs:
   - [ADR-00156-sitl-pluggable-adapter-architecture](../adr/ADR-00156-sitl-pluggable-adapter-architecture.md)
+  - [ADR-00161-sitl-autopilot-integration-layer](../adr/ADR-00161-sitl-autopilot-integration-layer.md)
 - Related Tasks:
   - [T-00157-sitl-simulator-integration](../tasks/T-00157-sitl-simulator-integration/README.md)
   - [T-00158-sitl-platform-and-lightweight-adapter](../tasks/T-00158-sitl-platform-and-lightweight-adapter/README.md)
   - [T-00159-sitl-gazebo-adapter](../tasks/T-00159-sitl-gazebo-adapter/README.md)
   - [T-00160-sitl-multi-vehicle-lockstep-ci](../tasks/T-00160-sitl-multi-vehicle-lockstep-ci/README.md)
+  - [T-00164-sitl-autopilot-core-integration](../tasks/T-00164-sitl-autopilot-core-integration/README.md)
 
 ## Executive Summary
 

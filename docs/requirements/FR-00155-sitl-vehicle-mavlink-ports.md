@@ -11,7 +11,8 @@
   - [AN-00147-sitl-simulator-integration](../analysis/AN-00147-sitl-simulator-integration.md)
 - Prerequisite Requirements:
   - [FR-00150-sitl-multi-vehicle-instances](FR-00150-sitl-multi-vehicle-instances.md)
-- Dependent Requirements: None
+- Dependent Requirements:
+  - [FR-00162-sitl-gcs-command-reception](FR-00162-sitl-gcs-command-reception.md)
 - Related Tasks:
   - [T-00160-sitl-multi-vehicle-lockstep-ci](../tasks/T-00160-sitl-multi-vehicle-lockstep-ci/README.md)
 

@@ -12,9 +12,12 @@
   - [AN-00004-platform-abstraction](../analysis/AN-00004-platform-abstraction.md)
 - Prerequisite Requirements:
   - [FR-00148-sitl-simulator-adapter-trait](FR-00148-sitl-simulator-adapter-trait.md)
-- Dependent Requirements: None
+- Dependent Requirements:
+  - [FR-00162-sitl-gcs-command-reception](FR-00162-sitl-gcs-command-reception.md)
+  - [FR-00163-sitl-autopilot-loop-integration](FR-00163-sitl-autopilot-loop-integration.md)
 - Related Tasks:
   - [T-00158-sitl-platform-and-lightweight-adapter](../tasks/T-00158-sitl-platform-and-lightweight-adapter/README.md)
+  - [T-00164-sitl-autopilot-core-integration](../tasks/T-00164-sitl-autopilot-core-integration/README.md)
 
 ## Requirement Statement
 
