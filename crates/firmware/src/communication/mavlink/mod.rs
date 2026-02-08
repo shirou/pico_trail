@@ -36,6 +36,8 @@ pub mod state;
 pub mod status_notifier;
 pub mod task;
 pub mod transport;
+// TransportRouter uses UdpTransport which depends on embassy-rp (ARM-only)
+#[cfg(target_arch = "arm")]
 pub mod transport_router;
 pub mod vehicle;
 pub mod writer;

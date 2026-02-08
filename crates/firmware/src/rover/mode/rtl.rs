@@ -266,6 +266,26 @@ mod tests {
         }
     }
 
+    fn mock_gps_provider() -> Option<GpsPosition> {
+        Some(GpsPosition {
+            latitude: 35.0,
+            longitude: 139.0,
+            altitude: 10.0,
+            speed: 0.0,
+            course_over_ground: None,
+            fix_type: GpsFixType::Fix3D,
+            satellites: 8,
+        })
+    }
+
+    fn mock_home_provider() -> Option<(f32, f32)> {
+        Some((35.0, 139.0))
+    }
+
+    fn mock_heading_provider() -> Option<f32> {
+        Some(0.0)
+    }
+
     // ========== RtlMode Tests ==========
 
     #[test]
@@ -282,7 +302,12 @@ mod tests {
             &system_state,
             actuator_config,
         );
-        let rtl_mode = RtlMode::new(&mut actuators);
+        let rtl_mode = RtlMode::new(
+            &mut actuators,
+            mock_gps_provider,
+            mock_home_provider,
+            mock_heading_provider,
+        );
 
         assert_eq!(rtl_mode.name(), "RTL");
     }
@@ -301,7 +326,12 @@ mod tests {
             &system_state,
             actuator_config,
         );
-        let mut rtl_mode = RtlMode::new(&mut actuators);
+        let mut rtl_mode = RtlMode::new(
+            &mut actuators,
+            mock_gps_provider,
+            mock_home_provider,
+            mock_heading_provider,
+        );
 
         // Enter should succeed (host test mode)
         assert!(rtl_mode.enter().is_ok());
@@ -322,7 +352,12 @@ mod tests {
             &system_state,
             actuator_config,
         );
-        let mut rtl_mode = RtlMode::new(&mut actuators);
+        let mut rtl_mode = RtlMode::new(
+            &mut actuators,
+            mock_gps_provider,
+            mock_home_provider,
+            mock_heading_provider,
+        );
 
         // Enter first
         assert!(rtl_mode.enter().is_ok());
@@ -345,7 +380,12 @@ mod tests {
             &system_state,
             actuator_config,
         );
-        let rtl_mode = RtlMode::new(&mut actuators);
+        let rtl_mode = RtlMode::new(
+            &mut actuators,
+            mock_gps_provider,
+            mock_home_provider,
+            mock_heading_provider,
+        );
 
         // Should not be arrived before entering
         assert!(!rtl_mode.has_arrived());

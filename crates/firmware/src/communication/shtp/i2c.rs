@@ -210,6 +210,46 @@ mod tests {
     // Mock I2C for testing
     struct MockI2c;
 
+    #[derive(Debug)]
+    struct MockI2cError;
+
+    impl embedded_hal_1::i2c::Error for MockI2cError {
+        fn kind(&self) -> embedded_hal_1::i2c::ErrorKind {
+            embedded_hal_1::i2c::ErrorKind::Other
+        }
+    }
+
+    impl embedded_hal_1::i2c::ErrorType for MockI2c {
+        type Error = MockI2cError;
+    }
+
+    impl embedded_hal_async::i2c::I2c for MockI2c {
+        async fn read(&mut self, _address: u8, _read: &mut [u8]) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn write_read(
+            &mut self,
+            _address: u8,
+            _write: &[u8],
+            _read: &mut [u8],
+        ) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn transaction(
+            &mut self,
+            _address: u8,
+            _operations: &mut [embedded_hal_1::i2c::Operation<'_>],
+        ) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
     #[test]
     fn test_shtp_i2c_new() {
         let transport = ShtpI2c::new(MockI2c, 0x4A);

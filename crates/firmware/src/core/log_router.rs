@@ -138,6 +138,7 @@ mod tests {
     use crate::communication::mavlink::status_notifier::take_pending_statustext_messages;
     use crate::core::log_buffer::LogLevel;
     use heapless::String;
+    use serial_test::serial;
 
     fn make_msg(level: LogLevel, text: &str) -> LogMessage {
         let mut message = String::new();
@@ -146,12 +147,16 @@ mod tests {
     }
 
     fn reset_router() {
-        clear_buffer();
+        // Reset buffer AND overflow counter for test isolation
+        LOG_ROUTER.with_mut(|router| {
+            router.buffer_sink_mut().reset();
+        });
         // Also drain any pending STATUSTEXT messages
         let _ = take_pending_statustext_messages();
     }
 
     #[test]
+    #[serial]
     fn test_route_stores_in_buffer() {
         reset_router();
 
@@ -161,6 +166,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_route_all_levels() {
         reset_router();
 
@@ -174,6 +180,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_buffered_logs_returns_messages() {
         reset_router();
 
@@ -188,6 +195,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_buffered_logs_drains() {
         reset_router();
 
@@ -200,6 +208,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_peek_buffered_logs_preserves() {
         reset_router();
 
@@ -213,6 +222,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_buffer_len_accuracy() {
         reset_router();
 
@@ -226,6 +236,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_overflow_count_accuracy() {
         use crate::core::log_buffer::LOG_BUFFER_SIZE;
 
@@ -246,6 +257,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_clear_buffer_empties() {
         reset_router();
 
@@ -262,6 +274,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[serial]
     fn test_warn_routes_to_statustext() {
         reset_router();
 
@@ -279,6 +292,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_error_routes_to_statustext() {
         reset_router();
 
@@ -296,6 +310,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_info_not_routed_to_statustext() {
         reset_router();
 
@@ -313,6 +328,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_debug_not_routed_to_statustext() {
         reset_router();
 
@@ -330,6 +346,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_trace_not_routed_to_statustext() {
         reset_router();
 
@@ -347,6 +364,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_statustext_routing_boundary() {
         reset_router();
 
@@ -372,6 +390,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[serial]
     fn test_end_to_end_warn_to_buffer_and_statustext() {
         reset_router();
 
@@ -390,6 +409,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_end_to_end_error_to_buffer_and_statustext() {
         reset_router();
 
@@ -408,6 +428,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_multiple_levels_in_sequence() {
         reset_router();
 
@@ -431,6 +452,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_buffer_overflow_during_burst() {
         use crate::core::log_buffer::LOG_BUFFER_SIZE;
 
@@ -447,6 +469,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_retrieval_after_overflow() {
         use crate::core::log_buffer::LOG_BUFFER_SIZE;
 
@@ -475,6 +498,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_mixed_levels_during_burst_with_statustext() {
         reset_router();
 

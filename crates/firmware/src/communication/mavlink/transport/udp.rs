@@ -51,7 +51,8 @@ pub const MAX_GCS_ENDPOINTS: usize = 4;
 /// GCS endpoint timeout (10 seconds)
 pub const GCS_TIMEOUT_MS: u32 = 10_000;
 
-// Re-export platform-specific implementation
+// Re-export platform-specific implementation (ARM-only)
+#[cfg(target_arch = "arm")]
 pub use crate::platform::rp2350::transport::udp::{
     GcsEndpoint, Rp2350UdpTransport as UdpTransport,
 };

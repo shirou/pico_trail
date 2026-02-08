@@ -1261,6 +1261,9 @@ mod tests {
 
     #[test]
     fn test_build_mission_current_idle() {
+        // Clear any leftover state from other tests
+        MISSION_STORAGE.with_mut(|storage| storage.clear());
+
         // Default state: no mission loaded, sequencer idle
         let msg = TelemetryStreamer::<GroundRover>::build_mission_current();
         if let MavMessage::MISSION_CURRENT(data) = msg {

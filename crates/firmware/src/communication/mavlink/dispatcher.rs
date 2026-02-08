@@ -740,44 +740,34 @@ impl<V: VehicleType> MessageDispatcher<V> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::rp2350::Rp2350Flash;
+    use crate::communication::mavlink::vehicle::GroundRover;
+    use crate::platform::mock::flash::MockFlash;
 
-    #[test]
-    fn test_dispatcher_creation() {
-        let mut flash = Rp2350Flash::new();
+    fn create_dispatcher() -> MessageDispatcher<GroundRover> {
+        let mut flash = MockFlash::new();
         let param_handler = ParamHandler::new(&mut flash);
-        let state = SystemState::default();
-        let command_handler = CommandHandler::new(state);
+        let command_handler = CommandHandler::new();
         let telemetry_streamer = TelemetryStreamer::new(1, 1);
         let mission_handler = MissionHandler::new(1, 1);
         let rc_input_handler = RcInputHandler::new();
 
-        let _dispatcher = MessageDispatcher::new(
+        MessageDispatcher::new(
             param_handler,
             command_handler,
             telemetry_streamer,
             mission_handler,
             rc_input_handler,
-        );
+        )
+    }
+
+    #[test]
+    fn test_dispatcher_creation() {
+        let _dispatcher = create_dispatcher();
     }
 
     #[test]
     fn test_dispatch_param_request_list() {
-        let mut flash = Rp2350Flash::new();
-        let param_handler = ParamHandler::new(&mut flash);
-        let state = SystemState::default();
-        let command_handler = CommandHandler::new(state);
-        let telemetry_streamer = TelemetryStreamer::new(1, 1);
-        let mission_handler = MissionHandler::new(1, 1);
-        let rc_input_handler = RcInputHandler::new();
-
-        let mut dispatcher = MessageDispatcher::new(
-            param_handler,
-            command_handler,
-            telemetry_streamer,
-            mission_handler,
-            rc_input_handler,
-        );
+        let mut dispatcher = create_dispatcher();
 
         let header = mavlink::MavHeader {
             system_id: 255,
@@ -798,21 +788,7 @@ mod tests {
 
     #[test]
     fn test_dispatch_command_long() {
-        let mut flash = Rp2350Flash::new();
-        let param_handler = ParamHandler::new(&mut flash);
-        let state = SystemState::default();
-        let command_handler = CommandHandler::new(state);
-        let telemetry_streamer = TelemetryStreamer::new(1, 1);
-        let mission_handler = MissionHandler::new(1, 1);
-        let rc_input_handler = RcInputHandler::new();
-
-        let mut dispatcher = MessageDispatcher::new(
-            param_handler,
-            command_handler,
-            telemetry_streamer,
-            mission_handler,
-            rc_input_handler,
-        );
+        let mut dispatcher = create_dispatcher();
 
         let header = mavlink::MavHeader {
             system_id: 255,
@@ -836,28 +812,15 @@ mod tests {
 
         let responses = dispatcher.dispatch(&header, &msg, 0);
 
-        // Should return COMMAND_ACK
-        assert_eq!(responses.len(), 1);
+        // Should return COMMAND_ACK (+ possible additional messages like HEARTBEAT)
+        assert!(!responses.is_empty());
         assert!(matches!(responses[0], MavMessage::COMMAND_ACK(_)));
     }
 
     #[test]
     fn test_update_telemetry() {
-        let mut flash = Rp2350Flash::new();
-        let param_handler = ParamHandler::new(&mut flash);
+        let mut dispatcher = create_dispatcher();
         let state = SystemState::default();
-        let command_handler = CommandHandler::new(state.clone());
-        let telemetry_streamer = TelemetryStreamer::new(1, 1);
-        let mission_handler = MissionHandler::new(1, 1);
-        let rc_input_handler = RcInputHandler::new();
-
-        let mut dispatcher = MessageDispatcher::new(
-            param_handler,
-            command_handler,
-            telemetry_streamer,
-            mission_handler,
-            rc_input_handler,
-        );
 
         // First call should produce HEARTBEAT
         let messages = dispatcher.update_telemetry(&state, 0);

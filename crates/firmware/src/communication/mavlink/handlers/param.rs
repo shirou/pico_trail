@@ -441,30 +441,28 @@ mod tests {
         // - SR_*: 4 stream rate parameters
         // - SYSID_THISMAV: 1
         // - Arming: 5 (ARMING_CHECK, ARMING_OPTIONS, ARMING_REQUIRE, ARMING_ACCTHRESH, ARMING_RUDDER)
-        // - Battery: 3 (BATT_ARM_VOLT, BATT_CRT_VOLT, BATT_FS_CRT_ACT)
+        // - Battery: 6 (BATT_ARM_VOLT, BATT_CRT_VOLT, BATT_FS_CRT_ACT, BATT_LOW_VOLT, BATT_CAPACITY, BATT_VOLT_MULT)
         // - Failsafe: 3 (FS_ACTION, FS_TIMEOUT, FS_GCS_ENABLE)
         // - Fence: 2 (FENCE_AUTOENABLE, FENCE_ACTION)
-        // - Compass: 3 (COMPASS_OFS_X, COMPASS_OFS_Y, COMPASS_OFS_Z)
-        // - Board: 11 (PIN_M1_IN1, PIN_M1_IN2, PIN_M2_IN1, PIN_M2_IN2, PIN_M3_IN1, PIN_M3_IN2,
-        //             PIN_M4_IN1, PIN_M4_IN2, PIN_BUZZER, PIN_LED, PIN_BATTERY_ADC)
+        // - Compass: 4 (COMPASS_OFS_X, COMPASS_OFS_Y, COMPASS_OFS_Z, COMPASS_USE)
+        // - Navigation: 12 (WP_RADIUS, WP_APPR_DIST, ATC_HDG_ERR, etc.)
+        // - Board: 11 (PIN_M1_IN1..PIN_BATTERY_ADC)
         //   Note: Board pins only registered when pico2_w feature enabled
         // String type parameters (NET_SSID, NET_PASS) excluded from MAVLink
         // Hidden parameter (NET_PASS) further excluded from count()
 
         #[cfg(feature = "pico2_w")]
         {
-            // With pico2_w: 6 + 4 + 1 + 5 + 3 + 3 + 2 + 3 + 11 = 38 total
-            // Minus 2 String types = 37 sendable
-            // Minus 1 hidden = 37 visible (NET_PASS is both String and hidden)
-            assert_eq!(handler.count(), 37);
+            // With pico2_w: 6 + 4 + 1 + 5 + 6 + 3 + 2 + 4 + 12 + 11 = 54 total
+            // Minus 1 hidden (NET_PASS) = 53 visible
+            assert_eq!(handler.count(), 53);
         }
 
         #[cfg(not(feature = "pico2_w"))]
         {
-            // Without pico2_w: 6 + 4 + 1 + 5 + 3 + 3 + 2 + 3 = 27 total
-            // Minus 2 String types = 27 sendable
-            // Minus 1 hidden = 27 visible (NET_PASS is both String and hidden)
-            assert_eq!(handler.count(), 27);
+            // Without pico2_w: 54 - 11 (Board) = 43 total
+            // Minus 1 hidden (NET_PASS) = 42 visible
+            assert_eq!(handler.count(), 42);
         }
     }
 
@@ -480,17 +478,15 @@ mod tests {
 
         let messages = handler.handle_request_list(&request);
 
-        // Should return all non-String parameters except NET_PASS (hidden)
+        // Should return all non-String, non-hidden parameters
         // NET_SSID (String) and NET_PASS (String, hidden) cannot be sent via MAVLink
-        // Count: 4 WiFi (DHCP, IP, NETMASK, GATEWAY) + 4 SR + 1 SYSID
-        //        + 5 Arming + 3 Battery + 3 Failsafe + 2 Fence + 3 Compass + 11 Board (if pico2_w)
-        // Note: NET_PASS is hidden, so even if it weren't String, it wouldn't appear
+        // Sendable = count() minus non-hidden String params (NET_SSID)
 
         #[cfg(feature = "pico2_w")]
-        assert_eq!(messages.len(), 37); // With board pins
+        assert_eq!(messages.len(), 52); // 53 visible - 1 String (NET_SSID)
 
         #[cfg(not(feature = "pico2_w"))]
-        assert_eq!(messages.len(), 26); // Without board pins
+        assert_eq!(messages.len(), 41); // 42 visible - 1 String (NET_SSID)
 
         // Verify NET_PASS is not in the list
         for msg in &messages {

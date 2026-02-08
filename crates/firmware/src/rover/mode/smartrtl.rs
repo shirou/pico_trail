@@ -317,6 +317,38 @@ mod tests {
         }
     }
 
+    fn mock_gps_provider() -> Option<GpsPosition> {
+        Some(GpsPosition {
+            latitude: 35.0,
+            longitude: 139.0,
+            altitude: 10.0,
+            speed: 0.0,
+            course_over_ground: None,
+            fix_type: GpsFixType::Fix3D,
+            satellites: 8,
+        })
+    }
+
+    fn mock_path_provider(buf: &mut [PathPoint]) -> usize {
+        if buf.is_empty() {
+            return 0;
+        }
+        buf[0] = PathPoint {
+            latitude: 35.0,
+            longitude: 139.0,
+            timestamp_ms: 0,
+        };
+        1
+    }
+
+    fn mock_home_provider() -> Option<(f32, f32)> {
+        Some((35.0, 139.0))
+    }
+
+    fn mock_heading_provider() -> Option<f32> {
+        Some(0.0)
+    }
+
     // ========== SmartRtlMode Tests ==========
 
     #[test]
@@ -333,7 +365,13 @@ mod tests {
             &system_state,
             actuator_config,
         );
-        let smartrtl_mode = SmartRtlMode::new(&mut actuators);
+        let smartrtl_mode = SmartRtlMode::new(
+            &mut actuators,
+            mock_gps_provider,
+            mock_path_provider,
+            mock_home_provider,
+            mock_heading_provider,
+        );
 
         assert_eq!(smartrtl_mode.name(), "SmartRTL");
     }
@@ -352,7 +390,13 @@ mod tests {
             &system_state,
             actuator_config,
         );
-        let mut smartrtl_mode = SmartRtlMode::new(&mut actuators);
+        let mut smartrtl_mode = SmartRtlMode::new(
+            &mut actuators,
+            mock_gps_provider,
+            mock_path_provider,
+            mock_home_provider,
+            mock_heading_provider,
+        );
 
         // Enter should succeed (host test mode)
         assert!(smartrtl_mode.enter().is_ok());
@@ -373,7 +417,13 @@ mod tests {
             &system_state,
             actuator_config,
         );
-        let mut smartrtl_mode = SmartRtlMode::new(&mut actuators);
+        let mut smartrtl_mode = SmartRtlMode::new(
+            &mut actuators,
+            mock_gps_provider,
+            mock_path_provider,
+            mock_home_provider,
+            mock_heading_provider,
+        );
 
         // Enter first
         assert!(smartrtl_mode.enter().is_ok());
@@ -396,7 +446,13 @@ mod tests {
             &system_state,
             actuator_config,
         );
-        let smartrtl_mode = SmartRtlMode::new(&mut actuators);
+        let smartrtl_mode = SmartRtlMode::new(
+            &mut actuators,
+            mock_gps_provider,
+            mock_path_provider,
+            mock_home_provider,
+            mock_heading_provider,
+        );
 
         // Should not be completed before entering
         assert!(!smartrtl_mode.is_completed());
@@ -416,7 +472,13 @@ mod tests {
             &system_state,
             actuator_config,
         );
-        let smartrtl_mode = SmartRtlMode::new(&mut actuators);
+        let smartrtl_mode = SmartRtlMode::new(
+            &mut actuators,
+            mock_gps_provider,
+            mock_path_provider,
+            mock_home_provider,
+            mock_heading_provider,
+        );
 
         // Before entering, should have 0 waypoints
         assert_eq!(smartrtl_mode.current_waypoint(), 0);

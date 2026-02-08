@@ -34,6 +34,10 @@ critical-section = "1.2"
 # Optional: defmt formatting support for embedded targets
 defmt = { version = "0.3", optional = true }
 
+# Optional: Embassy async sync primitives (for SharedState, MessageDispatcher)
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", optional = true }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", optional = true }
+
 [dev-dependencies]
 # Host test dependencies - enable std feature for critical-section
 critical-section = { version = "1.2", features = ["std"] }
@@ -42,3 +46,4 @@ serial_test = "3.2"
 
 [features]
 default = []
+embassy = ["dep:embassy-sync", "dep:embassy-futures"]

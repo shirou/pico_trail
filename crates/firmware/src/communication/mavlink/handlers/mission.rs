@@ -778,11 +778,14 @@ mod tests {
     fn test_download_flow() {
         let mut handler = MissionHandler::new(1, 1);
 
-        // Add waypoints to storage
+        // Add waypoints to global MISSION_STORAGE (handle_request_list loads from there)
         let wp1 = Waypoint::new(0, 370000000, -1220000000, 100.0);
         let wp2 = Waypoint::new(1, 370010000, -1220010000, 120.0);
-        handler.storage_mut().add_waypoint(wp1).unwrap();
-        handler.storage_mut().add_waypoint(wp2).unwrap();
+        MISSION_STORAGE.with_mut(|storage| {
+            storage.clear();
+            storage.add_waypoint(wp1).unwrap();
+            storage.add_waypoint(wp2).unwrap();
+        });
 
         // 1. Receive MISSION_REQUEST_LIST (GCS sender: system_id=255, component_id=1)
         let request_list = MISSION_REQUEST_LIST_DATA {
@@ -898,6 +901,9 @@ mod tests {
 
     #[test]
     fn test_download_waypoint_not_found() {
+        // Clear any leftover state from other tests
+        MISSION_STORAGE.with_mut(|storage| storage.clear());
+
         let mut handler = MissionHandler::new(1, 1);
 
         // Start download with empty storage (GCS sender: system_id=255, component_id=1)

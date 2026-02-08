@@ -938,6 +938,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_set_mode_accepted() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -954,6 +955,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_set_mode_denied_invalid() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -968,6 +970,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_preflight_calibration_accepted() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -982,6 +985,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_unsupported_command() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -996,6 +1000,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_command_ack_fields() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -1012,6 +1017,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_request_protocol_version() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -1040,6 +1046,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_request_autopilot_version() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -1056,6 +1063,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_request_camera_info_unsupported() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -1089,6 +1097,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_do_reposition_accepted() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -1105,6 +1114,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_do_reposition_invalid_latitude() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -1121,6 +1131,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_do_reposition_invalid_longitude() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -1137,6 +1148,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_do_reposition_negative_coords() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -1329,6 +1341,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_command_int_unsupported() {
         let state = SystemState::new();
         critical_section::with(|cs| {

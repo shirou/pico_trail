@@ -312,6 +312,43 @@ macro_rules! log_debug {
     }};
 }
 
+// ============================================================================
+// Host-only stubs for defmt and embassy-time
+// ============================================================================
+//
+// On ARM, these symbols are provided by defmt-rtt (defmt backend) and
+// embassy-rp (time driver). On host, we provide no-op implementations
+// so that host tests can link successfully.
+
+/// No-op defmt logger for host tests
+#[cfg(not(target_arch = "arm"))]
+#[defmt::global_logger]
+struct HostDefmtLogger;
+
+#[cfg(not(target_arch = "arm"))]
+unsafe impl defmt::Logger for HostDefmtLogger {
+    fn acquire() {}
+    unsafe fn flush() {}
+    unsafe fn release() {}
+    unsafe fn write(_bytes: &[u8]) {}
+}
+
+// No-op defmt timestamp for host tests
+#[cfg(not(target_arch = "arm"))]
+defmt::timestamp!("{=u64}", 0);
+
+/// No-op embassy-time driver for host tests
+#[cfg(not(target_arch = "arm"))]
+#[no_mangle]
+fn _embassy_time_now() -> u64 {
+    0
+}
+
+/// No-op embassy-time wake scheduler for host tests
+#[cfg(not(target_arch = "arm"))]
+#[no_mangle]
+fn _embassy_time_schedule_wake(_at: u64) {}
+
 /// Log trace message
 #[macro_export]
 macro_rules! log_trace {

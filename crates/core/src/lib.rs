@@ -5,9 +5,10 @@
 //!
 //! # Design Principles
 //!
-//! - **Zero cfg**: No `#[cfg(feature = ...)]` directives allowed
 //! - **Pure no_std**: No std library dependencies
 //! - **Trait abstractions**: Platform services injected via traits
+//! - **Embassy feature**: Optional `embassy` feature enables embassy-sync
+//!   based implementations (EmbassyState, etc.)
 //!
 //! # Modules
 //!

@@ -120,8 +120,8 @@ mod tests {
         // Class=0x06, ID=0x01, Len=0x0003, Payload=0xF0,0x00,0x01
         let data = [0x06, 0x01, 0x03, 0x00, 0xF0, 0x00, 0x01];
         let (ck_a, ck_b) = ubx_checksum(&data);
-        // Expected checksum can be verified against u-blox tools
+        // 8-bit Fletcher: ck_a=sum(bytes), ck_b=sum(running_ck_a)
         assert_eq!(ck_a, 0xFB);
-        assert_eq!(ck_b, 0x11);
+        assert_eq!(ck_b, 0x10);
     }
 }

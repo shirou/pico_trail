@@ -7,7 +7,8 @@ pub mod error;
 pub mod time;
 pub mod traits;
 
-// Platform implementations
+// RP2350 platform (ARM-only — uses embassy-rp which is excluded from host builds)
+#[cfg(target_arch = "arm")]
 pub mod rp2350;
 
 #[cfg(any(test, feature = "mock"))]
