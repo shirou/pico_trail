@@ -1,53 +1,28 @@
 //! Arming System
 //!
-//! Provides comprehensive arming safety system with pre-arm checks,
-//! post-arm initialization, armed state monitoring, and pre-disarm validation.
-//!
-//! # Architecture
-//!
-//! The arming system consists of five subsystems:
-//! - **Pre-Arm Checks**: Validate system health before allowing arming
-//! - **Post-Arm Initialization**: Initialize subsystems after successful arming
-//! - **Armed State Monitoring**: Continuous health monitoring during armed operation
-//! - **Pre-Disarm Validation**: Safety checks before allowing disarm
-//! - **Post-Disarm Cleanup**: Cleanup and shutdown after disarming
-//!
-//! # Usage
-//!
-//! ```ignore
-//! use pico_trail::core::arming::{ArmingChecker, CheckCategory};
-//!
-//! // Create checker with enabled categories from ARMING_CHECK parameter
-//! let mut checker = ArmingChecker::new(0x00A8); // Battery + INS + RC
-//!
-//! // Run all enabled pre-arm checks
-//! match checker.run_checks(&context) {
-//!     Ok(()) => {
-//!         // Checks passed, safe to arm
-//!         system_state.armed = ArmedState::Armed;
-//!     }
-//!     Err(e) => {
-//!         // Check failed, report reason to user
-//!         log::warn!("Arming denied: {}", e);
-//!     }
-//! }
-//! ```
+//! Re-exports core arming logic from `pico_trail_core::arming` and provides
+//! firmware-specific monitoring tasks and async integration.
 
-pub mod checks;
-pub mod cleanup;
-pub mod disarm;
-pub mod initialization;
+// Re-export core arming modules
+pub use pico_trail_core::arming::checks;
+pub use pico_trail_core::arming::cleanup;
+pub use pico_trail_core::arming::disarm;
+pub use pico_trail_core::arming::initialization;
+
+// Firmware-specific modules
 pub mod monitoring;
 pub mod tasks;
 
-pub use checks::{create_default_checker, ArmingChecker, CheckResult, PreArmCheck};
-pub use cleanup::{CleanupError, PostDisarmCleanup};
-pub use disarm::{DisarmMethod, DisarmReason, DisarmValidator};
-pub use initialization::{ArmMethod, PostArmInitializer};
+// Re-export commonly used types from core
+pub use pico_trail_core::arming::{
+    create_default_checker, ArmMethod, ArmingChecker, ArmingError, BatteryVoltageCheck,
+    CheckCategory, CheckResult, CleanupError, DisarmError, DisarmMethod, DisarmReason,
+    DisarmValidator, PostArmInitializer, PostDisarmCleanup, PreArmCheck, SystemStateCheck,
+};
+
 pub use monitoring::{
     ArmedStateMonitor, EkfStatus, FailsafeReason, FenceStatus, SensorHealthFlags,
 };
-pub use pico_trail_core::arming::{ArmingError, CheckCategory, DisarmError};
 
 // Embassy async task integration
 pub use tasks::{monitoring_loop_fast, monitoring_loop_medium, monitoring_loop_slow};

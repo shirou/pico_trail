@@ -131,7 +131,7 @@ use pico_trail_firmware::{
             rc_input::RcInputHandler, telemetry::TelemetryStreamer,
         },
         parser::MavlinkParser,
-        state::BatteryAdcReader,
+        state::SystemStateExt,
         transport::udp::UdpTransport,
         transport_router::TransportRouter,
         vehicle::GroundRover,
@@ -706,10 +706,7 @@ impl<'a> Rp2350AdcReader<'a> {
         let avg = (sum / 5) as u16;
         self.last_value.set(avg);
     }
-}
 
-#[cfg(feature = "pico2_w")]
-impl BatteryAdcReader for Rp2350AdcReader<'_> {
     /// Read the most recent averaged ADC value (synchronous)
     ///
     /// Returns the cached value from the last `update_adc_value()` call.
@@ -718,7 +715,7 @@ impl BatteryAdcReader for Rp2350AdcReader<'_> {
     /// # Returns
     ///
     /// Raw 12-bit ADC value (0-4095) representing voltage at ADC pin (0-3.3V range)
-    fn read_battery_adc(&mut self) -> u16 {
+    pub fn read_battery_adc(&self) -> u16 {
         self.last_value.get()
     }
 }
@@ -938,7 +935,7 @@ async fn rover_mavlink_task(
             critical_section::with(|cs| {
                 let mut state = pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
                     .borrow_ref_mut(cs);
-                state.update_battery(&mut adc_reader);
+                state.update_battery(adc_reader.read_battery_adc());
             });
 
             // Battery failsafe check

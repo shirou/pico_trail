@@ -386,7 +386,7 @@ mod tests {
             satellites: 10,
         };
 
-        let (lat, lon) = RoverLoiter::calculate_loiter_point(&gps);
+        let (_lat, lon) = RoverLoiter::calculate_loiter_point(&gps);
 
         // Should be east of current position
         assert!(lon > 0.0, "Loiter point should be east");

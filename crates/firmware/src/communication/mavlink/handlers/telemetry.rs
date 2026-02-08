@@ -30,8 +30,8 @@ use mavlink::common::{
     MavSysStatusSensorExtended, ATTITUDE_DATA, BATTERY_STATUS_DATA, GLOBAL_POSITION_INT_DATA,
     GPS_RAW_INT_DATA, HEARTBEAT_DATA, MISSION_CURRENT_DATA, SYS_STATUS_DATA,
 };
+#[allow(unused_imports)]
 use micromath::F32Ext;
-
 // Unit conversion helper functions for GPS telemetry
 
 /// Convert degrees to degE7 (degrees * 1e7) for MAVLink lat/lon
@@ -276,8 +276,8 @@ impl<V: VehicleType> TelemetryStreamer<V> {
 
         Some(MavMessage::HEARTBEAT(HEARTBEAT_DATA {
             custom_mode: state.mode.to_custom_mode(),
-            mavtype: V::mav_type(),
-            autopilot: V::autopilot_type(),
+            mavtype: crate::communication::mavlink::vehicle::to_mav_type::<V>(),
+            autopilot: crate::communication::mavlink::vehicle::to_mav_autopilot::<V>(),
             base_mode,
             system_status: MavState::MAV_STATE_ACTIVE,
             mavlink_version: 3,
@@ -662,7 +662,10 @@ mod tests {
         // Test unarmed
         let msg = streamer.build_heartbeat(&state).unwrap();
         if let MavMessage::HEARTBEAT(data) = msg {
-            assert_eq!(data.mavtype, GroundRover::mav_type());
+            assert_eq!(
+                data.mavtype,
+                crate::communication::mavlink::vehicle::to_mav_type::<GroundRover>()
+            );
             assert_eq!(data.autopilot, MavAutopilot::MAV_AUTOPILOT_GENERIC);
             assert!(!data
                 .base_mode

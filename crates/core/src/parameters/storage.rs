@@ -243,6 +243,306 @@ impl Default for ParameterStore {
     }
 }
 
+// =============================================================================
+// Flash persistence
+// =============================================================================
+
+use crate::traits::flash::{FlashError, FlashInterface};
+use heapless::Vec;
+
+/// Serialize a ParamValue to bytes (for Flash storage)
+fn serialize_value(value: &ParamValue, buf: &mut Vec<u8, 256>) -> Result<(), FlashError> {
+    match value {
+        ParamValue::String(s) => {
+            buf.push(s.len() as u8)
+                .map_err(|_| FlashError::InvalidData)?;
+            buf.extend_from_slice(s.as_bytes())
+                .map_err(|_| FlashError::InvalidData)?;
+        }
+        ParamValue::Bool(b) => {
+            buf.push(if *b { 1 } else { 0 })
+                .map_err(|_| FlashError::InvalidData)?;
+        }
+        ParamValue::Int(i) => {
+            buf.extend_from_slice(&i.to_le_bytes())
+                .map_err(|_| FlashError::InvalidData)?;
+        }
+        ParamValue::Float(f) => {
+            buf.extend_from_slice(&f.to_le_bytes())
+                .map_err(|_| FlashError::InvalidData)?;
+        }
+        ParamValue::Ipv4(ip) => {
+            buf.extend_from_slice(ip)
+                .map_err(|_| FlashError::InvalidData)?;
+        }
+    }
+    Ok(())
+}
+
+/// Deserialize a ParamValue from bytes (for Flash storage)
+fn deserialize_value(
+    type_id: u8,
+    buf: &[u8],
+    offset: &mut usize,
+) -> Result<ParamValue, FlashError> {
+    match type_id {
+        0 => {
+            // String
+            if *offset >= buf.len() {
+                return Err(FlashError::InvalidData);
+            }
+            let len = buf[*offset] as usize;
+            *offset += 1;
+
+            if *offset + len > buf.len() {
+                return Err(FlashError::InvalidData);
+            }
+
+            let s_str = core::str::from_utf8(&buf[*offset..*offset + len])
+                .map_err(|_| FlashError::InvalidData)?;
+            *offset += len;
+
+            let mut s = String::<MAX_STRING_LEN>::new();
+            s.push_str(s_str).map_err(|_| FlashError::InvalidData)?;
+            Ok(ParamValue::String(s))
+        }
+        1 => {
+            // Bool
+            if *offset >= buf.len() {
+                return Err(FlashError::InvalidData);
+            }
+            let b = buf[*offset] != 0;
+            *offset += 1;
+            Ok(ParamValue::Bool(b))
+        }
+        2 => {
+            // Int
+            if *offset + 4 > buf.len() {
+                return Err(FlashError::InvalidData);
+            }
+            let i = i32::from_le_bytes([
+                buf[*offset],
+                buf[*offset + 1],
+                buf[*offset + 2],
+                buf[*offset + 3],
+            ]);
+            *offset += 4;
+            Ok(ParamValue::Int(i))
+        }
+        3 => {
+            // Float
+            if *offset + 4 > buf.len() {
+                return Err(FlashError::InvalidData);
+            }
+            let f = f32::from_le_bytes([
+                buf[*offset],
+                buf[*offset + 1],
+                buf[*offset + 2],
+                buf[*offset + 3],
+            ]);
+            *offset += 4;
+            Ok(ParamValue::Float(f))
+        }
+        4 => {
+            // Ipv4
+            if *offset + 4 > buf.len() {
+                return Err(FlashError::InvalidData);
+            }
+            let ip = [
+                buf[*offset],
+                buf[*offset + 1],
+                buf[*offset + 2],
+                buf[*offset + 3],
+            ];
+            *offset += 4;
+            Ok(ParamValue::Ipv4(ip))
+        }
+        _ => Err(FlashError::InvalidData),
+    }
+}
+
+/// Load parameters from a specific Flash block
+fn load_from_block<F: FlashInterface>(
+    flash: &mut F,
+    address: u32,
+) -> Result<ParameterStore, FlashError> {
+    let mut buf = [0u8; PARAM_BLOCK_SIZE as usize];
+    flash.read(address, &mut buf)?;
+
+    // Validate magic
+    if buf[0..4] != PARAM_MAGIC {
+        return Err(FlashError::InvalidData);
+    }
+
+    // Validate version
+    let version = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
+    if version != PARAM_VERSION {
+        return Err(FlashError::InvalidData);
+    }
+
+    // Validate CRC
+    let stored_crc = u32::from_le_bytes([
+        buf[PARAM_BLOCK_SIZE as usize - 4],
+        buf[PARAM_BLOCK_SIZE as usize - 3],
+        buf[PARAM_BLOCK_SIZE as usize - 2],
+        buf[PARAM_BLOCK_SIZE as usize - 1],
+    ]);
+
+    let calculated_crc = crc::Crc::<u32>::new(&crc::CRC_32_ISO_HDLC)
+        .checksum(&buf[0..PARAM_BLOCK_SIZE as usize - 4]);
+
+    if stored_crc != calculated_crc {
+        return Err(FlashError::InvalidData);
+    }
+
+    // Parse parameter count
+    let param_count = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]) as usize;
+    if param_count > MAX_PARAMS {
+        return Err(FlashError::InvalidData);
+    }
+
+    // Deserialize parameters
+    let mut store = ParameterStore::new();
+    let mut offset = 12;
+
+    for _ in 0..param_count {
+        // Read name (16 bytes, null-terminated)
+        if offset + PARAM_NAME_LEN > buf.len() {
+            break;
+        }
+
+        let name_bytes = &buf[offset..offset + PARAM_NAME_LEN];
+        let name_len = name_bytes
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(PARAM_NAME_LEN);
+        let name_str =
+            core::str::from_utf8(&name_bytes[..name_len]).map_err(|_| FlashError::InvalidData)?;
+        let mut name = String::<PARAM_NAME_LEN>::new();
+        name.push_str(name_str).ok();
+        offset += PARAM_NAME_LEN;
+
+        // Read type ID
+        if offset >= buf.len() {
+            break;
+        }
+        let type_id = buf[offset];
+        offset += 1;
+
+        // Read flags
+        if offset >= buf.len() {
+            break;
+        }
+        let flags = ParamFlags::from_bits_truncate(buf[offset]);
+        offset += 1;
+
+        // Deserialize value
+        match deserialize_value(type_id, &buf, &mut offset) {
+            Ok(value) => {
+                store.insert_raw(name, value, flags);
+            }
+            Err(_) => break,
+        }
+    }
+
+    Ok(store)
+}
+
+/// Load parameters from Flash
+///
+/// Attempts to read from all parameter blocks and uses the first valid block found.
+pub fn load_from_flash<F: FlashInterface>(flash: &mut F) -> Result<ParameterStore, FlashError> {
+    for block_id in 0..PARAM_BLOCK_COUNT {
+        let address = PARAM_BLOCK_BASE + (block_id * PARAM_BLOCK_SIZE);
+
+        match load_from_block(flash, address) {
+            Ok(loaded_store) => {
+                return Ok(loaded_store);
+            }
+            Err(_) => {
+                continue;
+            }
+        }
+    }
+
+    // No valid parameter blocks found, return defaults
+    Ok(ParameterStore::new())
+}
+
+/// Save parameters to Flash
+///
+/// Writes to the primary parameter block (block 0).
+pub fn save_to_flash<F: FlashInterface>(
+    store: &mut ParameterStore,
+    flash: &mut F,
+) -> Result<(), FlashError> {
+    if !store.is_dirty() {
+        return Ok(()); // No changes to save
+    }
+
+    let address = PARAM_BLOCK_BASE; // Use block 0 as primary
+
+    // Serialize parameters
+    let mut buf = [0xFFu8; PARAM_BLOCK_SIZE as usize];
+
+    // Write magic
+    buf[0..4].copy_from_slice(&PARAM_MAGIC);
+
+    // Write version
+    buf[4..8].copy_from_slice(&PARAM_VERSION.to_le_bytes());
+
+    // Write parameter count
+    let param_count = store.len() as u32;
+    buf[8..12].copy_from_slice(&param_count.to_le_bytes());
+
+    // Write parameters
+    let mut offset = 12;
+    let mut temp_buf = Vec::<u8, 256>::new();
+
+    for (name, value) in store.iter_all() {
+        // Write name (16 bytes, null-terminated, zero-padded)
+        let name_bytes = name.as_bytes();
+        let copy_len = core::cmp::min(name_bytes.len(), PARAM_NAME_LEN);
+        // Zero the name field first (buffer is 0xFF-initialized)
+        buf[offset..offset + PARAM_NAME_LEN].fill(0);
+        buf[offset..offset + copy_len].copy_from_slice(&name_bytes[..copy_len]);
+        offset += PARAM_NAME_LEN;
+
+        // Write type ID
+        buf[offset] = value.type_id();
+        offset += 1;
+
+        // Write flags
+        let metadata_flags = store
+            .get_metadata(name.as_str())
+            .map(|m| m.flags)
+            .unwrap_or(ParamFlags::empty());
+        buf[offset] = metadata_flags.bits();
+        offset += 1;
+
+        // Serialize value
+        temp_buf.clear();
+        serialize_value(value, &mut temp_buf)?;
+        buf[offset..offset + temp_buf.len()].copy_from_slice(&temp_buf);
+        offset += temp_buf.len();
+    }
+
+    // Calculate and write CRC
+    let crc = crc::Crc::<u32>::new(&crc::CRC_32_ISO_HDLC)
+        .checksum(&buf[0..PARAM_BLOCK_SIZE as usize - 4]);
+    buf[PARAM_BLOCK_SIZE as usize - 4..].copy_from_slice(&crc.to_le_bytes());
+
+    // Erase block
+    flash.erase(address, PARAM_BLOCK_SIZE)?;
+
+    // Write block
+    flash.write(address, &buf)?;
+
+    store.clear_dirty();
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,6 +666,77 @@ mod tests {
             .register("READONLY", ParamValue::Int(42), ParamFlags::READ_ONLY)
             .unwrap();
         assert!(store.set("READONLY", ParamValue::Int(100)).is_err());
+    }
+
+    extern crate alloc;
+
+    /// Simple in-memory Flash mock for core tests
+    struct TestFlash {
+        data: alloc::vec::Vec<u8>,
+    }
+
+    impl TestFlash {
+        fn new() -> Self {
+            Self {
+                data: alloc::vec![0xFF; 4 * 1024 * 1024], // 4 MB
+            }
+        }
+    }
+
+    impl crate::traits::flash::FlashInterface for TestFlash {
+        fn read(
+            &mut self,
+            address: u32,
+            buf: &mut [u8],
+        ) -> Result<(), crate::traits::flash::FlashError> {
+            let addr = address as usize;
+            buf.copy_from_slice(&self.data[addr..addr + buf.len()]);
+            Ok(())
+        }
+        fn write(
+            &mut self,
+            address: u32,
+            data: &[u8],
+        ) -> Result<(), crate::traits::flash::FlashError> {
+            let addr = address as usize;
+            for (i, &byte) in data.iter().enumerate() {
+                self.data[addr + i] &= byte; // Flash behavior: can only clear bits
+            }
+            Ok(())
+        }
+        fn erase(
+            &mut self,
+            address: u32,
+            size: u32,
+        ) -> Result<(), crate::traits::flash::FlashError> {
+            let addr = address as usize;
+            for i in 0..size as usize {
+                self.data[addr + i] = 0xFF;
+            }
+            Ok(())
+        }
+        fn block_size(&self) -> u32 {
+            4096
+        }
+        fn capacity(&self) -> u32 {
+            4 * 1024 * 1024
+        }
+    }
+
+    #[test]
+    fn test_flash_round_trip() {
+        let mut store = ParameterStore::new();
+        store
+            .register("TEST_INT", ParamValue::Int(42), ParamFlags::empty())
+            .unwrap();
+        store.set("TEST_INT", ParamValue::Int(99)).unwrap();
+
+        let mut flash = TestFlash::new();
+        save_to_flash(&mut store, &mut flash).unwrap();
+        assert!(!store.is_dirty());
+
+        let loaded = load_from_flash(&mut flash).unwrap();
+        assert_eq!(loaded.get("TEST_INT"), Some(&ParamValue::Int(99)));
     }
 
     #[test]

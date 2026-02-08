@@ -22,6 +22,8 @@
 
 pub mod command;
 pub mod executor;
+#[cfg(feature = "embassy")]
+pub mod globals;
 pub mod sequencer;
 pub mod state;
 
@@ -29,6 +31,14 @@ use heapless::Vec;
 
 pub use command::{cmd_has_location, is_nav_command, MAV_CMD_DO_CHANGE_SPEED, MAV_CMD_NAV_LAST};
 pub use executor::{CommandStartResult, MissionEvent, MissionExecutor};
+#[cfg(feature = "embassy")]
+pub use globals::{
+    add_waypoint, advance_waypoint, clear_mission, clear_waypoints, complete_mission,
+    get_current_target, get_mission_state, has_waypoints, push_current_changed, push_item_reached,
+    set_mission_state, set_single_waypoint, start_mission, start_mission_from_beginning,
+    start_mission_from_current, stop_mission, take_current_changed, take_item_reached,
+    MISSION_SEQUENCER, MISSION_STATE, MISSION_STORAGE,
+};
 pub use sequencer::MissionSequencer;
 pub use state::MissionState;
 

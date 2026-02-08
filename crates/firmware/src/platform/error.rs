@@ -114,22 +114,8 @@ pub enum TimerError {
     InvalidDuration,
 }
 
-/// Flash-specific errors
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FlashError {
-    /// Erase operation failed
-    EraseFailed,
-    /// Write operation failed
-    WriteFailed,
-    /// Read operation failed
-    ReadFailed,
-    /// Invalid address (out of bounds)
-    InvalidAddress,
-    /// Verify failed (data mismatch after write)
-    VerifyFailed,
-    /// Flash is busy
-    Busy,
-}
+// Re-export FlashError from core
+pub use pico_trail_core::traits::flash::FlashError;
 
 impl fmt::Display for PlatformError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

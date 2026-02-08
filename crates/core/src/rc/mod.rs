@@ -7,11 +7,21 @@
 //!
 //! # Design
 //!
-//! This module is pure `no_std` with no feature gates. Platform-specific
-//! global state (e.g., Embassy mutex wrappers) belongs in the firmware crate.
+//! This module is pure `no_std` with no feature gates for the core types.
+//! The global `RC_INPUT` static is available behind the `embassy` feature.
+
+#[cfg(feature = "embassy")]
+use crate::traits::sync::EmbassyState;
 
 /// RC timeout threshold (1 second in microseconds)
 pub const RC_TIMEOUT_US: u64 = 1_000_000;
+
+/// Global RC input (protected by EmbassyState)
+///
+/// Uses blocking mutex with critical sections for interrupt-safe access.
+/// Access via `SharedState` trait methods: `.with()` for read, `.with_mut()` for write.
+#[cfg(feature = "embassy")]
+pub static RC_INPUT: EmbassyState<RcInput> = EmbassyState::new(RcInput::new());
 
 /// RC input state
 ///

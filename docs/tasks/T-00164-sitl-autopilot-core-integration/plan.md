@@ -71,36 +71,36 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ### Tasks
 
-- [ ] **Update core Cargo.toml**
-  - [ ] Add `embassy` feature flag: `embassy = ["dep:embassy-sync", "dep:embassy-futures"]`
-  - [ ] Add `embassy-sync` as optional dependency (same git rev as firmware)
-  - [ ] Add `embassy-futures` as optional dependency (same git rev as firmware)
-  - [ ] Promote `critical-section = "1.2"` from dev-dependency to dependency
-  - [ ] Keep `critical-section = { features = ["std"] }` in dev-dependencies for host tests
-- [ ] **Migrate SharedState trait to core**
-  - [ ] Create `crates/core/src/traits/sync.rs`
-  - [ ] Move `SharedState<T>` trait (not feature-gated — it's a pure trait)
-  - [ ] Move `EmbassyState<T>` behind `#[cfg(feature = "embassy")]`
-  - [ ] Move `MockState<T>` (not feature-gated — useful for all tests)
-  - [ ] Add `impl SharedState<T> for EmbassyState<T>` behind embassy gate
-  - [ ] Add `impl SharedState<T> for MockState<T>`
-  - [ ] Export from `crates/core/src/traits/mod.rs`
-- [ ] **Update core lib.rs**
-  - [ ] Add `pub mod traits;` with `sync` submodule
-  - [ ] Verify `#![no_std]` is preserved
-- [ ] **Update firmware imports**
-  - [ ] Change `firmware/src/core/traits/sync.rs` to re-export from core
-  - [ ] Or update all firmware `use crate::core::traits::SharedState` to `use pico_trail_core::traits::sync::SharedState`
-  - [ ] Update firmware Cargo.toml: `pico_trail_core = { path = "../core", features = ["embassy", "defmt"] }`
-- [ ] **Unit tests**
-  - [ ] Test MockState with/with_mut access
-  - [ ] Test EmbassyState with/with_mut access (requires embassy feature in test)
-  - [ ] Test SharedState trait object usage
-- [ ] **Verification**
-  - [ ] `cargo test -p pico_trail_core --lib --quiet` (without embassy — must pass unchanged)
-  - [ ] `cargo test -p pico_trail_core --features embassy --lib --quiet`
-  - [ ] `cargo test -p pico_trail_firmware --lib --quiet`
-  - [ ] `./scripts/build-rp2350.sh pico_trail_rover`
+- [x] **Update core Cargo.toml**
+  - [x] Add `embassy` feature flag: `embassy = ["dep:embassy-sync", "dep:embassy-futures"]`
+  - [x] Add `embassy-sync` as optional dependency (same git rev as firmware)
+  - [x] Add `embassy-futures` as optional dependency (same git rev as firmware)
+  - [x] Promote `critical-section = "1.2"` from dev-dependency to dependency
+  - [x] Keep `critical-section = { features = ["std"] }` in dev-dependencies for host tests
+- [x] **Migrate SharedState trait to core**
+  - [x] Create `crates/core/src/traits/sync.rs`
+  - [x] Move `SharedState<T>` trait (not feature-gated — it's a pure trait)
+  - [x] Move `EmbassyState<T>` behind `#[cfg(feature = "embassy")]`
+  - [x] Move `MockState<T>` (not feature-gated — useful for all tests)
+  - [x] Add `impl SharedState<T> for EmbassyState<T>` behind embassy gate
+  - [x] Add `impl SharedState<T> for MockState<T>`
+  - [x] Export from `crates/core/src/traits/mod.rs`
+- [x] **Update core lib.rs**
+  - [x] Add `pub mod traits;` with `sync` submodule
+  - [x] Verify `#![no_std]` is preserved
+- [x] **Update firmware imports**
+  - [x] Change `firmware/src/core/traits/sync.rs` to re-export from core
+  - [x] Or update all firmware `use crate::core::traits::SharedState` to `use pico_trail_core::traits::sync::SharedState`
+  - [x] Update firmware Cargo.toml: `pico_trail_core = { path = "../core", features = ["embassy", "defmt"] }`
+- [x] **Unit tests**
+  - [x] Test MockState with/with_mut access
+  - [x] Test EmbassyState with/with_mut access (requires embassy feature in test)
+  - [x] Test SharedState trait object usage
+- [x] **Verification**
+  - [x] `cargo test -p pico_trail_core --lib --quiet` (without embassy — must pass unchanged)
+  - [x] `cargo test -p pico_trail_core --features embassy --lib --quiet`
+  - [x] `cargo test -p pico_trail_firmware --lib --quiet`
+  - [x] `./scripts/build-rp2350.sh pico_trail_rover`
 
 ### Deliverables
 
@@ -140,44 +140,44 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ### Tasks
 
-- [ ] **Move GpsPosition to core**
-  - [ ] Add `GpsPosition` struct to `crates/core/src/navigation/types.rs` (alongside existing `GpsFixType`)
-  - [ ] Change `defmt::Format` to `#[cfg_attr(feature = "defmt", derive(defmt::Format))]`
-  - [ ] Update firmware to re-export or import from core
-  - [ ] Update all firmware references to GpsPosition
-- [ ] **Create autopilot module in core**
-  - [ ] Create `crates/core/src/autopilot/mod.rs`
-  - [ ] Create `crates/core/src/autopilot/state.rs`
-  - [ ] Create `crates/core/src/autopilot/vehicle.rs`
-  - [ ] Export from `crates/core/src/lib.rs`
-- [ ] **Move state types to core**
-  - [ ] Move `ArmedState` — no changes needed
-  - [ ] Move `FlightMode` — change `defmt::Format` to `cfg_attr`
-  - [ ] Move `BatteryState` — change `defmt::Format` to `cfg_attr`
-  - [ ] Move `AttitudeState` — change `defmt::Format` to `cfg_attr`
-  - [ ] Move `HomePosition` — no changes needed
-  - [ ] Move `SystemState` — update GpsPosition import to core's
-  - [ ] Move `FlightModeOps` trait — update imports
-- [ ] **Move VehicleType to core**
-  - [ ] Move `VehicleType` trait to `core/src/autopilot/vehicle.rs`
-  - [ ] Move `FlightModeOps` trait
-  - [ ] Move `GroundRover` and `SurfaceBoat` implementations
-  - [ ] Update `defmt::Format` derives to `cfg_attr`
-- [ ] **Update firmware imports**
-  - [ ] Replace all `use crate::communication::mavlink::state::*` with core imports
-  - [ ] Replace all `use crate::communication::mavlink::vehicle::*` with core imports
-  - [ ] Replace all `use crate::devices::gps::GpsPosition` with core imports
-  - [ ] Optionally keep firmware modules as re-exports for minimal diff
-- [ ] **Unit tests**
-  - [ ] Test SystemState default construction
-  - [ ] Test FlightMode to/from custom_mode conversion
-  - [ ] Test ArmedState transitions
-  - [ ] Test GpsPosition creation with GpsFixType
-- [ ] **Verification**
-  - [ ] `cargo test -p pico_trail_core --features embassy --lib --quiet`
-  - [ ] `cargo test -p pico_trail_core --lib --quiet` (without embassy)
-  - [ ] `cargo test -p pico_trail_firmware --lib --quiet`
-  - [ ] `./scripts/build-rp2350.sh pico_trail_rover`
+- [x] **Move GpsPosition to core**
+  - [x] Add `GpsPosition` struct to `crates/core/src/navigation/types.rs` (alongside existing `GpsFixType`)
+  - [x] Change `defmt::Format` to `#[cfg_attr(feature = "defmt", derive(defmt::Format))]`
+  - [x] Update firmware to re-export or import from core
+  - [x] Update all firmware references to GpsPosition
+- [x] **Create autopilot module in core**
+  - [x] Create `crates/core/src/autopilot/mod.rs`
+  - [x] Create `crates/core/src/autopilot/state.rs`
+  - [x] Create `crates/core/src/autopilot/vehicle.rs`
+  - [x] Export from `crates/core/src/lib.rs`
+- [x] **Move state types to core**
+  - [x] Move `ArmedState` — no changes needed
+  - [x] Move `FlightMode` — change `defmt::Format` to `cfg_attr`
+  - [x] Move `BatteryState` — change `defmt::Format` to `cfg_attr`
+  - [x] Move `AttitudeState` — change `defmt::Format` to `cfg_attr`
+  - [x] Move `HomePosition` — no changes needed
+  - [x] Move `SystemState` — update GpsPosition import to core's
+  - [x] Move `FlightModeOps` trait — update imports
+- [x] **Move VehicleType to core**
+  - [x] Move `VehicleType` trait to `core/src/autopilot/vehicle.rs`
+  - [x] Move `FlightModeOps` trait
+  - [x] Move `GroundRover` and `SurfaceBoat` implementations
+  - [x] Update `defmt::Format` derives to `cfg_attr`
+- [x] **Update firmware imports**
+  - [x] Replace all `use crate::communication::mavlink::state::*` with core imports
+  - [x] Replace all `use crate::communication::mavlink::vehicle::*` with core imports
+  - [x] Replace all `use crate::devices::gps::GpsPosition` with core imports
+  - [x] Optionally keep firmware modules as re-exports for minimal diff
+- [x] **Unit tests**
+  - [x] Test SystemState default construction
+  - [x] Test FlightMode to/from custom_mode conversion
+  - [x] Test ArmedState transitions
+  - [x] Test GpsPosition creation with GpsFixType
+- [x] **Verification**
+  - [x] `cargo test -p pico_trail_core --features embassy --lib --quiet`
+  - [x] `cargo test -p pico_trail_core --lib --quiet` (without embassy)
+  - [x] `cargo test -p pico_trail_firmware --lib --quiet`
+  - [x] `./scripts/build-rp2350.sh pico_trail_rover`
 
 ### Deliverables
 
@@ -227,58 +227,58 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ### Tasks
 
-- [ ] **Move FlashInterface trait to core**
-  - [ ] Create `crates/core/src/traits/flash.rs`
-  - [ ] Move `FlashInterface` trait (pure interface — `read`, `write`, `erase`, `block_size`, `capacity`)
-  - [ ] Export from `crates/core/src/traits/mod.rs`
-  - [ ] Firmware re-exports or updates imports (implementations RP2350Flash, MockFlash stay in firmware)
-- [ ] **Move Flash serialization functions to core**
-  - [ ] Move `load_from_flash<F: FlashInterface>()` from `firmware/src/parameters/storage.rs` to `core/src/parameters/storage.rs`
-  - [ ] Move `save_to_flash<F: FlashInterface>()` similarly
-  - [ ] These only depend on `ParameterStore` (already in core) and `FlashInterface` (moved above)
-- [ ] **Create communication module in core**
-  - [ ] Create `crates/core/src/communication/mod.rs`
-  - [ ] Create `crates/core/src/communication/dispatcher.rs`
-  - [ ] Create `crates/core/src/communication/handlers/` directory and `mod.rs`
-  - [ ] Export from `crates/core/src/lib.rs` behind `embassy` feature
-- [ ] **Move RC_INPUT global to core**
-  - [ ] Move RC_INPUT static (uses `EmbassyState<RcInput>`) to core (behind embassy feature)
-  - [ ] Firmware re-exports from core
-- [ ] **Move status_notifier to core**
-  - [ ] Move `StatusNotifier` struct, `NOTIFIER` global, and all helper functions (`send_info`, `send_warning`, `send_error`, etc.)
-  - [ ] Move `take_pending_statustext_messages()` and `chunk_message()`
-  - [ ] No embassy deps — uses only `critical_section::Mutex` and `heapless` (both already in core)
-- [ ] **Move ParamHandler to core**
-  - [ ] Move `ParamHandler` struct to `core/src/communication/handlers/param.rs`
-  - [ ] Refactor constructor: `new(store: ParameterStore)` — caller passes pre-initialized store
-  - [ ] Keep `save_to_flash<F: FlashInterface>()` method generic over platform
-  - [ ] Firmware-specific param modules (`WifiParams`, `BoardParams`) stay in firmware and call `register_defaults()` before constructing `ParamHandler`
-- [ ] **Move other handler implementations**
-  - [ ] Move `CommandHandler<V>` — depends on SystemState, VehicleType (now in core)
-  - [ ] Move `TelemetryStreamer<V>` — depends on SystemState, VehicleType
-  - [ ] Move `MissionHandler` — depends on mission types (already in core)
-  - [ ] Move `RcInputHandler` — depends on RC_INPUT (moved above), embassy-sync
-  - [ ] Move `NavigationHandler` — depends on navigation types (already in core)
-- [ ] **Move MessageDispatcher**
-  - [ ] Move `MessageDispatcher<V>` struct (now includes `ParamHandler`)
-  - [ ] Move `dispatch()`, `update_telemetry()`, `process_rc_input()` methods
-  - [ ] Move `DispatcherStats`, `ConnectionState`
-- [ ] **Update firmware imports**
-  - [ ] Replace all dispatcher/handler imports with core paths
-  - [ ] Firmware constructs `ParameterStore` (load from Flash + register defaults), passes to `ParamHandler::new()`
-  - [ ] Firmware re-exports FlashInterface implementations
-- [ ] **Unit tests**
-  - [ ] Test dispatcher routes messages to correct handlers
-  - [ ] Test ParamHandler PARAM_REQUEST_LIST / PARAM_SET with MockFlash
-  - [ ] Test CommandHandler ARM/DISARM produces correct ACK
-  - [ ] Test CommandHandler SET_MODE updates SystemState
-  - [ ] Test RcInputHandler normalizes channels correctly
-  - [ ] Test TelemetryStreamer builds correct MAVLink messages
-  - [ ] Test MissionHandler upload/download state machine
-- [ ] **Verification**
-  - [ ] `cargo test -p pico_trail_core --features embassy --lib --quiet`
-  - [ ] `cargo test -p pico_trail_firmware --lib --quiet`
-  - [ ] `./scripts/build-rp2350.sh pico_trail_rover`
+- [x] **Move FlashInterface trait to core**
+  - [x] Create `crates/core/src/traits/flash.rs`
+  - [x] Move `FlashInterface` trait (pure interface — `read`, `write`, `erase`, `block_size`, `capacity`)
+  - [x] Export from `crates/core/src/traits/mod.rs`
+  - [x] Firmware re-exports or updates imports (implementations RP2350Flash, MockFlash stay in firmware)
+- [x] **Move Flash serialization functions to core**
+  - [x] Move `load_from_flash<F: FlashInterface>()` from `firmware/src/parameters/storage.rs` to `core/src/parameters/storage.rs`
+  - [x] Move `save_to_flash<F: FlashInterface>()` similarly
+  - [x] These only depend on `ParameterStore` (already in core) and `FlashInterface` (moved above)
+- [x] **Create communication module in core**
+  - [x] Create `crates/core/src/communication/mod.rs`
+  - [x] Create `crates/core/src/communication/dispatcher.rs`
+  - [x] Create `crates/core/src/communication/handlers/` directory and `mod.rs`
+  - [x] Export from `crates/core/src/lib.rs` behind `embassy` feature
+- [x] **Move RC_INPUT global to core**
+  - [x] Move RC_INPUT static (uses `EmbassyState<RcInput>`) to core (behind embassy feature)
+  - [x] Firmware re-exports from core
+- [x] **Move status_notifier to core**
+  - [x] Move `StatusNotifier` struct, `NOTIFIER` global, and all helper functions (`send_info`, `send_warning`, `send_error`, etc.)
+  - [x] Move `take_pending_statustext_messages()` and `chunk_message()`
+  - [x] No embassy deps — uses only `critical_section::Mutex` and `heapless` (both already in core)
+- [x] **Move ParamHandler to core**
+  - [x] Move `ParamHandler` struct to `core/src/communication/handlers/param.rs`
+  - [x] Refactor constructor: `from_store(store: ParameterStore)` — caller passes pre-initialized store
+  - [x] Keep `save_to_flash<F: FlashInterface>()` method generic over platform
+  - [x] Firmware-specific param modules (`WifiParams`, `BoardParams`) stay in firmware and call `register_defaults()` before constructing `ParamHandler`
+- [x] **Move other handler implementations**
+  - [x] Move `CommandHandler<V>` — depends on SystemState, VehicleType (now in core)
+  - [x] Move `TelemetryStreamer<V>` — depends on SystemState, VehicleType
+  - [x] Move `MissionHandler` — depends on mission types (already in core)
+  - [x] Move `RcInputHandler` — depends on RC_INPUT (moved above), embassy-sync
+  - [x] Move `NavigationHandler` — depends on navigation types (already in core)
+- [x] **Move MessageDispatcher**
+  - [x] Move `MessageDispatcher<V>` struct (now includes `ParamHandler`)
+  - [x] Move `dispatch()`, `update_telemetry()`, `process_rc_input()` methods
+  - [x] Move `DispatcherStats`, `ConnectionState`
+- [x] **Update firmware imports**
+  - [x] Remove `sync_from_params` from firmware's `SystemStateExt` (now inherent on SystemState in core)
+  - [x] Remove unused `SystemStateExt` import from firmware dispatcher
+  - [x] Firmware re-exports FlashInterface implementations
+- [x] **Unit tests**
+  - [x] Test dispatcher routes messages to correct handlers
+  - [x] Test ParamHandler PARAM_REQUEST_LIST / PARAM_SET with MockFlash
+  - [x] Test CommandHandler ARM/DISARM produces correct ACK
+  - [x] Test CommandHandler SET_MODE updates SystemState
+  - [x] Test RcInputHandler normalizes channels correctly
+  - [x] Test TelemetryStreamer builds correct MAVLink messages
+  - [x] Test MissionHandler upload/download state machine
+- [x] **Verification**
+  - [x] `cargo test -p pico_trail_core --features embassy --lib --quiet` — 468 passed
+  - [x] `cargo test -p pico_trail_firmware --lib --quiet` — 514 passed
+  - [x] `./scripts/build-rp2350.sh pico_trail_rover` — success
 
 ### Deliverables
 

@@ -17,7 +17,7 @@ pub use board::{
     BoardPinConfig, MotorPins, OutputMode, PinConfig, PinError, PinType, PullMode, Speed,
     BOARD_CONFIG,
 };
-pub use flash::FlashInterface;
+pub use flash::{FlashError, FlashInterface};
 pub use gpio::{GpioInterface, GpioMode};
 pub use i2c::{I2cConfig, I2cInterface};
 pub use platform::Platform;
