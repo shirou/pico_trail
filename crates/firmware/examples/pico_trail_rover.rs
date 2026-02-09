@@ -127,8 +127,11 @@ use pico_trail_firmware::{
     communication::mavlink::{
         dispatcher::MessageDispatcher,
         handlers::{
-            command::CommandHandler, mission::MissionHandler, param::ParamHandler,
-            rc_input::RcInputHandler, telemetry::TelemetryStreamer,
+            command::CommandHandler,
+            mission::MissionHandler,
+            param::{ParamHandler, ParamHandlerInit},
+            rc_input::RcInputHandler,
+            telemetry::TelemetryStreamer,
         },
         parser::MavlinkParser,
         state::SystemStateExt,
@@ -172,7 +175,7 @@ async fn main(spawner: Spawner) {
     let mut flash = Rp2350Flash::new();
 
     // Initialize ParamHandler which loads/registers parameters
-    let param_handler = ParamHandler::new(&mut flash);
+    let param_handler = ParamHandler::new_from_flash(&mut flash);
 
     // Initialize WiFi and UDP transport
     #[cfg(feature = "pico2_w")]

@@ -34,8 +34,11 @@
 use super::{
     dispatcher::{DispatcherStats, MessageDispatcher},
     handlers::{
-        command::CommandHandler, mission::MissionHandler, param::ParamHandler,
-        rc_input::RcInputHandler, telemetry::TelemetryStreamer,
+        command::CommandHandler,
+        mission::MissionHandler,
+        param::{ParamHandler, ParamHandlerInit},
+        rc_input::RcInputHandler,
+        telemetry::TelemetryStreamer,
     },
     parser::MavlinkParser,
     state::SystemState,
@@ -86,7 +89,7 @@ pub struct MavlinkContext<V: VehicleType> {
 
 impl<V: VehicleType> MavlinkContext<V> {
     pub fn new<F: FlashInterface>(config: MavlinkConfig, flash: &mut F) -> Self {
-        let param_handler = ParamHandler::new(flash);
+        let param_handler = ParamHandler::new_from_flash(flash);
         let command_handler = CommandHandler::new();
         let telemetry_streamer = TelemetryStreamer::new(config.system_id, config.component_id);
         let mission_handler = MissionHandler::new(config.system_id, config.component_id);

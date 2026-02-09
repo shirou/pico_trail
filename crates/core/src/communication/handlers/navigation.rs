@@ -46,7 +46,6 @@ impl NavigationHandler {
     }
 
     /// Update MissionStorage with new position target (async)
-    #[cfg(feature = "embassy")]
     pub async fn handle_set_position_target(
         &self,
         data: &SET_POSITION_TARGET_GLOBAL_INT_DATA,

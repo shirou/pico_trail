@@ -7,10 +7,8 @@
 //! - `RC_CHANNELS` (ID 65): RC channel values from receiver
 //! - `RC_CHANNELS_OVERRIDE` (ID 70): RC channel override from GCS joystick/gamepad
 
-use crate::traits::sync::SharedState;
-
-#[cfg(feature = "embassy")]
 use crate::rc::RC_INPUT;
+use crate::traits::sync::SharedState;
 
 /// RC input message handler
 ///
@@ -35,7 +33,6 @@ impl RcInputHandler {
     /// Handle RC_CHANNELS message
     ///
     /// Updates RC input state with normalized channel values.
-    #[cfg(feature = "embassy")]
     pub async fn handle_rc_channels(
         &mut self,
         rc_data: &mavlink::common::RC_CHANNELS_DATA,
@@ -70,7 +67,6 @@ impl RcInputHandler {
     /// Handle RC_CHANNELS_OVERRIDE message
     ///
     /// Updates RC input state with override channel values from GCS joystick/gamepad.
-    #[cfg(feature = "embassy")]
     pub async fn handle_rc_channels_override(
         &mut self,
         rc_override: &mavlink::common::RC_CHANNELS_OVERRIDE_DATA,

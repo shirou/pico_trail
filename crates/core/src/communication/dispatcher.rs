@@ -57,7 +57,7 @@ pub struct DispatcherStats {
 
 /// Maximum number of response messages per incoming message
 /// Most messages produce 1 response, PARAM_REQUEST_LIST can produce many
-const MAX_RESPONSES: usize = 64;
+pub const MAX_RESPONSES: usize = 64;
 
 pub struct MessageDispatcher<V: VehicleType> {
     param_handler: ParamHandler,
@@ -573,7 +573,6 @@ impl<V: VehicleType> MessageDispatcher<V> {
     /// Process RC input messages (async)
     ///
     /// RC messages update global state and don't produce response messages.
-    #[cfg(feature = "embassy")]
     pub async fn process_rc_input(&mut self, message: &MavMessage, timestamp_us: u64) -> bool {
         use mavlink::common::MavMessage::*;
 
@@ -596,7 +595,6 @@ impl<V: VehicleType> MessageDispatcher<V> {
     /// Process navigation input messages (async)
     ///
     /// Navigation messages update global NAV_TARGET and don't produce response messages.
-    #[cfg(feature = "embassy")]
     pub async fn process_navigation_input(&mut self, message: &MavMessage) -> bool {
         use mavlink::common::MavMessage::*;
 
@@ -775,5 +773,14 @@ mod tests {
         assert!(responses.is_empty());
         assert_eq!(dispatcher.stats().unhandled_messages, 1);
         assert_eq!(dispatcher.stats().messages_processed, 1);
+    }
+
+    #[test]
+    fn test_update_telemetry() {
+        let mut dispatcher = create_dispatcher();
+        let state = SystemState::default();
+
+        let messages = dispatcher.update_telemetry(&state, 0);
+        assert!(!messages.is_empty());
     }
 }

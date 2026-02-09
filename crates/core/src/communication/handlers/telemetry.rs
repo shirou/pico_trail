@@ -72,7 +72,7 @@ fn convert_gps_fix_type(fix_type: DeviceGpsFixType) -> GpsFixType {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct StreamConfig {
+pub struct StreamConfig {
     rate_hz: u32,
     last_send_us: u64,
 }
@@ -674,6 +674,274 @@ mod tests {
             assert_eq!(data.seq, 3);
         } else {
             panic!("Expected MISSION_ITEM_REACHED message");
+        }
+    }
+
+    #[test]
+    fn test_stream_config_1hz() {
+        let mut config = StreamConfig::new(1);
+        config.mark_sent(0);
+        assert!(!config.should_send(500_000));
+        assert!(config.should_send(1_000_000));
+    }
+
+    #[test]
+    fn test_degrees_to_deg_e7_negative() {
+        assert_eq!(degrees_to_deg_e7(-34.6037), -346037000);
+    }
+
+    #[test]
+    fn test_meters_to_mm_negative() {
+        assert_eq!(meters_to_mm(-100.0), -100000);
+    }
+
+    #[test]
+    fn test_meters_to_mm_high_altitude() {
+        assert_eq!(meters_to_mm(400.0), 400000);
+    }
+
+    #[test]
+    fn test_mps_to_cms_boundary() {
+        let result = mps_to_cms(655.35);
+        assert!(result >= 65534, "Expected >= 65534, got {}", result);
+        assert_eq!(mps_to_cms(1000.0), 65535);
+        assert_eq!(mps_to_cms(-10.0), 0);
+    }
+
+    #[test]
+    fn test_mps_to_cms_i16_typical() {
+        assert_eq!(mps_to_cms_i16(10.0), 1000);
+        assert_eq!(mps_to_cms_i16(-10.0), -1000);
+        assert_eq!(mps_to_cms_i16(0.0), 0);
+    }
+
+    #[test]
+    fn test_mps_to_cms_i16_boundary() {
+        assert_eq!(mps_to_cms_i16(327.67), 32767);
+        assert_eq!(mps_to_cms_i16(500.0), 32767);
+        assert_eq!(mps_to_cms_i16(-327.68), -32768);
+        assert_eq!(mps_to_cms_i16(-500.0), -32768);
+    }
+
+    #[test]
+    fn test_degrees_to_cdeg_typical() {
+        assert_eq!(degrees_to_cdeg(0.0), 0);
+        assert_eq!(degrees_to_cdeg(90.0), 9000);
+        assert_eq!(degrees_to_cdeg(180.0), 18000);
+        assert_eq!(degrees_to_cdeg(270.0), 27000);
+    }
+
+    #[test]
+    fn test_degrees_to_cdeg_boundary() {
+        assert_eq!(degrees_to_cdeg(359.99), 35999);
+        assert_eq!(degrees_to_cdeg(360.0), 35999);
+        assert_eq!(degrees_to_cdeg(-10.0), 0);
+    }
+
+    #[test]
+    fn test_build_gps_with_no_cog() {
+        use crate::navigation::{GpsFixType as DGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
+        let mut state = SystemState::new();
+
+        let position = GpsPosition {
+            latitude: 48.1173,
+            longitude: 11.5166,
+            altitude: 545.4,
+            speed: 0.2,
+            course_over_ground: None,
+            fix_type: DGpsFixType::Fix3D,
+            satellites: 8,
+        };
+        state.update_gps(position, 1000000);
+
+        let msg = streamer.build_gps(&state).unwrap();
+        if let MavMessage::GPS_RAW_INT(data) = msg {
+            assert_eq!(data.cog, u16::MAX);
+        } else {
+            panic!("Expected GPS_RAW_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_global_position_int_no_gps() {
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
+        let state = SystemState::new();
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            assert_eq!(data.lat, 0);
+            assert_eq!(data.lon, 0);
+            assert_eq!(data.alt, 0);
+            assert_eq!(data.vx, 0);
+            assert_eq!(data.vy, 0);
+            assert_eq!(data.vz, 0);
+            assert_eq!(data.hdg, u16::MAX);
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_global_position_int_with_velocity() {
+        use crate::navigation::{GpsFixType as DGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
+        let mut state = SystemState::new();
+
+        let position = GpsPosition {
+            latitude: 48.1173,
+            longitude: 11.5166,
+            altitude: 545.4,
+            speed: 10.0,
+            course_over_ground: Some(90.0),
+            fix_type: DGpsFixType::Fix3D,
+            satellites: 8,
+        };
+        state.update_gps(position, 1000000);
+
+        state.update_attitude_direct(
+            0.0,
+            0.0,
+            core::f32::consts::PI / 2.0,
+            0.0,
+            0.0,
+            0.0,
+            1000000,
+        );
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            assert!((data.lat - 481173000).abs() < 100);
+            assert!((data.lon - 115166000).abs() < 100);
+            assert_eq!(data.alt, 545400);
+            assert!(data.vx.abs() < 10);
+            assert!((data.vy - 1000).abs() < 10);
+            assert_eq!(data.vz, 0);
+            assert_eq!(data.hdg, 9000);
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_global_position_int_heading_north() {
+        use crate::navigation::{GpsFixType as DGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
+        let mut state = SystemState::new();
+
+        let position = GpsPosition {
+            latitude: 48.1173,
+            longitude: 11.5166,
+            altitude: 100.0,
+            speed: 10.0,
+            course_over_ground: Some(0.0),
+            fix_type: DGpsFixType::Fix3D,
+            satellites: 6,
+        };
+        state.update_gps(position, 1000000);
+
+        state.update_attitude_direct(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000000);
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            assert!((data.vx - 1000).abs() < 10);
+            assert!(data.vy.abs() < 10);
+            assert_eq!(data.hdg, 0);
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_global_position_int_no_cog_no_ahrs() {
+        use crate::navigation::{GpsFixType as DGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
+        let mut state = SystemState::new();
+
+        let position = GpsPosition {
+            latitude: 48.1173,
+            longitude: 11.5166,
+            altitude: 100.0,
+            speed: 0.3,
+            course_over_ground: None,
+            fix_type: DGpsFixType::Fix2D,
+            satellites: 4,
+        };
+        state.update_gps(position, 1000000);
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            assert_eq!(data.vx, 0);
+            assert_eq!(data.vy, 0);
+            assert_eq!(data.hdg, u16::MAX);
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_global_position_int_ahrs_fallback_to_gps_cog() {
+        use crate::navigation::{GpsFixType as DGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
+        let mut state = SystemState::new();
+
+        let position = GpsPosition {
+            latitude: 48.1173,
+            longitude: 11.5166,
+            altitude: 100.0,
+            speed: 5.0,
+            course_over_ground: Some(45.0),
+            fix_type: DGpsFixType::Fix3D,
+            satellites: 6,
+        };
+        state.update_gps(position, 1000000);
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            assert_eq!(data.hdg, 4500);
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_build_global_position_int_ahrs_negative_yaw() {
+        use crate::navigation::{GpsFixType as DGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
+        let mut state = SystemState::new();
+
+        let position = GpsPosition {
+            latitude: 48.1173,
+            longitude: 11.5166,
+            altitude: 100.0,
+            speed: 5.0,
+            course_over_ground: Some(0.0),
+            fix_type: DGpsFixType::Fix3D,
+            satellites: 6,
+        };
+        state.update_gps(position, 1000000);
+
+        state.update_attitude_direct(
+            0.0,
+            0.0,
+            -core::f32::consts::PI / 2.0,
+            0.0,
+            0.0,
+            0.0,
+            1000000,
+        );
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            assert_eq!(data.hdg, 27000);
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
         }
     }
 }

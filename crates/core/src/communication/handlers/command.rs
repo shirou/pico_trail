@@ -353,10 +353,7 @@ impl<V: VehicleType> CommandHandler<V> {
             altitude,
         };
 
-        #[cfg(feature = "embassy")]
         crate::navigation::set_reposition_target(target);
-
-        let _ = target; // suppress unused warning when embassy is disabled
 
         crate::log_info!("Reposition target set: lat={}, lon={}", latitude, longitude);
         status_notifier::send_info("Fly to target set");
@@ -1007,6 +1004,293 @@ mod tests {
         };
         let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
 
+        assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_disarm_command_denied_already_disarmed() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = create_command_long(MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, 0.0, 0.0);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
+
+        assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_preflight_calibration_accepted() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = create_command_long(MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION, 1.0, 0.0);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
+
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_command_ack_fields() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = create_command_long(MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION, 0.0, 0.0);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_request_protocol_version() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = create_command_long(MavCmd::MAV_CMD_REQUEST_MESSAGE, 300.0, 0.0);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_REQUEST_MESSAGE);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_request_autopilot_version() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = create_command_long(MavCmd::MAV_CMD_REQUEST_MESSAGE, 148.0, 0.0);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_REQUEST_MESSAGE);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_request_camera_info_unsupported() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = create_command_long(MavCmd::MAV_CMD_REQUEST_MESSAGE, 259.0, 0.0);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_REQUEST_MESSAGE);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_UNSUPPORTED);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_do_reposition_invalid_longitude() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = COMMAND_LONG_DATA {
+            target_system: 1,
+            target_component: 1,
+            command: MavCmd::MAV_CMD_DO_REPOSITION,
+            confirmation: 0,
+            param1: -1.0,
+            param2: 0.0,
+            param3: 0.0,
+            param4: f32::NAN,
+            param5: 35.6762,
+            param6: 181.0,
+            param7: 100.0,
+        };
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_DO_REPOSITION);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_do_reposition_negative_coords() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = COMMAND_LONG_DATA {
+            target_system: 1,
+            target_component: 1,
+            command: MavCmd::MAV_CMD_DO_REPOSITION,
+            confirmation: 0,
+            param1: -1.0,
+            param2: 0.0,
+            param3: 0.0,
+            param4: f32::NAN,
+            param5: 40.7128,
+            param6: -74.0060,
+            param7: 50.0,
+        };
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_DO_REPOSITION);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_set_home_invalid_coordinates() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let lat_e7 = (91.0 * 1e7) as i32;
+        let lon_e7 = (139.0 * 1e7) as i32;
+        let cmd = COMMAND_INT_DATA {
+            target_system: 1,
+            target_component: 1,
+            frame: mavlink::common::MavFrame::MAV_FRAME_GLOBAL,
+            command: MavCmd::MAV_CMD_DO_SET_HOME,
+            current: 0,
+            autocontinue: 0,
+            param1: 0.0,
+            param2: 0.0,
+            param3: 0.0,
+            param4: 0.0,
+            x: lat_e7,
+            y: lon_e7,
+            z: 100.0,
+        };
+        let (ack, messages) = handler.handle_command_int(&cmd, 255, 1);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_DO_SET_HOME);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
+        assert!(messages.is_empty());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_set_home_negative_coordinates() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let lat_e7 = (-34.6037 * 1e7) as i32;
+        let lon_e7 = (-58.3816 * 1e7) as i32;
+        let cmd = COMMAND_INT_DATA {
+            target_system: 1,
+            target_component: 1,
+            frame: mavlink::common::MavFrame::MAV_FRAME_GLOBAL,
+            command: MavCmd::MAV_CMD_DO_SET_HOME,
+            current: 0,
+            autocontinue: 0,
+            param1: 0.0,
+            param2: 0.0,
+            param3: 0.0,
+            param4: 0.0,
+            x: lat_e7,
+            y: lon_e7,
+            z: 25.0,
+        };
+        let (ack, messages) = handler.handle_command_int(&cmd, 255, 1);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_DO_SET_HOME);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+        assert_eq!(messages.len(), 1);
+        assert!(matches!(messages[0], MavMessage::HOME_POSITION(_)));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_command_int_unsupported() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = COMMAND_INT_DATA {
+            target_system: 1,
+            target_component: 1,
+            frame: mavlink::common::MavFrame::MAV_FRAME_GLOBAL,
+            command: MavCmd::MAV_CMD_NAV_WAYPOINT,
+            current: 0,
+            autocontinue: 0,
+            param1: 0.0,
+            param2: 0.0,
+            param3: 0.0,
+            param4: 0.0,
+            x: 0,
+            y: 0,
+            z: 0.0,
+        };
+        let (ack, messages) = handler.handle_command_int(&cmd, 255, 1);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_NAV_WAYPOINT);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_UNSUPPORTED);
+        assert!(messages.is_empty());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_fixed_mag_cal_yaw_denied_with_2d_gps() {
+        use crate::navigation::{GpsFixType, GpsPosition};
+
+        let mut state = SystemState::new();
+        state.gps_position = Some(GpsPosition {
+            latitude: 35.6762,
+            longitude: 139.6503,
+            altitude: 0.0,
+            speed: 0.0,
+            course_over_ground: None,
+            fix_type: GpsFixType::Fix2D,
+            satellites: 4,
+        });
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = COMMAND_LONG_DATA {
+            target_system: 1,
+            target_component: 1,
+            command: MavCmd::MAV_CMD_FIXED_MAG_CAL_YAW,
+            confirmation: 0,
+            param1: 270.0,
+            param2: 0.0,
+            param3: 0.0,
+            param4: 0.0,
+            param5: 0.0,
+            param6: 0.0,
+            param7: 0.0,
+        };
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
+
+        assert_eq!(ack.command, MavCmd::MAV_CMD_FIXED_MAG_CAL_YAW);
         assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
     }
 }

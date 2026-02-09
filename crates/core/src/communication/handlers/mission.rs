@@ -93,7 +93,7 @@ mod storage_ops {
 }
 
 /// Mission transfer timeout (5 seconds in microseconds)
-const MISSION_TIMEOUT_US: u64 = 5_000_000;
+pub const MISSION_TIMEOUT_US: u64 = 5_000_000;
 
 /// Mission transfer state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
