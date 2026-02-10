@@ -222,13 +222,4 @@ mod tests {
         // Read state through immutable reference
         assert_eq!(context.state().battery.voltage, 11.5);
     }
-
-    #[tokio::test]
-    #[ignore = "mavlink_task_placeholder runs an infinite loop; cannot complete on host"]
-    async fn test_task_placeholder() {
-        let config = MavlinkConfig::default();
-        let mut flash = MockFlash::new();
-
-        mavlink_task_placeholder(config, &mut flash).await;
-    }
 }

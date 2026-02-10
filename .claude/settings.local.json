@@ -78,7 +78,19 @@
       "Bash(git push:*)",
       "Bash(git log:*)",
       "Bash(./scripts/trace-status.sh:*)",
-      "Bash(bash:*)"
+      "Bash(bash:*)",
+      "Bash(./scripts/tdl-new-id.sh:*)",
+      "mcp__serena__rename_symbol",
+      "mcp__serena__initial_instructions",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:gazebosim.org)",
+      "Bash(do)",
+      "Bash(path=\"/home/shirou/Works/golang/src/github.com/shirou/pico_trail/crates/firmware/src/rover/mode/$file\")",
+      "Bash(if [ -f \"$path\" ])",
+      "Bash(then)",
+      "Bash(echo:*)",
+      "Bash(else)",
+      "Bash(fi:*)"
     ],
     "deny": [],
     "ask": []

@@ -147,7 +147,8 @@ mod tests {
     }
 
     fn reset_router() {
-        // Reset buffer AND overflow counter for test isolation
+        // Reset buffer and its overflow counter for test isolation.
+        // RingBufferSink::reset() is responsible for clearing both.
         LOG_ROUTER.with_mut(|router| {
             router.buffer_sink_mut().reset();
         });
