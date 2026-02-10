@@ -19,6 +19,7 @@ use std::env;
 use std::process;
 
 use pico_trail_sitl::adapter::{GazeboAdapter, GazeboConfig};
+use pico_trail_sitl::autopilot::VehicleAutopilot;
 use pico_trail_sitl::{GcsLink, SitlBridge, TimeMode, VehicleConfig, VehicleId, VehicleType};
 
 struct Args {
@@ -167,6 +168,14 @@ async fn main() {
         args.mavlink_port
     );
 
+    // Create autopilot for vehicle 1 (SYSTEM_STATE is a process-level global,
+    // so only one vehicle can have full autopilot state).
+    let mut autopilot = VehicleAutopilot::new(1);
+    println!(
+        "Autopilot initialized for vehicle 1 (mode: {})",
+        autopilot.mode_executor.current_mode_name()
+    );
+
     let mut was_connected = false;
     let mut gazebo_ready = false;
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(10));
@@ -183,6 +192,22 @@ async fn main() {
                 break;
             }
             _ = interval.tick() => {
+                let wall_us = wall_start.elapsed().as_micros() as u64;
+
+                // 1. Poll GCS incoming → dispatch through core's MessageDispatcher
+                let incoming = gcs.poll_incoming();
+                for (header, msg) in &incoming {
+                    // Route through autopilot dispatcher for vehicle 1
+                    let responses = autopilot.dispatch(header, msg, wall_us);
+                    for response in &responses {
+                        let _ = gcs.send_message_as(autopilot.system_id, response);
+                    }
+
+                    // Process RC input (async) for ManualMode
+                    autopilot.process_rc_input(msg, wall_us).await;
+                }
+
+                // 2. Step the simulation bridge (Gazebo physics)
                 let step_ok = match bridge.step().await {
                     Ok(()) => {
                         if !gazebo_ready {
@@ -201,11 +226,31 @@ async fn main() {
 
                 step_count += 1;
 
-                // Use wall-clock for GCS so heartbeats stay at real 1 Hz
-                let wall_us = wall_start.elapsed().as_micros() as u64;
+                // 3. Update SYSTEM_STATE from sensor data and execute active mode
+                if step_ok {
+                    if let Some(sensors) = bridge.get_vehicle(VehicleId(1))
+                        .and_then(|v| v.platform.peek_sensors())
+                    {
+                        autopilot.update_from_sensors(&sensors);
+                    }
+                }
 
-                // Poll once, sends heartbeats for all vehicles
-                gcs.poll_and_heartbeat(wall_us);
+                // Execute active mode (ManualMode reads RC, writes to SitlActuator)
+                autopilot.execute_mode(wall_us);
+
+                // 4. Apply actuator outputs to platform PWM channels
+                if let Some(vehicle) = bridge.get_vehicle(VehicleId(1)) {
+                    autopilot.apply_actuators_to_platform(&vehicle.platform);
+                }
+
+                // 5. Send heartbeats (state-aware: reflects armed/mode from SYSTEM_STATE)
+                gcs.send_heartbeats(wall_us);
+
+                // 6. Send telemetry: dispatcher telemetry + sensor telemetry
+                let dispatcher_telemetry = autopilot.update_telemetry(wall_us);
+                for msg in &dispatcher_telemetry {
+                    let _ = gcs.send_message_as(autopilot.system_id, msg);
+                }
 
                 if step_ok {
                     for i in 1..=args.count {
@@ -216,6 +261,7 @@ async fn main() {
                     }
                 }
 
+                // Connection status tracking
                 if gcs.is_connected() && !was_connected {
                     was_connected = true;
                     println!("GCS connected");
@@ -228,8 +274,10 @@ async fn main() {
                 // Summary every 10 seconds
                 if step_count.is_multiple_of(1000) {
                     let secs = wall_us / 1_000_000;
+                    let mode = pico_trail_sitl::autopilot::current_flight_mode();
+                    let armed = pico_trail_sitl::autopilot::is_armed();
                     println!(
-                        "[{secs}s] {step_count} steps, GCS {}",
+                        "[{secs}s] {step_count} steps, mode={mode:?}, armed={armed}, GCS {}",
                         if gcs.is_connected() { "connected" } else { "waiting" }
                     );
                 }

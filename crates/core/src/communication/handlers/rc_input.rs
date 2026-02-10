@@ -6,6 +6,7 @@
 //!
 //! - `RC_CHANNELS` (ID 65): RC channel values from receiver
 //! - `RC_CHANNELS_OVERRIDE` (ID 70): RC channel override from GCS joystick/gamepad
+//! - `MANUAL_CONTROL` (ID 69): Joystick axes from GCS
 
 use crate::rc::RC_INPUT;
 use crate::traits::sync::SharedState;
@@ -102,5 +103,178 @@ impl RcInputHandler {
         });
 
         true
+    }
+
+    /// Handle MANUAL_CONTROL message
+    ///
+    /// Maps joystick axes to RC channels:
+    /// - `y` → channel 1 (steering): left/right [-1000, 1000]
+    /// - `x` → channel 3 (throttle): forward/back [-1000, 1000]
+    ///
+    /// Axes with value `INT16_MAX` (32767) are ignored (axis invalid).
+    /// Values are converted from [-1000, 1000] to PWM range [1000, 2000].
+    pub async fn handle_manual_control(
+        &mut self,
+        data: &mavlink::common::MANUAL_CONTROL_DATA,
+        current_time_us: u64,
+    ) -> bool {
+        // Validate target (accept 0 = broadcast or 1 = autopilot)
+        if data.target != 0 && data.target != 1 {
+            return false;
+        }
+
+        const IGNORE: i16 = i16::MAX; // 32767
+
+        // Convert [-1000, 1000] to PWM [1000, 2000]: pwm = (axis + 1000) / 2 + 1000
+        let steering_pwm = if data.y == IGNORE {
+            1500 // neutral
+        } else {
+            ((data.y as i32 + 1000) / 2 + 1000).clamp(1000, 2000) as u16
+        };
+
+        // Throttle channel uses inverted normalization (1000 = forward = +1.0).
+        // MANUAL_CONTROL x=+1000 means forward, so map to PWM 1000.
+        // Formula: pwm = 1500 - x/2
+        let throttle_pwm = if data.x == IGNORE {
+            1500 // neutral
+        } else {
+            (1500 - data.x as i32 / 2).clamp(1000, 2000) as u16
+        };
+
+        let channels = [
+            steering_pwm, // ch1: steering
+            1500,         // ch2: unused
+            throttle_pwm, // ch3: throttle
+            1500,         // ch4: unused
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ];
+
+        RC_INPUT.with_mut(|rc| {
+            rc.update_from_pwm(&channels, 4, current_time_us);
+        });
+
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_manual_control_converts_axes_to_pwm() {
+        let mut handler = RcInputHandler::new();
+        let data = mavlink::common::MANUAL_CONTROL_DATA {
+            target: 1,
+            x: 500,   // throttle: 500 → PWM (500+1000)/2+1000 = 1750
+            y: -1000, // steering full left → PWM (-1000+1000)/2+1000 = 1000
+            z: 0,
+            r: 0,
+            buttons: 0,
+            buttons2: 0,
+            enabled_extensions: 0,
+            s: 0,
+            t: 0,
+            aux1: 0,
+            aux2: 0,
+            aux3: 0,
+            aux4: 0,
+            aux5: 0,
+            aux6: 0,
+        };
+
+        embassy_futures::block_on(async {
+            let result = handler.handle_manual_control(&data, 1_000_000).await;
+            assert!(result);
+        });
+
+        // Check channel 1 (steering) and channel 3 (throttle)
+        let (ch1, ch3) = RC_INPUT.with(|rc| (rc.get_channel(1), rc.get_channel(3)));
+        // ch1: PWM 1000 → normalized -1.0
+        assert!(
+            (ch1 - (-1.0)).abs() < 0.01,
+            "steering should be -1.0, got {ch1}"
+        );
+        // ch3: PWM 1750 → normalized 0.5
+        assert!(
+            (ch3 - 0.5).abs() < 0.01,
+            "throttle should be 0.5, got {ch3}"
+        );
+    }
+
+    #[test]
+    fn test_manual_control_ignores_invalid_axes() {
+        let mut handler = RcInputHandler::new();
+        let data = mavlink::common::MANUAL_CONTROL_DATA {
+            target: 1,
+            x: i16::MAX, // ignore throttle
+            y: 0,        // steering center → PWM 1500
+            z: 0,
+            r: 0,
+            buttons: 0,
+            buttons2: 0,
+            enabled_extensions: 0,
+            s: 0,
+            t: 0,
+            aux1: 0,
+            aux2: 0,
+            aux3: 0,
+            aux4: 0,
+            aux5: 0,
+            aux6: 0,
+        };
+
+        embassy_futures::block_on(async {
+            let result = handler.handle_manual_control(&data, 2_000_000).await;
+            assert!(result);
+        });
+
+        // ch3 should be neutral (1500 PWM → 0.0)
+        let ch3 = RC_INPUT.with(|rc| rc.get_channel(3));
+        assert!(
+            ch3.abs() < 0.01,
+            "ignored axis should be neutral, got {ch3}"
+        );
+    }
+
+    #[test]
+    fn test_manual_control_rejects_wrong_target() {
+        let mut handler = RcInputHandler::new();
+        let data = mavlink::common::MANUAL_CONTROL_DATA {
+            target: 99,
+            x: 500,
+            y: 500,
+            z: 0,
+            r: 0,
+            buttons: 0,
+            buttons2: 0,
+            enabled_extensions: 0,
+            s: 0,
+            t: 0,
+            aux1: 0,
+            aux2: 0,
+            aux3: 0,
+            aux4: 0,
+            aux5: 0,
+            aux6: 0,
+        };
+
+        embassy_futures::block_on(async {
+            let result = handler.handle_manual_control(&data, 3_000_000).await;
+            assert!(!result, "Should reject target=99");
+        });
     }
 }

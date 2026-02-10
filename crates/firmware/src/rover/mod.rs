@@ -5,8 +5,8 @@
 //!
 //! ## Modules
 //!
-//! - `mode`: Control mode implementations (Manual, Hold, Auto, RTL, Guided)
-//! - `mode_manager`: Mode lifecycle management and transitions
+//! - `mode`: Control mode implementations (re-exported from core)
+//! - `mode_manager`: Mode lifecycle management (re-exported from core as ModeManager)
 //!
 //! ## References
 //!

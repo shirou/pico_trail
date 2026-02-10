@@ -23,19 +23,20 @@
 //! - ADR-0yapl-mission-execution-telemetry-architecture: Sequencer architecture
 //! - ADR-h3k9f-heading-source-integration: Heading source integration
 
+extern crate alloc;
+use alloc::boxed::Box;
+
 use super::Mode;
-use crate::core::mission::{
+use crate::mission::{
     has_waypoints, push_current_changed, push_item_reached, set_mission_state, CommandStartResult,
     MissionEvent, MissionExecutor, MissionState, Waypoint, MISSION_SEQUENCER, MISSION_STORAGE,
 };
-use crate::core::traits::SharedState;
-use crate::devices::gps::GpsFixType;
-use crate::devices::gps::GpsPosition;
-use crate::libraries::ActuatorInterface;
-use crate::subsystems::navigation::{
-    NavigationController, PositionTarget, SimpleNavigationController,
-};
-use pico_trail_core::mission::{is_nav_command, MAV_CMD_DO_CHANGE_SPEED};
+use crate::navigation::controller::{NavigationController, SimpleNavigationController};
+use crate::navigation::{GpsFixType, GpsPosition, PositionTarget};
+use crate::servo::ActuatorInterface;
+use crate::traits::sync::SharedState;
+
+use crate::mission::{is_nav_command, MAV_CMD_DO_CHANGE_SPEED};
 
 /// Default waypoint speed (m/s) representing full-throttle speed.
 /// Used as the denominator for DO_CHANGE_SPEED throttle scaling.
@@ -81,9 +82,9 @@ impl Default for AutoState {
 /// Provides mission-based autonomous navigation through uploaded waypoints.
 /// Delegates sequencing to MissionSequencer and implements MissionExecutor
 /// for physical command execution.
-pub struct AutoMode<'a> {
+pub struct AutoMode {
     /// Actuator interface for steering and throttle
-    actuators: &'a mut dyn ActuatorInterface,
+    actuators: Box<dyn ActuatorInterface>,
     /// Navigation controller for path following
     nav_controller: SimpleNavigationController,
     /// Auto state
@@ -94,10 +95,10 @@ pub struct AutoMode<'a> {
     heading_provider: fn() -> Option<f32>,
 }
 
-impl<'a> AutoMode<'a> {
+impl AutoMode {
     /// Create new Auto mode
     pub fn new(
-        actuators: &'a mut dyn ActuatorInterface,
+        actuators: Box<dyn ActuatorInterface>,
         gps_provider: fn() -> Option<GpsPosition>,
         heading_provider: fn() -> Option<f32>,
     ) -> Self {
@@ -145,7 +146,7 @@ impl<'a> AutoMode<'a> {
 // MissionExecutor Implementation
 // ============================================================================
 
-impl<'a> MissionExecutor for AutoMode<'a> {
+impl MissionExecutor for AutoMode {
     fn start_command(&mut self, cmd: &Waypoint) -> CommandStartResult {
         if is_nav_command(cmd.command) {
             // NAV command: set navigation target
@@ -211,7 +212,7 @@ impl<'a> MissionExecutor for AutoMode<'a> {
 // Mode Trait Implementation
 // ============================================================================
 
-impl<'a> Mode for AutoMode<'a> {
+impl Mode for AutoMode {
     fn enter(&mut self) -> Result<(), &'static str> {
         // Validate GPS fix
         let gps = (self.gps_provider)().ok_or("No GPS fix")?;
@@ -378,54 +379,88 @@ impl<'a> Mode for AutoMode<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::communication::mavlink::state::{ArmedState, SystemState};
-    use crate::libraries::{ActuatorConfig, Actuators};
-    use crate::platform::traits::pwm::PwmInterface;
-    use crate::platform::Result;
+    use crate::mission::{add_waypoint, clear_mission, Waypoint};
+    use crate::navigation::GpsFixType;
 
-    // Mock PWM for testing
-    struct MockPwm {
-        duty_cycle: f32,
+    struct MockActuator {
+        steering: f32,
+        throttle: f32,
     }
 
-    impl MockPwm {
+    impl MockActuator {
         fn new() -> Self {
-            Self { duty_cycle: 0.0 }
-        }
-    }
-
-    impl PwmInterface for MockPwm {
-        fn set_duty_cycle(&mut self, duty_cycle: f32) -> Result<()> {
-            if !(0.0..=1.0).contains(&duty_cycle) {
-                return Err(crate::platform::PlatformError::Pwm(
-                    crate::platform::error::PwmError::InvalidDutyCycle,
-                ));
+            Self {
+                steering: 0.0,
+                throttle: 0.0,
             }
-            self.duty_cycle = duty_cycle;
-            Ok(())
-        }
-
-        fn duty_cycle(&self) -> f32 {
-            self.duty_cycle
-        }
-
-        fn set_frequency(&mut self, _frequency: u32) -> Result<()> {
-            Ok(())
-        }
-
-        fn frequency(&self) -> u32 {
-            50
-        }
-
-        fn enable(&mut self) {}
-        fn disable(&mut self) {}
-
-        fn is_enabled(&self) -> bool {
-            true
         }
     }
 
-    // ========== AutoMode Tests ==========
+    impl ActuatorInterface for MockActuator {
+        fn set_steering(&mut self, normalized: f32) -> Result<(), &'static str> {
+            self.steering = normalized;
+            Ok(())
+        }
+        fn set_throttle(&mut self, normalized: f32) -> Result<(), &'static str> {
+            self.throttle = normalized;
+            Ok(())
+        }
+        fn get_steering(&self) -> f32 {
+            self.steering
+        }
+        fn get_throttle(&self) -> f32 {
+            self.throttle
+        }
+    }
+
+    fn make_waypoint(seq: u16, lat: f32, lon: f32) -> Waypoint {
+        Waypoint {
+            seq,
+            frame: 3,    // MAV_FRAME_GLOBAL_RELATIVE_ALT
+            command: 16, // MAV_CMD_NAV_WAYPOINT
+            current: if seq == 0 { 1 } else { 0 },
+            autocontinue: 1,
+            param1: 0.0,
+            param2: 0.0,
+            param3: 0.0,
+            param4: 0.0,
+            x: (lat * 1e7) as i32,
+            y: (lon * 1e7) as i32,
+            z: 0.0,
+        }
+    }
+
+    fn gps_3d_fix() -> Option<GpsPosition> {
+        Some(GpsPosition {
+            latitude: 35.6762,
+            longitude: 139.6503,
+            altitude: 0.0,
+            speed: 0.0,
+            course_over_ground: Some(0.0),
+            fix_type: GpsFixType::Fix3D,
+            satellites: 10,
+        })
+    }
+
+    fn gps_no_fix() -> Option<GpsPosition> {
+        None
+    }
+
+    fn gps_2d_fix() -> Option<GpsPosition> {
+        Some(GpsPosition {
+            latitude: 35.6762,
+            longitude: 139.6503,
+            altitude: 0.0,
+            speed: 0.0,
+            course_over_ground: None,
+            fix_type: GpsFixType::Fix2D,
+            satellites: 4,
+        })
+    }
+
+    fn heading_north() -> Option<f32> {
+        Some(0.0)
+    }
 
     #[test]
     fn test_auto_state_default() {
@@ -435,29 +470,130 @@ mod tests {
         assert_eq!(state.elapsed_ms, 0);
     }
 
+    // ========== can_enter validation tests ==========
+
     #[test]
-    fn test_auto_mode_creation() {
-        let mut steering_pwm = MockPwm::new();
-        let mut throttle_pwm = MockPwm::new();
-        let mut system_state = SystemState::new();
-        system_state.armed = ArmedState::Armed;
-        let actuator_config = ActuatorConfig::default();
+    fn test_auto_can_enter_no_gps() {
+        clear_mission();
+        add_waypoint(make_waypoint(0, 35.68, 139.65));
+        let result = AutoMode::can_enter(gps_no_fix);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Auto requires GPS fix");
+        clear_mission();
+    }
 
-        let mut actuators = Actuators::new(
-            &mut steering_pwm,
-            &mut throttle_pwm,
-            &system_state,
-            actuator_config,
-        );
+    #[test]
+    fn test_auto_can_enter_no_3d_fix() {
+        clear_mission();
+        add_waypoint(make_waypoint(0, 35.68, 139.65));
+        let result = AutoMode::can_enter(gps_2d_fix);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Auto requires 3D GPS fix");
+        clear_mission();
+    }
 
-        fn mock_gps() -> Option<GpsPosition> {
-            None
-        }
-        fn mock_heading() -> Option<f32> {
-            None
-        }
+    #[test]
+    fn test_auto_can_enter_no_mission() {
+        clear_mission();
+        let result = AutoMode::can_enter(gps_3d_fix);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Auto requires mission loaded");
+    }
 
-        let auto_mode = AutoMode::new(&mut actuators, mock_gps, mock_heading);
-        assert_eq!(auto_mode.name(), "Auto");
+    #[test]
+    fn test_auto_can_enter_success() {
+        clear_mission();
+        add_waypoint(make_waypoint(0, 35.68, 139.65));
+        let result = AutoMode::can_enter(gps_3d_fix);
+        assert!(result.is_ok());
+        clear_mission();
+    }
+
+    // ========== Mode lifecycle tests ==========
+
+    #[test]
+    fn test_auto_enter_exit_lifecycle() {
+        clear_mission();
+        add_waypoint(make_waypoint(0, 35.68, 139.65));
+
+        let actuators = MockActuator::new();
+        let mut mode = AutoMode::new(Box::new(actuators), gps_3d_fix, heading_north);
+
+        assert_eq!(mode.name(), "Auto");
+        assert!(mode.enter().is_ok());
+        assert!(mode.state.is_some());
+
+        assert!(mode.exit().is_ok());
+        assert!(mode.state.is_none());
+        assert!(mode.actuators.get_steering().abs() < 0.001);
+        assert!(mode.actuators.get_throttle().abs() < 0.001);
+        clear_mission();
+    }
+
+    #[test]
+    fn test_auto_enter_no_gps_fails() {
+        clear_mission();
+        add_waypoint(make_waypoint(0, 35.68, 139.65));
+
+        let actuators = MockActuator::new();
+        let mut mode = AutoMode::new(Box::new(actuators), gps_no_fix, heading_north);
+
+        let result = mode.enter();
+        assert!(result.is_err());
+        assert!(mode.state.is_none());
+        clear_mission();
+    }
+
+    #[test]
+    fn test_auto_enter_no_mission_fails() {
+        clear_mission();
+        let actuators = MockActuator::new();
+        let mut mode = AutoMode::new(Box::new(actuators), gps_3d_fix, heading_north);
+
+        let result = mode.enter();
+        assert!(result.is_err());
+        clear_mission();
+    }
+
+    // ========== Update error handling tests ==========
+
+    #[test]
+    fn test_auto_update_gps_loss() {
+        clear_mission();
+        add_waypoint(make_waypoint(0, 35.68, 139.65));
+
+        let actuators = MockActuator::new();
+        let mut mode = AutoMode::new(Box::new(actuators), gps_3d_fix, heading_north);
+        mode.enter().unwrap();
+
+        // Switch GPS provider to return None (simulating GPS loss)
+        mode.gps_provider = gps_no_fix;
+        let result = mode.update(0.02);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "GPS lost during Auto");
+
+        mode.gps_provider = gps_3d_fix;
+        mode.exit().unwrap();
+        clear_mission();
+    }
+
+    #[test]
+    fn test_auto_update_gps_degraded() {
+        clear_mission();
+        add_waypoint(make_waypoint(0, 35.68, 139.65));
+
+        let actuators = MockActuator::new();
+        let mut mode = AutoMode::new(Box::new(actuators), gps_3d_fix, heading_north);
+        mode.enter().unwrap();
+
+        // Switch GPS to 2D fix (degraded)
+        mode.gps_provider = gps_2d_fix;
+        let result = mode.update(0.02);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "GPS fix lost during Auto");
+
+        mode.gps_provider = gps_3d_fix;
+        mode.exit().unwrap();
+        clear_mission();
     }
 }

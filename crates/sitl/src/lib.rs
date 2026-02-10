@@ -1,4 +1,5 @@
 pub mod adapter;
+pub mod autopilot;
 pub mod bridge;
 pub mod error;
 pub mod gcs;

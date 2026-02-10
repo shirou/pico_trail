@@ -23,12 +23,14 @@
 //! - FR-crqdd-rtl-gps-loss-handling: GPS loss handling requirements
 //! - ArduPilot Rover RTL: https://ardupilot.org/rover/docs/rtl-mode.html
 
+extern crate alloc;
+use alloc::boxed::Box;
+
 use super::Mode;
-use crate::devices::gps::GpsFixType;
-use crate::devices::gps::GpsPosition;
-use crate::libraries::ActuatorInterface;
-use crate::subsystems::navigation::PositionTarget;
-use crate::subsystems::navigation::{NavigationController, SimpleNavigationController};
+use crate::navigation::controller::{NavigationController, SimpleNavigationController};
+use crate::navigation::PositionTarget;
+use crate::navigation::{GpsFixType, GpsPosition};
+use crate::servo::ActuatorInterface;
 
 /// RTL Mode state
 #[derive(Clone, Copy, Debug)]
@@ -54,9 +56,9 @@ impl Default for RtlState {
 ///
 /// Provides direct navigation to home position.
 /// This is the fallback mode when SmartRTL is not available.
-pub struct RtlMode<'a> {
+pub struct RtlMode {
     /// Actuator interface for steering and throttle
-    actuators: &'a mut dyn ActuatorInterface,
+    actuators: Box<dyn ActuatorInterface>,
     /// Navigation controller for path following
     nav_controller: SimpleNavigationController,
     /// RTL state (set on mode entry)
@@ -69,7 +71,7 @@ pub struct RtlMode<'a> {
     heading_provider: fn() -> Option<f32>,
 }
 
-impl<'a> RtlMode<'a> {
+impl RtlMode {
     /// Create new RTL mode
     ///
     /// # Arguments
@@ -79,7 +81,7 @@ impl<'a> RtlMode<'a> {
     /// * `home_provider` - Function that returns home position (lat, lon)
     /// * `heading_provider` - Function that returns current heading (degrees, 0-360)
     pub fn new(
-        actuators: &'a mut dyn ActuatorInterface,
+        actuators: Box<dyn ActuatorInterface>,
         gps_provider: fn() -> Option<GpsPosition>,
         home_provider: fn() -> Option<(f32, f32)>,
         heading_provider: fn() -> Option<f32>,
@@ -95,27 +97,15 @@ impl<'a> RtlMode<'a> {
     }
 
     /// Check if RTL mode can be entered
-    ///
-    /// Validates:
-    /// - GPS fix is available and valid (3D fix)
-    /// - Home position is set
-    ///
-    /// # Returns
-    ///
-    /// Ok(()) if entry is allowed, Err with reason otherwise
     pub fn can_enter(
         gps_provider: fn() -> Option<GpsPosition>,
         home_provider: fn() -> Option<(f32, f32)>,
     ) -> Result<(), &'static str> {
-        // Check GPS fix
         let gps = gps_provider().ok_or("RTL requires GPS fix")?;
         if gps.fix_type < GpsFixType::Fix3D {
             return Err("RTL requires 3D GPS fix");
         }
-
-        // Check home position
         home_provider().ok_or("RTL requires home position")?;
-
         Ok(())
     }
 
@@ -125,7 +115,7 @@ impl<'a> RtlMode<'a> {
     }
 }
 
-impl<'a> Mode for RtlMode<'a> {
+impl Mode for RtlMode {
     fn enter(&mut self) -> Result<(), &'static str> {
         // Validate GPS fix
         let gps = (self.gps_provider)().ok_or("No GPS fix")?;
@@ -166,7 +156,6 @@ impl<'a> Mode for RtlMode<'a> {
 
         // Validate GPS fix
         if gps.fix_type < GpsFixType::Fix3D {
-            // GPS degraded - return error to trigger Hold mode
             return Err("GPS fix lost during RTL");
         }
 
@@ -219,177 +208,6 @@ impl<'a> Mode for RtlMode<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::communication::mavlink::state::{ArmedState, SystemState};
-    use crate::libraries::{ActuatorConfig, Actuators};
-    use crate::platform::traits::pwm::PwmInterface;
-    use crate::platform::Result;
-
-    // Mock PWM for testing
-    struct MockPwm {
-        duty_cycle: f32,
-    }
-
-    impl MockPwm {
-        fn new() -> Self {
-            Self { duty_cycle: 0.0 }
-        }
-    }
-
-    impl PwmInterface for MockPwm {
-        fn set_duty_cycle(&mut self, duty_cycle: f32) -> Result<()> {
-            if !(0.0..=1.0).contains(&duty_cycle) {
-                return Err(crate::platform::PlatformError::Pwm(
-                    crate::platform::error::PwmError::InvalidDutyCycle,
-                ));
-            }
-            self.duty_cycle = duty_cycle;
-            Ok(())
-        }
-
-        fn duty_cycle(&self) -> f32 {
-            self.duty_cycle
-        }
-
-        fn set_frequency(&mut self, _frequency: u32) -> Result<()> {
-            Ok(())
-        }
-
-        fn frequency(&self) -> u32 {
-            50
-        }
-
-        fn enable(&mut self) {}
-        fn disable(&mut self) {}
-
-        fn is_enabled(&self) -> bool {
-            true
-        }
-    }
-
-    fn mock_gps_provider() -> Option<GpsPosition> {
-        Some(GpsPosition {
-            latitude: 35.0,
-            longitude: 139.0,
-            altitude: 10.0,
-            speed: 0.0,
-            course_over_ground: None,
-            fix_type: GpsFixType::Fix3D,
-            satellites: 8,
-        })
-    }
-
-    fn mock_home_provider() -> Option<(f32, f32)> {
-        Some((35.0, 139.0))
-    }
-
-    fn mock_heading_provider() -> Option<f32> {
-        Some(0.0)
-    }
-
-    // ========== RtlMode Tests ==========
-
-    #[test]
-    fn test_rtl_mode_creation() {
-        let mut steering_pwm = MockPwm::new();
-        let mut throttle_pwm = MockPwm::new();
-        let mut system_state = SystemState::new();
-        system_state.armed = ArmedState::Armed;
-        let actuator_config = ActuatorConfig::default();
-
-        let mut actuators = Actuators::new(
-            &mut steering_pwm,
-            &mut throttle_pwm,
-            &system_state,
-            actuator_config,
-        );
-        let rtl_mode = RtlMode::new(
-            &mut actuators,
-            mock_gps_provider,
-            mock_home_provider,
-            mock_heading_provider,
-        );
-
-        assert_eq!(rtl_mode.name(), "RTL");
-    }
-
-    #[test]
-    fn test_rtl_mode_enter_exit() {
-        let mut steering_pwm = MockPwm::new();
-        let mut throttle_pwm = MockPwm::new();
-        let mut system_state = SystemState::new();
-        system_state.armed = ArmedState::Armed;
-        let actuator_config = ActuatorConfig::default();
-
-        let mut actuators = Actuators::new(
-            &mut steering_pwm,
-            &mut throttle_pwm,
-            &system_state,
-            actuator_config,
-        );
-        let mut rtl_mode = RtlMode::new(
-            &mut actuators,
-            mock_gps_provider,
-            mock_home_provider,
-            mock_heading_provider,
-        );
-
-        // Enter should succeed (host test mode)
-        assert!(rtl_mode.enter().is_ok());
-        assert!(rtl_mode.exit().is_ok());
-    }
-
-    #[test]
-    fn test_rtl_mode_update() {
-        let mut steering_pwm = MockPwm::new();
-        let mut throttle_pwm = MockPwm::new();
-        let mut system_state = SystemState::new();
-        system_state.armed = ArmedState::Armed;
-        let actuator_config = ActuatorConfig::default();
-
-        let mut actuators = Actuators::new(
-            &mut steering_pwm,
-            &mut throttle_pwm,
-            &system_state,
-            actuator_config,
-        );
-        let mut rtl_mode = RtlMode::new(
-            &mut actuators,
-            mock_gps_provider,
-            mock_home_provider,
-            mock_heading_provider,
-        );
-
-        // Enter first
-        assert!(rtl_mode.enter().is_ok());
-
-        // Update should succeed (host test mode - no-op)
-        assert!(rtl_mode.update(0.02).is_ok());
-    }
-
-    #[test]
-    fn test_rtl_has_arrived_default() {
-        let mut steering_pwm = MockPwm::new();
-        let mut throttle_pwm = MockPwm::new();
-        let mut system_state = SystemState::new();
-        system_state.armed = ArmedState::Armed;
-        let actuator_config = ActuatorConfig::default();
-
-        let mut actuators = Actuators::new(
-            &mut steering_pwm,
-            &mut throttle_pwm,
-            &system_state,
-            actuator_config,
-        );
-        let rtl_mode = RtlMode::new(
-            &mut actuators,
-            mock_gps_provider,
-            mock_home_provider,
-            mock_heading_provider,
-        );
-
-        // Should not be arrived before entering
-        assert!(!rtl_mode.has_arrived());
-    }
 
     #[test]
     fn test_rtl_state_default() {

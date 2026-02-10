@@ -91,7 +91,8 @@ async fn main() {
 
                 let sim_time = bridge.sim_time_us();
 
-                gcs.poll_and_heartbeat(sim_time);
+                let _ = gcs.poll_incoming();
+                gcs.send_heartbeats(sim_time);
 
                 for i in 1..=VEHICLE_COUNT {
                     let vehicle = bridge.get_vehicle(VehicleId(i)).unwrap();

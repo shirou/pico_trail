@@ -588,6 +588,11 @@ impl<V: VehicleType> MessageDispatcher<V> {
                     .handle_rc_channels_override(rc_override, timestamp_us)
                     .await
             }
+            MANUAL_CONTROL(data) => {
+                self.rc_input_handler
+                    .handle_manual_control(data, timestamp_us)
+                    .await
+            }
             _ => false,
         }
     }

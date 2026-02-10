@@ -13,7 +13,7 @@ categories = ["embedded", "no-std"]
 
 [dependencies]
 # Core business logic (workspace dependency)
-pico_trail_core = { path = "../core", features = ["embassy", "defmt"] }
+pico_trail_core = { path = "../core", features = ["embassy", "embedded-mavlink", "defmt"] }
 
 # defmt logging
 defmt = "1.0.1"

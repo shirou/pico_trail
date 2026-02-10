@@ -21,17 +21,15 @@
 //! - ADR-897ov-circle-mode-path-generation: Architecture decision
 //! - ArduPilot Circle Mode: https://ardupilot.org/rover/docs/circle-mode.html
 
-use super::Mode;
-use crate::devices::gps::GpsFixType;
-use crate::devices::gps::GpsPosition;
-use crate::libraries::ActuatorInterface;
-use crate::subsystems::navigation::{
-    calculate_bearing, offset_position, NavigationController, PositionTarget,
-    SimpleNavigationController,
-};
+extern crate alloc;
+use alloc::boxed::Box;
 
-// CircleDirection is defined in core and re-exported via crate::parameters::circle
-pub use pico_trail_core::parameters::circle::CircleDirection;
+use super::Mode;
+use crate::navigation::controller::{NavigationController, SimpleNavigationController};
+use crate::navigation::{calculate_bearing, offset_position, PositionTarget};
+use crate::navigation::{GpsFixType, GpsPosition};
+use crate::parameters::circle::CircleDirection;
+use crate::servo::ActuatorInterface;
 
 /// Circle mode state
 #[derive(Clone, Copy, Debug)]
@@ -82,14 +80,6 @@ impl Default for CircleConfig {
 
 impl CircleConfig {
     /// Create configuration from CircleParams
-    ///
-    /// # Arguments
-    ///
-    /// * `params` - Circle parameters loaded from parameter store
-    ///
-    /// # Returns
-    ///
-    /// Circle configuration with values from parameters
     pub fn from_params(params: &crate::parameters::CircleParams) -> Self {
         Self {
             radius: params.radius,
@@ -99,14 +89,6 @@ impl CircleConfig {
     }
 
     /// Create configuration from parameter store
-    ///
-    /// # Arguments
-    ///
-    /// * `store` - Parameter store to read from
-    ///
-    /// # Returns
-    ///
-    /// Circle configuration with values from store or defaults
     pub fn from_store(store: &crate::parameters::ParameterStore) -> Self {
         let params = crate::parameters::CircleParams::from_store(store);
         Self::from_params(&params)
@@ -116,9 +98,9 @@ impl CircleConfig {
 /// Circle Mode
 ///
 /// Provides autonomous circular orbit around a center point.
-pub struct CircleMode<'a> {
+pub struct CircleMode {
     /// Actuator interface for steering and throttle
-    actuators: &'a mut dyn ActuatorInterface,
+    actuators: Box<dyn ActuatorInterface>,
     /// Navigation controller for path following
     nav_controller: SimpleNavigationController,
     /// Circle state (set on mode entry)
@@ -131,7 +113,7 @@ pub struct CircleMode<'a> {
     heading_provider: fn() -> Option<f32>,
 }
 
-impl<'a> CircleMode<'a> {
+impl CircleMode {
     /// Look-ahead time in seconds for target calculation
     const LOOK_AHEAD_TIME: f32 = 1.5;
 
@@ -144,7 +126,7 @@ impl<'a> CircleMode<'a> {
     /// * `gps_provider` - Function that returns current GPS position
     /// * `heading_provider` - Function that returns current heading in degrees
     pub fn new(
-        actuators: &'a mut dyn ActuatorInterface,
+        actuators: Box<dyn ActuatorInterface>,
         config: CircleConfig,
         gps_provider: fn() -> Option<GpsPosition>,
         heading_provider: fn() -> Option<f32>,
@@ -160,9 +142,6 @@ impl<'a> CircleMode<'a> {
     }
 
     /// Calculate the next target point on the circle perimeter
-    ///
-    /// Uses look-ahead time to generate a target point ahead of the vehicle's
-    /// current position on the circle, providing smooth path following.
     fn calculate_target(&self, current: &GpsPosition) -> Option<PositionTarget> {
         let state = self.state.as_ref()?;
 
@@ -174,7 +153,7 @@ impl<'a> CircleMode<'a> {
             current.longitude,
         );
 
-        // 2. Calculate angular velocity: ω = v / r (rad/s)
+        // 2. Calculate angular velocity: w = v / r (rad/s)
         let angular_velocity = state.speed / state.radius;
         let angular_velocity_deg = angular_velocity.to_degrees();
 
@@ -199,18 +178,17 @@ impl<'a> CircleMode<'a> {
     }
 
     /// Calculate center point based on current position and heading
-    fn calculate_center(
+    pub fn calculate_center(
         current_lat: f32,
         current_lon: f32,
         heading: f32,
         radius: f32,
     ) -> (f32, f32) {
-        // Center is CIRC_RADIUS meters ahead in heading direction
         offset_position(current_lat, current_lon, radius, heading)
     }
 }
 
-impl<'a> Mode for CircleMode<'a> {
+impl Mode for CircleMode {
     fn enter(&mut self) -> Result<(), &'static str> {
         // Get current GPS position
         let gps = (self.gps_provider)().ok_or("No GPS fix")?;
@@ -312,7 +290,7 @@ impl<'a> Mode for CircleMode<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::subsystems::navigation::calculate_distance;
+    use crate::navigation::calculate_distance;
 
     // ========== CircleDirection Tests ==========
 
@@ -341,9 +319,7 @@ mod tests {
 
     #[test]
     fn test_circle_config_from_params() {
-        use crate::parameters::CircleParams;
-
-        let params = CircleParams {
+        let params = crate::parameters::CircleParams {
             radius: 50.0,
             speed: 3.5,
             direction: CircleDirection::CounterClockwise,
@@ -357,10 +333,10 @@ mod tests {
 
     #[test]
     fn test_circle_config_from_store() {
-        use crate::parameters::{CircleParams, ParamValue, ParameterStore};
+        use crate::parameters::{ParamValue, ParameterStore};
 
         let mut store = ParameterStore::new();
-        CircleParams::register_defaults(&mut store).unwrap();
+        crate::parameters::CircleParams::register_defaults(&mut store).unwrap();
 
         // Use default values from store
         let config = CircleConfig::from_store(&store);
@@ -393,10 +369,8 @@ mod tests {
 
     #[test]
     fn test_calculate_center_north() {
-        // Vehicle at origin, facing north, radius 20m
         let (center_lat, center_lon) = CircleMode::calculate_center(0.0, 0.0, 0.0, 20.0);
 
-        // Center should be ~20m north
         let distance = calculate_distance(0.0, 0.0, center_lat, center_lon);
         assert!(
             (distance - 20.0).abs() < 1.0,
@@ -408,7 +382,6 @@ mod tests {
 
     #[test]
     fn test_calculate_center_east() {
-        // Vehicle at origin, facing east, radius 20m
         let (center_lat, center_lon) = CircleMode::calculate_center(0.0, 0.0, 90.0, 20.0);
 
         let distance = calculate_distance(0.0, 0.0, center_lat, center_lon);
@@ -422,7 +395,6 @@ mod tests {
 
     #[test]
     fn test_calculate_center_tokyo() {
-        // Vehicle in Tokyo, facing northeast (45°), radius 50m
         let start_lat = 35.6762;
         let start_lon = 139.6503;
         let (center_lat, center_lon) =

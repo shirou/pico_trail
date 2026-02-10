@@ -3,13 +3,38 @@
 use crate::types::{GpsData, GpsFixType, ImuData, SensorData};
 use mavlink::common::*;
 
-/// Build a HEARTBEAT message for a ground rover.
-pub fn build_heartbeat() -> MavMessage {
+/// Build a HEARTBEAT message for a ground rover (basic, unarmed).
+#[cfg(test)]
+pub(crate) fn build_heartbeat() -> MavMessage {
     MavMessage::HEARTBEAT(HEARTBEAT_DATA {
         custom_mode: 0,
         mavtype: MavType::MAV_TYPE_GROUND_ROVER,
         autopilot: MavAutopilot::MAV_AUTOPILOT_GENERIC,
         base_mode: MavModeFlag::MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+        system_status: MavState::MAV_STATE_ACTIVE,
+        mavlink_version: 3,
+    })
+}
+
+/// Build a HEARTBEAT reflecting the current armed state and flight mode from SYSTEM_STATE.
+pub fn build_heartbeat_with_state() -> MavMessage {
+    use pico_trail_core::autopilot::state::SYSTEM_STATE;
+
+    let (armed, mode) = critical_section::with(|cs| {
+        let state = SYSTEM_STATE.borrow_ref(cs);
+        (state.is_armed(), state.mode)
+    });
+
+    let mut base_mode = MavModeFlag::MAV_MODE_FLAG_CUSTOM_MODE_ENABLED;
+    if armed {
+        base_mode |= MavModeFlag::MAV_MODE_FLAG_SAFETY_ARMED;
+    }
+
+    MavMessage::HEARTBEAT(HEARTBEAT_DATA {
+        custom_mode: mode.to_custom_mode(),
+        mavtype: MavType::MAV_TYPE_GROUND_ROVER,
+        autopilot: MavAutopilot::MAV_AUTOPILOT_GENERIC,
+        base_mode,
         system_status: MavState::MAV_STATE_ACTIVE,
         mavlink_version: 3,
     })
@@ -25,16 +50,7 @@ pub fn build_attitude(
     time_boot_ms: u32,
 ) -> MavMessage {
     let (roll, pitch, yaw) = if let Some(q) = attitude_quat {
-        let (w, x, y, z) = (q[0], q[1], q[2], q[3]);
-        let roll = (2.0 * (w * x + y * z)).atan2(1.0 - 2.0 * (x * x + y * y));
-        let sin_pitch = 2.0 * (w * y - z * x);
-        let pitch = if sin_pitch.abs() >= 1.0 {
-            sin_pitch.signum() * core::f32::consts::FRAC_PI_2
-        } else {
-            sin_pitch.asin()
-        };
-        let yaw = (2.0 * (w * z + x * y)).atan2(1.0 - 2.0 * (y * y + z * z));
-        (roll, pitch, yaw)
+        crate::autopilot::quat_to_euler(*q)
     } else {
         // Fallback: derive roll/pitch from accelerometer (no yaw)
         let ax = imu.accel_mss[0] as f64;
@@ -132,8 +148,7 @@ pub fn build_telemetry(sensors: &SensorData) -> TelemetrySet {
 
     // Derive heading from quaternion yaw if available, otherwise from GPS course
     let heading_from_quat = sensors.attitude_quat.as_ref().map(|q| {
-        let (w, x, y, z) = (q[0], q[1], q[2], q[3]);
-        let yaw_rad = (2.0 * (w * z + x * y)).atan2(1.0 - 2.0 * (y * y + z * z));
+        let (_, _, yaw_rad) = crate::autopilot::quat_to_euler(*q);
         let yaw_deg = yaw_rad.to_degrees();
         let yaw_deg = if yaw_deg < 0.0 {
             yaw_deg + 360.0

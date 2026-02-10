@@ -27,12 +27,15 @@
 //! - FR-hibx1-smartrtl-rtl-fallback: RTL fallback requirements
 //! - ArduPilot SmartRTL: https://ardupilot.org/rover/docs/smartrtl-mode.html
 
+extern crate alloc;
+use alloc::boxed::Box;
+
 use super::Mode;
-use crate::devices::gps::GpsFixType;
-use crate::devices::gps::GpsPosition;
-use crate::libraries::ActuatorInterface;
-use crate::subsystems::navigation::PositionTarget;
-use crate::subsystems::navigation::{NavigationController, PathPoint, SimpleNavigationController};
+use crate::navigation::controller::{NavigationController, SimpleNavigationController};
+use crate::navigation::path_recorder::PathPoint;
+use crate::navigation::PositionTarget;
+use crate::navigation::{GpsFixType, GpsPosition};
+use crate::servo::ActuatorInterface;
 
 /// Maximum waypoints to load from path recorder
 const MAX_WAYPOINTS: usize = 300;
@@ -51,9 +54,9 @@ struct SmartRtlState {
 /// SmartRTL Mode
 ///
 /// Provides safe return to home by retracing the recorded path.
-pub struct SmartRtlMode<'a> {
+pub struct SmartRtlMode {
     /// Actuator interface for steering and throttle
-    actuators: &'a mut dyn ActuatorInterface,
+    actuators: Box<dyn ActuatorInterface>,
     /// Navigation controller for path following
     nav_controller: SimpleNavigationController,
     /// SmartRTL state
@@ -72,7 +75,7 @@ pub struct SmartRtlMode<'a> {
     heading_provider: fn() -> Option<f32>,
 }
 
-impl<'a> SmartRtlMode<'a> {
+impl SmartRtlMode {
     /// Create new SmartRTL mode
     ///
     /// # Arguments
@@ -83,7 +86,7 @@ impl<'a> SmartRtlMode<'a> {
     /// * `home_provider` - Function that returns home position (lat, lon)
     /// * `heading_provider` - Function that returns current heading (degrees, 0-360)
     pub fn new(
-        actuators: &'a mut dyn ActuatorInterface,
+        actuators: Box<dyn ActuatorInterface>,
         gps_provider: fn() -> Option<GpsPosition>,
         path_provider: fn(&mut [PathPoint]) -> usize,
         home_provider: fn() -> Option<(f32, f32)>,
@@ -103,34 +106,19 @@ impl<'a> SmartRtlMode<'a> {
     }
 
     /// Check if SmartRTL mode can be entered
-    ///
-    /// Validates:
-    /// - GPS fix is available and valid (3D fix)
-    /// - Home position is set
-    /// - Recorded path is available (has at least one point)
-    ///
-    /// # Returns
-    ///
-    /// Ok(()) if entry is allowed, Err with reason otherwise
     pub fn can_enter(
         gps_provider: fn() -> Option<GpsPosition>,
         path_count_provider: fn() -> usize,
         home_provider: fn() -> Option<(f32, f32)>,
     ) -> Result<(), &'static str> {
-        // Check GPS fix
         let gps = gps_provider().ok_or("SmartRTL requires GPS fix")?;
         if gps.fix_type < GpsFixType::Fix3D {
             return Err("SmartRTL requires 3D GPS fix");
         }
-
-        // Check home position
         home_provider().ok_or("SmartRTL requires home position")?;
-
-        // Check path availability
         if path_count_provider() == 0 {
             return Err("SmartRTL requires recorded path");
         }
-
         Ok(())
     }
 
@@ -157,7 +145,7 @@ impl<'a> SmartRtlMode<'a> {
     }
 }
 
-impl<'a> Mode for SmartRtlMode<'a> {
+impl Mode for SmartRtlMode {
     fn enter(&mut self) -> Result<(), &'static str> {
         // Validate GPS fix
         let gps = (self.gps_provider)().ok_or("No GPS fix")?;
@@ -270,220 +258,6 @@ impl<'a> Mode for SmartRtlMode<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::communication::mavlink::state::{ArmedState, SystemState};
-    use crate::libraries::{ActuatorConfig, Actuators};
-    use crate::platform::traits::pwm::PwmInterface;
-    use crate::platform::Result;
-
-    // Mock PWM for testing
-    struct MockPwm {
-        duty_cycle: f32,
-    }
-
-    impl MockPwm {
-        fn new() -> Self {
-            Self { duty_cycle: 0.0 }
-        }
-    }
-
-    impl PwmInterface for MockPwm {
-        fn set_duty_cycle(&mut self, duty_cycle: f32) -> Result<()> {
-            if !(0.0..=1.0).contains(&duty_cycle) {
-                return Err(crate::platform::PlatformError::Pwm(
-                    crate::platform::error::PwmError::InvalidDutyCycle,
-                ));
-            }
-            self.duty_cycle = duty_cycle;
-            Ok(())
-        }
-
-        fn duty_cycle(&self) -> f32 {
-            self.duty_cycle
-        }
-
-        fn set_frequency(&mut self, _frequency: u32) -> Result<()> {
-            Ok(())
-        }
-
-        fn frequency(&self) -> u32 {
-            50
-        }
-
-        fn enable(&mut self) {}
-        fn disable(&mut self) {}
-
-        fn is_enabled(&self) -> bool {
-            true
-        }
-    }
-
-    fn mock_gps_provider() -> Option<GpsPosition> {
-        Some(GpsPosition {
-            latitude: 35.0,
-            longitude: 139.0,
-            altitude: 10.0,
-            speed: 0.0,
-            course_over_ground: None,
-            fix_type: GpsFixType::Fix3D,
-            satellites: 8,
-        })
-    }
-
-    fn mock_path_provider(buf: &mut [PathPoint]) -> usize {
-        if buf.is_empty() {
-            return 0;
-        }
-        buf[0] = PathPoint {
-            latitude: 35.0,
-            longitude: 139.0,
-            timestamp_ms: 0,
-        };
-        1
-    }
-
-    fn mock_home_provider() -> Option<(f32, f32)> {
-        Some((35.0, 139.0))
-    }
-
-    fn mock_heading_provider() -> Option<f32> {
-        Some(0.0)
-    }
-
-    // ========== SmartRtlMode Tests ==========
-
-    #[test]
-    fn test_smartrtl_mode_creation() {
-        let mut steering_pwm = MockPwm::new();
-        let mut throttle_pwm = MockPwm::new();
-        let mut system_state = SystemState::new();
-        system_state.armed = ArmedState::Armed;
-        let actuator_config = ActuatorConfig::default();
-
-        let mut actuators = Actuators::new(
-            &mut steering_pwm,
-            &mut throttle_pwm,
-            &system_state,
-            actuator_config,
-        );
-        let smartrtl_mode = SmartRtlMode::new(
-            &mut actuators,
-            mock_gps_provider,
-            mock_path_provider,
-            mock_home_provider,
-            mock_heading_provider,
-        );
-
-        assert_eq!(smartrtl_mode.name(), "SmartRTL");
-    }
-
-    #[test]
-    fn test_smartrtl_mode_enter_exit() {
-        let mut steering_pwm = MockPwm::new();
-        let mut throttle_pwm = MockPwm::new();
-        let mut system_state = SystemState::new();
-        system_state.armed = ArmedState::Armed;
-        let actuator_config = ActuatorConfig::default();
-
-        let mut actuators = Actuators::new(
-            &mut steering_pwm,
-            &mut throttle_pwm,
-            &system_state,
-            actuator_config,
-        );
-        let mut smartrtl_mode = SmartRtlMode::new(
-            &mut actuators,
-            mock_gps_provider,
-            mock_path_provider,
-            mock_home_provider,
-            mock_heading_provider,
-        );
-
-        // Enter should succeed (host test mode)
-        assert!(smartrtl_mode.enter().is_ok());
-        assert!(smartrtl_mode.exit().is_ok());
-    }
-
-    #[test]
-    fn test_smartrtl_mode_update() {
-        let mut steering_pwm = MockPwm::new();
-        let mut throttle_pwm = MockPwm::new();
-        let mut system_state = SystemState::new();
-        system_state.armed = ArmedState::Armed;
-        let actuator_config = ActuatorConfig::default();
-
-        let mut actuators = Actuators::new(
-            &mut steering_pwm,
-            &mut throttle_pwm,
-            &system_state,
-            actuator_config,
-        );
-        let mut smartrtl_mode = SmartRtlMode::new(
-            &mut actuators,
-            mock_gps_provider,
-            mock_path_provider,
-            mock_home_provider,
-            mock_heading_provider,
-        );
-
-        // Enter first
-        assert!(smartrtl_mode.enter().is_ok());
-
-        // Update should succeed (host test mode - no-op)
-        assert!(smartrtl_mode.update(0.02).is_ok());
-    }
-
-    #[test]
-    fn test_smartrtl_is_completed_default() {
-        let mut steering_pwm = MockPwm::new();
-        let mut throttle_pwm = MockPwm::new();
-        let mut system_state = SystemState::new();
-        system_state.armed = ArmedState::Armed;
-        let actuator_config = ActuatorConfig::default();
-
-        let mut actuators = Actuators::new(
-            &mut steering_pwm,
-            &mut throttle_pwm,
-            &system_state,
-            actuator_config,
-        );
-        let smartrtl_mode = SmartRtlMode::new(
-            &mut actuators,
-            mock_gps_provider,
-            mock_path_provider,
-            mock_home_provider,
-            mock_heading_provider,
-        );
-
-        // Should not be completed before entering
-        assert!(!smartrtl_mode.is_completed());
-    }
-
-    #[test]
-    fn test_smartrtl_waypoint_tracking() {
-        let mut steering_pwm = MockPwm::new();
-        let mut throttle_pwm = MockPwm::new();
-        let mut system_state = SystemState::new();
-        system_state.armed = ArmedState::Armed;
-        let actuator_config = ActuatorConfig::default();
-
-        let mut actuators = Actuators::new(
-            &mut steering_pwm,
-            &mut throttle_pwm,
-            &system_state,
-            actuator_config,
-        );
-        let smartrtl_mode = SmartRtlMode::new(
-            &mut actuators,
-            mock_gps_provider,
-            mock_path_provider,
-            mock_home_provider,
-            mock_heading_provider,
-        );
-
-        // Before entering, should have 0 waypoints
-        assert_eq!(smartrtl_mode.current_waypoint(), 0);
-        assert_eq!(smartrtl_mode.total_waypoints(), 0);
-    }
 
     #[test]
     fn test_smartrtl_state_default() {

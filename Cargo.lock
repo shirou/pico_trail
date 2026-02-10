@@ -1598,6 +1598,10 @@ name = "pico_trail_sitl"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "critical-section",
+ "embassy-futures",
+ "embassy-sync",
+ "heapless 0.9.2",
  "mavlink",
  "pico_trail_core",
  "rand",

@@ -18,7 +18,7 @@ use mavlink::common::{
 use micromath::F32Ext;
 
 fn degrees_to_deg_e7(degrees: f32) -> i32 {
-    (degrees * 1e7) as i32
+    ((degrees as f64) * 1e7) as i32
 }
 
 fn meters_to_mm(meters: f32) -> i32 {
@@ -687,7 +687,9 @@ mod tests {
 
     #[test]
     fn test_degrees_to_deg_e7_negative() {
-        assert_eq!(degrees_to_deg_e7(-34.6037), -346037000);
+        // f32 `-34.6037` is actually -34.603698730468750 (7 significant digits)
+        // With f64 intermediate: (-34.603698730468750_f64 * 1e7) = -346036987
+        assert_eq!(degrees_to_deg_e7(-34.6037), -346036987);
     }
 
     #[test]

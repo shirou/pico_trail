@@ -23,14 +23,16 @@
 //! - ADR-2hs12-unified-waypoint-navigation: Architecture decision
 //! - ArduPilot Guided Mode: https://ardupilot.org/rover/docs/guided-mode.html
 
+extern crate alloc;
+use alloc::boxed::Box;
+
 use super::Mode;
-use crate::core::mission::{
+use crate::mission::{
     complete_mission, get_current_target, get_mission_state, set_mission_state, MissionState,
 };
-use crate::devices::gps::GpsFixType;
-use crate::devices::gps::GpsPosition;
-use crate::libraries::ActuatorInterface;
-use crate::subsystems::navigation::{NavigationController, SimpleNavigationController};
+use crate::navigation::controller::{NavigationController, SimpleNavigationController};
+use crate::navigation::{GpsFixType, GpsPosition};
+use crate::servo::ActuatorInterface;
 
 /// Guided Mode state
 #[derive(Clone, Copy, Debug, Default)]
@@ -45,9 +47,9 @@ struct GuidedState {
 ///
 /// Provides single-waypoint navigation for GCS-controlled movement.
 /// Navigates to targets set via SET_POSITION_TARGET_GLOBAL_INT or DO_REPOSITION.
-pub struct GuidedMode<'a> {
+pub struct GuidedMode {
     /// Actuator interface for steering and throttle
-    actuators: &'a mut dyn ActuatorInterface,
+    actuators: Box<dyn ActuatorInterface>,
     /// Navigation controller for path following
     nav_controller: SimpleNavigationController,
     /// Guided state
@@ -58,7 +60,7 @@ pub struct GuidedMode<'a> {
     heading_provider: fn() -> Option<f32>,
 }
 
-impl<'a> GuidedMode<'a> {
+impl GuidedMode {
     /// Create new Guided mode
     ///
     /// # Arguments
@@ -67,7 +69,7 @@ impl<'a> GuidedMode<'a> {
     /// * `gps_provider` - Function that returns current GPS position
     /// * `heading_provider` - Function that returns current heading (degrees, 0-360)
     pub fn new(
-        actuators: &'a mut dyn ActuatorInterface,
+        actuators: Box<dyn ActuatorInterface>,
         gps_provider: fn() -> Option<GpsPosition>,
         heading_provider: fn() -> Option<f32>,
     ) -> Self {
@@ -81,20 +83,11 @@ impl<'a> GuidedMode<'a> {
     }
 
     /// Check if Guided mode can be entered
-    ///
-    /// Validates:
-    /// - GPS fix is available and valid (3D fix)
-    ///
-    /// # Returns
-    ///
-    /// Ok(()) if entry is allowed, Err with reason otherwise
     pub fn can_enter(gps_provider: fn() -> Option<GpsPosition>) -> Result<(), &'static str> {
-        // Check GPS fix
         let gps = gps_provider().ok_or("Guided requires GPS fix")?;
         if gps.fix_type < GpsFixType::Fix3D {
             return Err("Guided requires 3D GPS fix");
         }
-
         Ok(())
     }
 
@@ -112,7 +105,7 @@ impl<'a> GuidedMode<'a> {
     }
 }
 
-impl<'a> Mode for GuidedMode<'a> {
+impl Mode for GuidedMode {
     fn enter(&mut self) -> Result<(), &'static str> {
         // Validate GPS fix
         let gps = (self.gps_provider)().ok_or("No GPS fix")?;

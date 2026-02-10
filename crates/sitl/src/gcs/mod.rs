@@ -18,7 +18,7 @@ use mavlink::MavHeader;
 use mavlink::Message;
 
 use crate::types::SensorData;
-use telemetry::{build_heartbeat, build_sys_status, build_telemetry};
+use telemetry::{build_heartbeat_with_state, build_sys_status, build_telemetry};
 
 /// Rate intervals in microseconds for each telemetry message type.
 const HEARTBEAT_INTERVAL_US: u64 = 1_000_000; // 1 Hz
@@ -196,7 +196,7 @@ impl GcsLink {
     /// Send a MAVLink v1 message on behalf of the given `system_id`.
     ///
     /// Does nothing if no GCS is connected.
-    fn send_message_as(&mut self, system_id: u8, msg: &MavMessage) -> io::Result<()> {
+    pub fn send_message_as(&mut self, system_id: u8, msg: &MavMessage) -> io::Result<()> {
         if self.stream.is_none() {
             return Ok(());
         }
@@ -225,15 +225,15 @@ impl GcsLink {
         }
     }
 
-    /// Poll incoming messages, respond to GCS requests, and send heartbeats
-    /// for all registered vehicles.
-    pub fn poll_and_heartbeat(&mut self, sim_time_us: u64) {
-        let incoming = self.poll_incoming();
-        for (header, msg) in &incoming {
-            self.handle_incoming(header, msg);
-        }
+    /// Send heartbeats reflecting the autopilot's armed state and flight mode.
+    ///
+    /// Uses the global SYSTEM_STATE for armed/mode info.
+    pub fn send_heartbeats(&mut self, sim_time_us: u64) {
+        self.send_heartbeats_with(sim_time_us, build_heartbeat_with_state);
+    }
 
-        // Send heartbeat + sys_status for every registered vehicle
+    /// Rate-limited heartbeat + sys_status sender for all registered vehicles.
+    fn send_heartbeats_with(&mut self, sim_time_us: u64, heartbeat_builder: fn() -> MavMessage) {
         let vehicle_ids: Vec<(u8, bool)> = self
             .vehicles
             .iter()
@@ -250,141 +250,10 @@ impl GcsLink {
                 if let Some(v) = self.vehicles.iter_mut().find(|v| v.system_id == sys_id) {
                     v.last_heartbeat_us = sim_time_us;
                 }
-                let _ = self.send_message_as(sys_id, &build_heartbeat());
+                let _ = self.send_message_as(sys_id, &heartbeat_builder());
                 let _ = self.send_message_as(sys_id, &build_sys_status(12600));
             }
         }
-    }
-
-    /// Handle an incoming MAVLink message from the GCS.
-    fn handle_incoming(&mut self, header: &MavHeader, msg: &MavMessage) {
-        // Determine which vehicle is being targeted
-        let target_sys = match msg {
-            MavMessage::COMMAND_LONG(cmd) => cmd.target_system,
-            MavMessage::PARAM_REQUEST_LIST(data) => data.target_system,
-            MavMessage::PARAM_REQUEST_READ(data) => data.target_system,
-            _ => 0,
-        };
-
-        // Resolve system_id: 0 = broadcast → use first vehicle
-        let sys_id = if target_sys == 0 {
-            self.vehicles.first().map(|v| v.system_id).unwrap_or(1)
-        } else {
-            target_sys
-        };
-
-        match msg {
-            MavMessage::COMMAND_LONG(cmd) => {
-                self.handle_command_long(sys_id, cmd, header.system_id, header.component_id);
-            }
-            MavMessage::PARAM_REQUEST_LIST(_) => {
-                self.send_all_params(sys_id);
-            }
-            MavMessage::PARAM_REQUEST_READ(data) => {
-                let name = char_array_to_string(data.param_id.as_ref());
-                if let Some(pv) = self.find_param(sys_id, &name, data.param_index) {
-                    let _ = self.send_message_as(sys_id, &MavMessage::PARAM_VALUE(pv));
-                }
-            }
-            #[allow(deprecated)]
-            MavMessage::REQUEST_DATA_STREAM(data) => {
-                #[allow(deprecated)]
-                let _ = self.send_message_as(
-                    sys_id,
-                    &MavMessage::DATA_STREAM(DATA_STREAM_DATA {
-                        stream_id: data.req_stream_id,
-                        message_rate: data.req_message_rate,
-                        on_off: data.start_stop,
-                    }),
-                );
-            }
-            _ => {}
-        }
-    }
-
-    /// Handle COMMAND_LONG following firmware's dispatcher pattern.
-    fn handle_command_long(
-        &mut self,
-        sys_id: u8,
-        cmd: &COMMAND_LONG_DATA,
-        sender_sys: u8,
-        sender_comp: u8,
-    ) {
-        let result = match cmd.command {
-            MavCmd::MAV_CMD_REQUEST_MESSAGE => {
-                self.handle_request_message(sys_id, cmd);
-                MavResult::MAV_RESULT_ACCEPTED
-            }
-            #[allow(deprecated)]
-            MavCmd::MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES => {
-                let _ = self.send_message_as(sys_id, &build_autopilot_version());
-                MavResult::MAV_RESULT_ACCEPTED
-            }
-            _ => MavResult::MAV_RESULT_UNSUPPORTED,
-        };
-
-        let ack = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA {
-            command: cmd.command,
-            result,
-            progress: 0,
-            result_param2: 0,
-            target_system: sender_sys,
-            target_component: sender_comp,
-        });
-        let _ = self.send_message_as(sys_id, &ack);
-    }
-
-    /// Handle MAV_CMD_REQUEST_MESSAGE (cmd 512).
-    fn handle_request_message(&mut self, sys_id: u8, cmd: &COMMAND_LONG_DATA) {
-        const MSG_ID_AUTOPILOT_VERSION: u32 = 148;
-        const MSG_ID_PROTOCOL_VERSION: u32 = 300;
-
-        let message_id = cmd.param1 as u32;
-        match message_id {
-            MSG_ID_AUTOPILOT_VERSION => {
-                let _ = self.send_message_as(sys_id, &build_autopilot_version());
-            }
-            MSG_ID_PROTOCOL_VERSION => {
-                let _ = self.send_message_as(sys_id, &build_protocol_version());
-            }
-            _ => {}
-        }
-    }
-
-    // --- Parameter handling ---
-
-    fn send_all_params(&mut self, sys_id: u8) {
-        let params = build_params(sys_id);
-        let count = params.len() as u16;
-        for (i, (name, value)) in params.iter().enumerate() {
-            let _ = self.send_message_as(
-                sys_id,
-                &MavMessage::PARAM_VALUE(PARAM_VALUE_DATA {
-                    param_id: string_to_param_id(name).into(),
-                    param_value: *value,
-                    param_type: MavParamType::MAV_PARAM_TYPE_REAL32,
-                    param_count: count,
-                    param_index: i as u16,
-                }),
-            );
-        }
-    }
-
-    fn find_param(&self, sys_id: u8, name: &str, index: i16) -> Option<PARAM_VALUE_DATA> {
-        let params = build_params(sys_id);
-        let count = params.len() as u16;
-        let entry = if index >= 0 {
-            params.get(index as usize)
-        } else {
-            params.iter().find(|(n, _)| *n == name)
-        };
-        entry.map(|(n, v)| PARAM_VALUE_DATA {
-            param_id: string_to_param_id(n).into(),
-            param_value: *v,
-            param_type: MavParamType::MAV_PARAM_TYPE_REAL32,
-            param_count: count,
-            param_index: params.iter().position(|(pn, _)| *pn == *n).unwrap_or(0) as u16,
-        })
     }
 
     // --- Telemetry ---
@@ -436,48 +305,6 @@ impl GcsLink {
     }
 }
 
-// --- Message builders ---
-
-/// Minimal parameter set for Mission Planner compatibility.
-fn build_params(system_id: u8) -> Vec<(&'static str, f32)> {
-    vec![("SYSID_THISMAV", system_id as f32)]
-}
-
-fn build_autopilot_version() -> MavMessage {
-    let capabilities = MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MAVLINK2
-        | MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_PARAM_ENCODE_BYTEWISE
-        | MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MISSION_INT
-        | MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_COMMAND_INT;
-
-    #[allow(clippy::identity_op)]
-    let flight_sw_version: u32 = (0 << 24) | (1 << 16) | (0 << 8) | 0;
-
-    MavMessage::AUTOPILOT_VERSION(AUTOPILOT_VERSION_DATA {
-        capabilities,
-        uid: 0,
-        flight_sw_version,
-        middleware_sw_version: 0,
-        os_sw_version: 0,
-        board_version: 0,
-        vendor_id: 0,
-        product_id: 0,
-        flight_custom_version: [0u8; 8],
-        middleware_custom_version: [0u8; 8],
-        os_custom_version: [0u8; 8],
-        uid2: [0u8; 18],
-    })
-}
-
-fn build_protocol_version() -> MavMessage {
-    MavMessage::PROTOCOL_VERSION(PROTOCOL_VERSION_DATA {
-        version: 200,
-        min_version: 100,
-        max_version: 200,
-        spec_version_hash: [0u8; 8],
-        library_version_hash: [0u8; 8],
-    })
-}
-
 // --- Helpers ---
 
 /// Parse a single MAVLink frame (v1 or v2) from a byte slice.
@@ -494,21 +321,9 @@ fn parse_mavlink_frame(data: &[u8]) -> Option<(MavHeader, MavMessage)> {
     }
 }
 
-fn string_to_param_id(name: &str) -> [u8; 16] {
-    let mut id = [0u8; 16];
-    let bytes = name.as_bytes();
-    let len = bytes.len().min(16);
-    id[..len].copy_from_slice(&bytes[..len]);
-    id
-}
-
-fn char_array_to_string(id: &[u8]) -> String {
-    let end = id.iter().position(|&b| b == 0).unwrap_or(id.len());
-    String::from_utf8_lossy(&id[..end]).to_string()
-}
-
 #[cfg(test)]
 mod tests {
+    use super::telemetry::build_heartbeat;
     use super::*;
 
     #[test]
@@ -637,7 +452,7 @@ mod tests {
         assert!(link.is_connected());
 
         // Trigger heartbeats for all vehicles (time >= HEARTBEAT_INTERVAL_US)
-        link.poll_and_heartbeat(HEARTBEAT_INTERVAL_US);
+        link.send_heartbeats(HEARTBEAT_INTERVAL_US);
 
         // Give TCP stack time to deliver data
         std::thread::sleep(std::time::Duration::from_millis(100));

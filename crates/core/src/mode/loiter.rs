@@ -21,43 +21,34 @@
 //! - ADR-w9zpl-control-mode-architecture: Mode trait pattern
 //! - ArduPilot Loiter Mode: https://ardupilot.org/rover/docs/loiter-mode.html
 
-#[cfg(feature = "rover")]
+extern crate alloc;
+use alloc::boxed::Box;
+
 use super::Mode;
-#[cfg(feature = "rover")]
-use crate::devices::gps::GpsFixType;
-#[cfg(feature = "rover")]
-use crate::devices::gps::GpsPosition;
-#[cfg(feature = "rover")]
-use crate::libraries::ActuatorInterface;
-#[cfg(feature = "rover")]
-use crate::subsystems::navigation::{
-    calculate_distance, offset_position, NavigationController, PositionTarget,
-    SimpleNavigationController,
-};
+use crate::navigation::controller::{NavigationController, SimpleNavigationController};
+use crate::navigation::{calculate_distance, offset_position, PositionTarget};
+use crate::navigation::{GpsFixType, GpsPosition};
+use crate::servo::ActuatorInterface;
 
 /// Hysteresis factor for drift detection (prevents oscillation at radius boundary)
 ///
 /// When correcting, stop when distance < LOIT_RADIUS * HYSTERESIS_FACTOR.
 /// This creates a deadband between "start correcting" and "stop correcting" thresholds.
-#[cfg(feature = "rover")]
 const HYSTERESIS_FACTOR: f32 = 0.8;
 
 /// Low speed threshold for loiter point calculation
 ///
 /// If rover is moving slower than this, use current position as loiter point.
 /// Otherwise, project a stop point ahead based on deceleration.
-#[cfg(feature = "rover")]
 const LOW_SPEED_THRESHOLD: f32 = 0.5;
 
 /// Maximum projection distance for loiter point calculation
 ///
 /// Limits how far ahead the loiter point can be projected when entering
 /// loiter mode at high speed.
-#[cfg(feature = "rover")]
 const MAX_PROJECTION: f32 = 50.0;
 
 /// Default maximum deceleration for stop point projection (m/s^2)
-#[cfg(feature = "rover")]
 const DEFAULT_MAX_DECEL: f32 = 1.0;
 
 /// Loiter mode state
@@ -90,10 +81,9 @@ impl Default for LoiterState {
 /// Rover Loiter Mode
 ///
 /// Provides position holding with optional active correction.
-#[cfg(feature = "rover")]
-pub struct RoverLoiter<'a> {
+pub struct RoverLoiter {
     /// Actuator interface for steering and throttle
-    actuators: &'a mut dyn ActuatorInterface,
+    actuators: Box<dyn ActuatorInterface>,
     /// Navigation controller for position correction (Type 1)
     nav_controller: SimpleNavigationController,
     /// Loiter state (set on mode entry)
@@ -104,8 +94,7 @@ pub struct RoverLoiter<'a> {
     heading_provider: fn() -> Option<f32>,
 }
 
-#[cfg(feature = "rover")]
-impl<'a> RoverLoiter<'a> {
+impl RoverLoiter {
     /// Create new Loiter mode
     ///
     /// # Arguments
@@ -114,7 +103,7 @@ impl<'a> RoverLoiter<'a> {
     /// * `gps_provider` - Function that returns current GPS position
     /// * `heading_provider` - Function that returns current heading (degrees, 0-360)
     pub fn new(
-        actuators: &'a mut dyn ActuatorInterface,
+        actuators: Box<dyn ActuatorInterface>,
         gps_provider: fn() -> Option<GpsPosition>,
         heading_provider: fn() -> Option<f32>,
     ) -> Self {
@@ -131,7 +120,7 @@ impl<'a> RoverLoiter<'a> {
     ///
     /// If moving slowly (< 0.5 m/s), uses current position.
     /// If moving, projects a stop point based on v^2/(2*a) formula.
-    fn calculate_loiter_point(gps: &GpsPosition) -> (f32, f32) {
+    pub fn calculate_loiter_point(gps: &GpsPosition) -> (f32, f32) {
         let speed = gps.speed;
 
         // Low speed - use current position
@@ -223,8 +212,7 @@ impl<'a> RoverLoiter<'a> {
     }
 }
 
-#[cfg(feature = "rover")]
-impl<'a> Mode for RoverLoiter<'a> {
+impl Mode for RoverLoiter {
     fn enter(&mut self) -> Result<(), &'static str> {
         // Get current GPS position
         let gps = (self.gps_provider)().ok_or("No GPS fix")?;
@@ -291,11 +279,9 @@ impl<'a> Mode for RoverLoiter<'a> {
     }
 }
 
-#[cfg(all(test, feature = "rover"))]
+#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::devices::gps::{GpsFixType, GpsPosition};
-    use crate::subsystems::navigation::calculate_distance;
 
     // ========== LoiterState Tests ==========
 
@@ -311,7 +297,6 @@ mod tests {
 
     #[test]
     fn test_loiter_point_at_rest() {
-        // When stopped, loiter point should be current position
         let gps = GpsPosition {
             latitude: 35.6762,
             longitude: 139.6503,
@@ -329,7 +314,6 @@ mod tests {
 
     #[test]
     fn test_loiter_point_low_speed() {
-        // At low speed (< 0.5 m/s), use current position
         let gps = GpsPosition {
             latitude: 35.6762,
             longitude: 139.6503,
@@ -347,24 +331,19 @@ mod tests {
 
     #[test]
     fn test_loiter_point_moving_north() {
-        // Moving north at 5 m/s
-        // Stop distance = v^2 / (2*a) = 25 / 2 = 12.5m
         let gps = GpsPosition {
             latitude: 0.0,
             longitude: 0.0,
             altitude: 0.0,
             speed: 5.0,
-            course_over_ground: Some(0.0), // Heading north
+            course_over_ground: Some(0.0),
             fix_type: GpsFixType::Fix3D,
             satellites: 10,
         };
 
         let (lat, lon) = RoverLoiter::calculate_loiter_point(&gps);
-
-        // Should be north of current position
         assert!(lat > 0.0, "Loiter point should be north");
 
-        // Verify distance is approximately 12.5m
         let distance = calculate_distance(0.0, 0.0, lat, lon);
         assert!(
             (distance - 12.5).abs() < 1.0,
@@ -375,26 +354,22 @@ mod tests {
 
     #[test]
     fn test_loiter_point_moving_east() {
-        // Moving east at 5 m/s
         let gps = GpsPosition {
             latitude: 0.0,
             longitude: 0.0,
             altitude: 0.0,
             speed: 5.0,
-            course_over_ground: Some(90.0), // Heading east
+            course_over_ground: Some(90.0),
             fix_type: GpsFixType::Fix3D,
             satellites: 10,
         };
 
         let (_lat, lon) = RoverLoiter::calculate_loiter_point(&gps);
-
-        // Should be east of current position
         assert!(lon > 0.0, "Loiter point should be east");
     }
 
     #[test]
     fn test_loiter_point_projection_capped() {
-        // Moving very fast (100 m/s) - should be capped to MAX_PROJECTION
         let gps = GpsPosition {
             latitude: 0.0,
             longitude: 0.0,
@@ -406,8 +381,6 @@ mod tests {
         };
 
         let (lat, lon) = RoverLoiter::calculate_loiter_point(&gps);
-
-        // Verify distance is capped to MAX_PROJECTION (50m)
         let distance = calculate_distance(0.0, 0.0, lat, lon);
         assert!(
             (distance - MAX_PROJECTION).abs() < 1.0,
@@ -428,8 +401,6 @@ mod tests {
             is_correcting: true,
         };
 
-        // Distance at 1.7m (85% of radius) - should still be correcting
-        // due to hysteresis factor of 0.8 (stop at 1.6m)
         let distance = 1.7;
         if distance < state.radius * HYSTERESIS_FACTOR {
             state.is_correcting = false;
@@ -439,7 +410,6 @@ mod tests {
             "Should still be correcting at 1.7m (threshold is 1.6m)"
         );
 
-        // Distance at 1.5m - should stop correcting
         let distance = 1.5;
         if distance < state.radius * HYSTERESIS_FACTOR {
             state.is_correcting = false;
@@ -457,7 +427,6 @@ mod tests {
             is_correcting: false,
         };
 
-        // Distance at 1.9m - should not start correcting yet
         let distance = 1.9;
         if distance > state.radius {
             state.is_correcting = true;
@@ -467,7 +436,6 @@ mod tests {
             "Should not start correcting at 1.9m (threshold is 2.0m)"
         );
 
-        // Distance at 2.1m - should start correcting
         let distance = 2.1;
         if distance > state.radius {
             state.is_correcting = true;

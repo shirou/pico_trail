@@ -340,6 +340,41 @@ In **Mission Planner**: Connection type → TCP, then enter `127.0.0.1` and port
 
 In **QGroundControl**: Settings → Comm Links → Add a TCP connection to `127.0.0.1:14550`. All vehicles are discovered automatically.
 
+### 5. GCS Command Handling
+
+Each vehicle has a `VehicleAutopilot` that processes incoming MAVLink commands using the core crate's `MessageDispatcher`. The data flow is:
+
+```text
+GCS (Mission Planner / QGC)
+    |
+    v (TCP)
+GcsLink::poll_incoming()        -- parse MAVLink frames
+    |
+    v
+VehicleAutopilot::dispatch()    -- route to core handlers
+    |
+    v
+Core MessageDispatcher          -- arm/disarm, set mode, etc.
+    |
+    v (responses)
+GcsLink::send_message_as()      -- send COMMAND_ACK back to GCS
+```
+
+Supported commands:
+
+| Command | MAVLink Message | Description |
+|---|---|---|
+| ARM / DISARM | `COMMAND_LONG` (`MAV_CMD_COMPONENT_ARM_DISARM`) | Arm or disarm the vehicle. Use `param2 = 21196` to force. |
+| SET_MODE | `COMMAND_LONG` (`MAV_CMD_DO_SET_MODE`) | Change flight mode via `param2` (ArduPilot custom mode number). |
+| RC Override | `RC_CHANNELS_OVERRIDE` | Override RC channels from a GCS joystick or gamepad. |
+| Manual Control | `MANUAL_CONTROL` | Joystick axes from GCS. `x` maps to throttle, `y` to steering. |
+
+`VehicleAutopilot` also provides:
+
+- `update_from_sensors()` — propagates GPS, attitude, and IMU data to global `SYSTEM_STATE`
+- `execute_mode()` — runs the current flight mode's control loop (reads RC input, writes actuators)
+- `update_telemetry()` — generates rate-limited telemetry messages (HEARTBEAT, ATTITUDE, GPS, etc.)
+
 ### Architecture
 
 ```text
