@@ -15,6 +15,7 @@
   - [FR-00155-sitl-vehicle-mavlink-ports](FR-00155-sitl-vehicle-mavlink-ports.md)
 - Related Tasks:
   - [T-00160-sitl-multi-vehicle-lockstep-ci](../tasks/T-00160-sitl-multi-vehicle-lockstep-ci/README.md)
+  - [T-00166-sitl-per-process-multi-vehicle](../tasks/T-00166-sitl-per-process-multi-vehicle/README.md)
 
 ## Requirement Statement
 
@@ -35,17 +36,17 @@ As a developer testing convoy behavior, I want to run 3 rovers simultaneously in
 
 ## Acceptance Criteria
 
-- [ ] `VehicleId` type defined as `u8` (0-254, matching MAVLink system ID range)
-- [ ] `spawn_vehicle()` creates a new vehicle instance with unique ID
-- [ ] `despawn_vehicle()` removes a vehicle instance
-- [ ] Each vehicle has independent autopilot state (modes, navigation, parameters)
-- [ ] `get_vehicle()` retrieves vehicle state by ID
-- [ ] `list_vehicles()` returns all active vehicle IDs
-- [ ] Maximum 255 vehicles supported (practical limit likely lower)
-- [ ] Vehicle IDs are reusable after despawn
-- [ ] Sensor data routed to correct vehicle based on `vehicle_id` field
-- [ ] Actuator commands tagged with `vehicle_id` for routing to simulator
-- [ ] Unit tests for vehicle lifecycle operations
+- [x] `VehicleId` type defined as `u8` (0-254, matching MAVLink system ID range)
+- [x] `spawn_vehicle()` creates a new vehicle instance with unique ID
+- [x] `despawn_vehicle()` removes a vehicle instance
+- [x] Each vehicle has independent autopilot state (modes, navigation, parameters) — achieved via per-process isolation (ADR-00165)
+- [x] `get_vehicle()` retrieves vehicle state by ID
+- [x] `list_vehicles()` returns all active vehicle IDs
+- [x] Maximum 255 vehicles supported (practical limit likely lower)
+- [x] Vehicle IDs are reusable after despawn
+- [x] Sensor data routed to correct vehicle based on `vehicle_id` field
+- [x] Actuator commands tagged with `vehicle_id` for routing to simulator
+- [x] Unit tests for vehicle lifecycle operations
 
 ## Technical Details (if applicable)
 
@@ -107,7 +108,7 @@ pub struct VehicleInstance {
 ## Implementation Notes
 
 - Each vehicle is essentially a complete pico_trail instance
-- Consider using separate threads or async tasks per vehicle
+- Per ADR-00165, multi-vehicle is achieved via separate OS processes (one vehicle per process), which provides full autopilot state isolation through process boundaries
 - Vehicle ID 255 reserved for broadcast (following MAVLink convention)
 
 ## External References

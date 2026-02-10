@@ -15,6 +15,7 @@
 - Dependent Requirements: N/A – Terminal requirement in the SITL chain
 - Related Tasks:
   - [T-00164-sitl-autopilot-core-integration](../tasks/T-00164-sitl-autopilot-core-integration/README.md)
+  - [T-00166-sitl-per-process-multi-vehicle](../tasks/T-00166-sitl-per-process-multi-vehicle/README.md)
 
 ## Requirement Statement
 
@@ -30,14 +31,14 @@ As a developer, I want to arm the rover in Mission Planner and steer it with the
 
 ## Acceptance Criteria
 
-- [ ] GCS RC_CHANNELS_OVERRIDE commands produce motor PWM changes within one simulation step
-- [ ] Motor PWM values flow through `collect_actuator_commands()` to the Gazebo adapter
-- [ ] Gazebo responds with updated sensor data reflecting vehicle motion
-- [ ] Updated sensor data is reflected in telemetry sent back to GCS
-- [ ] End-to-end latency (GCS command → telemetry update) is under 100ms at 100Hz step rate
-- [ ] Arming the vehicle enables motor output; disarming returns motors to neutral
-- [ ] Multiple vehicles can be controlled independently from the same GCS
-- [ ] Integration test demonstrates closed-loop control with LightweightAdapter
+- [x] GCS RC_CHANNELS_OVERRIDE commands produce motor PWM changes within one simulation step
+- [x] Motor PWM values flow through `collect_actuator_commands()` to the Gazebo adapter
+- [x] Gazebo responds with updated sensor data reflecting vehicle motion
+- [x] Updated sensor data is reflected in telemetry sent back to GCS
+- [x] End-to-end latency (GCS command → telemetry update) is under 100ms at 100Hz step rate
+- [x] Arming the vehicle enables motor output; disarming returns motors to neutral
+- [ ] Multiple vehicles can be controlled independently from the same GCS (requires manual validation with Mission Planner + mavp2p)
+- [x] Integration test demonstrates closed-loop control with LightweightAdapter
 
 ## Technical Details (if applicable)
 

@@ -63,8 +63,6 @@ async fn main() {
         vehicle.platform.set_pwm_duty(0, 0.75);
         vehicle.platform.set_pwm_duty(1, 0.75);
 
-        gcs.register_vehicle(i);
-
         println!("Vehicle {i}: spawned, adapter '{adapter_name}'");
     }
     println!("\nWaiting for Mission Planner TCP connection on port {MAVLINK_PORT}...");
@@ -92,14 +90,6 @@ async fn main() {
                 let sim_time = bridge.sim_time_us();
 
                 let _ = gcs.poll_incoming();
-                gcs.send_heartbeats(sim_time);
-
-                for i in 1..=VEHICLE_COUNT {
-                    let vehicle = bridge.get_vehicle(VehicleId(i)).unwrap();
-                    if let Some(sensors) = vehicle.platform.peek_sensors() {
-                        gcs.send_telemetry(i, &sensors, sim_time);
-                    }
-                }
 
                 if gcs.is_connected() && !was_connected {
                     was_connected = true;

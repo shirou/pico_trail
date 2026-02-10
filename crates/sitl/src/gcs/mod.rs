@@ -1,12 +1,10 @@
 //! GCS (Ground Control Station) communication over MAVLink TCP.
 //!
-//! Provides a single TCP link that multiplexes telemetry for multiple vehicles
-//! (distinguished by MAVLink `system_id`) to Mission Planner or other GCS software.
+//! Provides a TCP transport for sending and receiving MAVLink messages.
+//! All telemetry (HEARTBEAT, ATTITUDE, GPS, SYS_STATUS) is handled by
+//! core's `TelemetryStreamer` via `VehicleAutopilot::update_telemetry()`.
 //!
 //! Mission Planner connects via its "TCP" connection mode as a TCP client.
-//! Multiple vehicles appear automatically — no need for Ctrl-L or extra ports.
-
-mod telemetry;
 
 use std::io::{self, Cursor, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -17,35 +15,15 @@ use mavlink::MavHeader;
 #[cfg(test)]
 use mavlink::Message;
 
-use crate::types::SensorData;
-use telemetry::{build_heartbeat_with_state, build_sys_status, build_telemetry};
-
-/// Rate intervals in microseconds for each telemetry message type.
-const HEARTBEAT_INTERVAL_US: u64 = 1_000_000; // 1 Hz
-const ATTITUDE_INTERVAL_US: u64 = 250_000; // 4 Hz
-const POSITION_INTERVAL_US: u64 = 500_000; // 2 Hz
-const SYS_STATUS_INTERVAL_US: u64 = 1_000_000; // 1 Hz
-
-/// Per-vehicle rate-limiting state.
-struct VehicleState {
-    system_id: u8,
-    last_heartbeat_us: u64,
-    last_attitude_us: u64,
-    last_position_us: u64,
-    last_sys_status_us: u64,
-}
-
-/// MAVLink TCP link multiplexing telemetry for multiple vehicles.
+/// MAVLink TCP transport for GCS communication.
 ///
 /// Acts as a TCP server: listens for a single incoming connection from
-/// Mission Planner, then sends/receives MAVLink v1 messages for all
-/// registered vehicles (each with a unique `system_id`).
+/// Mission Planner, then sends/receives MAVLink v1 messages.
 pub struct GcsLink {
     listener: TcpListener,
     stream: Option<TcpStream>,
     component_id: u8,
     sequence: u8,
-    vehicles: Vec<VehicleState>,
     /// Accumulated bytes from TCP stream, parsed into MAVLink frames.
     read_buf: Vec<u8>,
 }
@@ -61,23 +39,13 @@ impl GcsLink {
             stream: None,
             component_id: 1, // MAV_COMP_ID_AUTOPILOT1
             sequence: 0,
-            vehicles: Vec::new(),
             read_buf: Vec::with_capacity(2048),
         })
     }
 
-    /// Register a vehicle so it gets heartbeats and telemetry.
-    pub fn register_vehicle(&mut self, system_id: u8) {
-        if self.vehicles.iter().any(|v| v.system_id == system_id) {
-            return;
-        }
-        self.vehicles.push(VehicleState {
-            system_id,
-            last_heartbeat_us: 0,
-            last_attitude_us: 0,
-            last_position_us: 0,
-            last_sys_status_us: 0,
-        });
+    /// Return the local socket address (useful for tests with OS-assigned ports).
+    pub fn local_addr(&self) -> io::Result<std::net::SocketAddr> {
+        self.listener.local_addr()
     }
 
     /// Accept a pending TCP connection if none is active.
@@ -225,80 +193,6 @@ impl GcsLink {
         }
     }
 
-    /// Send heartbeats reflecting the autopilot's armed state and flight mode.
-    ///
-    /// Uses the global SYSTEM_STATE for armed/mode info.
-    pub fn send_heartbeats(&mut self, sim_time_us: u64) {
-        self.send_heartbeats_with(sim_time_us, build_heartbeat_with_state);
-    }
-
-    /// Rate-limited heartbeat + sys_status sender for all registered vehicles.
-    fn send_heartbeats_with(&mut self, sim_time_us: u64, heartbeat_builder: fn() -> MavMessage) {
-        let vehicle_ids: Vec<(u8, bool)> = self
-            .vehicles
-            .iter()
-            .map(|v| {
-                (
-                    v.system_id,
-                    sim_time_us - v.last_heartbeat_us >= HEARTBEAT_INTERVAL_US,
-                )
-            })
-            .collect();
-
-        for (sys_id, due) in vehicle_ids {
-            if due {
-                if let Some(v) = self.vehicles.iter_mut().find(|v| v.system_id == sys_id) {
-                    v.last_heartbeat_us = sim_time_us;
-                }
-                let _ = self.send_message_as(sys_id, &heartbeat_builder());
-                let _ = self.send_message_as(sys_id, &build_sys_status(12600));
-            }
-        }
-    }
-
-    // --- Telemetry ---
-
-    /// Send rate-limited sensor telemetry for a specific vehicle.
-    pub fn send_telemetry(&mut self, system_id: u8, sensors: &SensorData, sim_time_us: u64) {
-        let telem = build_telemetry(sensors);
-
-        let Some(v) = self.vehicles.iter_mut().find(|v| v.system_id == system_id) else {
-            return;
-        };
-
-        let send_attitude = sim_time_us - v.last_attitude_us >= ATTITUDE_INTERVAL_US;
-        let send_position = sim_time_us - v.last_position_us >= POSITION_INTERVAL_US;
-        let send_sys_status = sim_time_us - v.last_sys_status_us >= SYS_STATUS_INTERVAL_US;
-
-        if send_attitude {
-            v.last_attitude_us = sim_time_us;
-        }
-        if send_position {
-            v.last_position_us = sim_time_us;
-        }
-        if send_sys_status {
-            v.last_sys_status_us = sim_time_us;
-        }
-
-        // Send after releasing mutable borrow on self.vehicles
-        if send_attitude {
-            if let Some(msg) = &telem.attitude {
-                let _ = self.send_message_as(system_id, msg);
-            }
-        }
-        if send_position {
-            if let Some(msg) = &telem.gps_raw {
-                let _ = self.send_message_as(system_id, msg);
-            }
-            if let Some(msg) = &telem.global_pos {
-                let _ = self.send_message_as(system_id, msg);
-            }
-        }
-        if send_sys_status {
-            let _ = self.send_message_as(system_id, &build_sys_status(12600));
-        }
-    }
-
     /// Whether a GCS client is connected.
     pub fn is_connected(&self) -> bool {
         self.stream.is_some()
@@ -323,8 +217,19 @@ fn parse_mavlink_frame(data: &[u8]) -> Option<(MavHeader, MavMessage)> {
 
 #[cfg(test)]
 mod tests {
-    use super::telemetry::build_heartbeat;
     use super::*;
+
+    /// Build a HEARTBEAT message for a ground rover (basic, unarmed).
+    fn build_heartbeat() -> MavMessage {
+        MavMessage::HEARTBEAT(HEARTBEAT_DATA {
+            custom_mode: 0,
+            mavtype: MavType::MAV_TYPE_GROUND_ROVER,
+            autopilot: MavAutopilot::MAV_AUTOPILOT_GENERIC,
+            base_mode: MavModeFlag::MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+            system_status: MavState::MAV_STATE_ACTIVE,
+            mavlink_version: 3,
+        })
+    }
 
     #[test]
     fn test_gcs_link_creation() {
@@ -335,18 +240,8 @@ mod tests {
     }
 
     #[test]
-    fn test_register_vehicle() {
-        let mut link = GcsLink::new(0).unwrap();
-        link.register_vehicle(1);
-        link.register_vehicle(2);
-        link.register_vehicle(1); // duplicate, ignored
-        assert_eq!(link.vehicles.len(), 2);
-    }
-
-    #[test]
     fn test_send_without_client_is_noop() {
         let mut link = GcsLink::new(0).unwrap();
-        link.register_vehicle(1);
         let msg = build_heartbeat();
         assert!(link.send_message_as(1, &msg).is_ok());
     }
@@ -390,7 +285,6 @@ mod tests {
     #[test]
     fn test_tcp_loopback() {
         let mut link = GcsLink::new(0).unwrap();
-        link.register_vehicle(1);
         let link_addr = link.listener.local_addr().unwrap();
 
         // Simulate a GCS TCP client
@@ -435,62 +329,5 @@ mod tests {
         assert!(parsed.is_some());
         let (hdr, _) = parsed.unwrap();
         assert_eq!(hdr.system_id, 1);
-    }
-
-    #[test]
-    fn test_multi_vehicle_heartbeats() {
-        let mut link = GcsLink::new(0).unwrap();
-        link.register_vehicle(1);
-        link.register_vehicle(2);
-        link.register_vehicle(3);
-        let link_addr = link.listener.local_addr().unwrap();
-
-        let mut gcs = TcpStream::connect(link_addr).unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(50));
-
-        link.try_accept();
-        assert!(link.is_connected());
-
-        // Trigger heartbeats for all vehicles (time >= HEARTBEAT_INTERVAL_US)
-        link.send_heartbeats(HEARTBEAT_INTERVAL_US);
-
-        // Give TCP stack time to deliver data
-        std::thread::sleep(std::time::Duration::from_millis(100));
-
-        // Read with blocking + timeout
-        gcs.set_nonblocking(false).unwrap();
-        gcs.set_read_timeout(Some(std::time::Duration::from_secs(1)))
-            .unwrap();
-
-        let mut recv_buf = [0u8; 4096];
-        let n = gcs.read(&mut recv_buf).expect("first read should succeed");
-        assert!(n > 0);
-
-        // Parse all received frames and collect system_ids
-        let mut sys_ids = Vec::new();
-        let mut offset = 0;
-        while offset < n {
-            if recv_buf[offset] != 0xFE {
-                offset += 1;
-                continue;
-            }
-            if offset + 2 > n {
-                break;
-            }
-            let payload_len = recv_buf[offset + 1] as usize;
-            let frame_size = 8 + payload_len;
-            if offset + frame_size > n {
-                break;
-            }
-            if let Some((hdr, _)) = parse_mavlink_frame(&recv_buf[offset..offset + frame_size]) {
-                sys_ids.push(hdr.system_id);
-            }
-            offset += frame_size;
-        }
-
-        // All 3 system_ids should appear (heartbeat + sys_status each)
-        assert!(sys_ids.contains(&1), "missing sys_id 1 in {sys_ids:?}");
-        assert!(sys_ids.contains(&2), "missing sys_id 2 in {sys_ids:?}");
-        assert!(sys_ids.contains(&3), "missing sys_id 3 in {sys_ids:?}");
     }
 }

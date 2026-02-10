@@ -14,6 +14,7 @@
 - Supersedes ADRs: N/A
 - Related Tasks:
   - [T-00164-sitl-autopilot-core-integration](../tasks/T-00164-sitl-autopilot-core-integration/README.md)
+  - [T-00166-sitl-per-process-multi-vehicle](../tasks/T-00166-sitl-per-process-multi-vehicle/README.md)
 
 ## Context
 

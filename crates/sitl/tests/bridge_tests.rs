@@ -243,3 +243,83 @@ fn vehicle_config_default_port() {
     assert_eq!(config.vehicle_type, VehicleType::Rover);
     assert!(config.initial_position.is_none());
 }
+
+#[test]
+fn multi_port_gcs_links_independent() {
+    use mavlink::common::*;
+    use pico_trail_sitl::GcsLink;
+    use std::io::Read;
+    use std::net::TcpStream;
+
+    // Create two GcsLink instances on OS-assigned ports
+    let mut link1 = GcsLink::new(0).unwrap();
+    let mut link2 = GcsLink::new(0).unwrap();
+    let addr1 = link1.local_addr().unwrap();
+    let addr2 = link2.local_addr().unwrap();
+    assert_ne!(
+        addr1.port(),
+        addr2.port(),
+        "Links should bind to different ports"
+    );
+
+    // Connect a TCP client to each link
+    let mut client1 = TcpStream::connect(addr1).unwrap();
+    client1.set_nonblocking(true).unwrap();
+    let mut client2 = TcpStream::connect(addr2).unwrap();
+    client2.set_nonblocking(true).unwrap();
+
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Accept connections via poll_incoming
+    let _ = link1.poll_incoming();
+    let _ = link2.poll_incoming();
+    assert!(link1.is_connected());
+    assert!(link2.is_connected());
+
+    // Build a heartbeat to send
+    let msg = MavMessage::HEARTBEAT(HEARTBEAT_DATA {
+        custom_mode: 0,
+        mavtype: MavType::MAV_TYPE_GROUND_ROVER,
+        autopilot: MavAutopilot::MAV_AUTOPILOT_GENERIC,
+        base_mode: MavModeFlag::MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+        system_status: MavState::MAV_STATE_ACTIVE,
+        mavlink_version: 3,
+    });
+
+    // Link1 sends as system_id=1, Link2 sends as system_id=2
+    link1.send_message_as(1, &msg).unwrap();
+    link2.send_message_as(2, &msg).unwrap();
+
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Client1 should receive a message from system_id=1
+    let mut buf1 = [0u8; 280];
+    client1.set_nonblocking(false).unwrap();
+    client1
+        .set_read_timeout(Some(std::time::Duration::from_millis(100)))
+        .unwrap();
+    let n1 = client1.read(&mut buf1).unwrap();
+    assert!(n1 > 0, "Client1 should receive data");
+
+    // Client2 should receive a message from system_id=2
+    let mut buf2 = [0u8; 280];
+    client2.set_nonblocking(false).unwrap();
+    client2
+        .set_read_timeout(Some(std::time::Duration::from_millis(100)))
+        .unwrap();
+    let n2 = client2.read(&mut buf2).unwrap();
+    assert!(n2 > 0, "Client2 should receive data");
+
+    // Parse and verify system IDs are independent
+    use mavlink::peek_reader::PeekReader;
+    let (hdr1, _) = mavlink::read_v1_msg::<MavMessage, _>(&mut PeekReader::new(
+        std::io::Cursor::new(&buf1[..n1]),
+    ))
+    .unwrap();
+    let (hdr2, _) = mavlink::read_v1_msg::<MavMessage, _>(&mut PeekReader::new(
+        std::io::Cursor::new(&buf2[..n2]),
+    ))
+    .unwrap();
+    assert_eq!(hdr1.system_id, 1, "Link1 should send as system_id=1");
+    assert_eq!(hdr2.system_id, 2, "Link2 should send as system_id=2");
+}

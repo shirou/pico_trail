@@ -15,10 +15,11 @@
   - [FR-00162-sitl-gcs-command-reception](FR-00162-sitl-gcs-command-reception.md)
 - Related Tasks:
   - [T-00160-sitl-multi-vehicle-lockstep-ci](../tasks/T-00160-sitl-multi-vehicle-lockstep-ci/README.md)
+  - [T-00166-sitl-per-process-multi-vehicle](../tasks/T-00166-sitl-per-process-multi-vehicle/README.md)
 
 ## Requirement Statement
 
-Each vehicle instance shall support independent MAVLink communication on configurable UDP ports. This enables GCS applications to connect to and control multiple vehicles simultaneously.
+Each vehicle instance shall support independent MAVLink communication on configurable TCP ports. This enables GCS applications to connect to and control multiple vehicles simultaneously via mavp2p aggregation.
 
 ## Rationale
 
@@ -30,16 +31,16 @@ As an operator testing 3 rovers in SITL, I want to connect Mission Planner to al
 
 ## Acceptance Criteria
 
-- [ ] Each vehicle has configurable MAVLink UDP port in `VehicleConfig`
-- [ ] Default port assignment: 14550 + vehicle_index
-- [ ] MAVLink HEARTBEAT sent on each vehicle's port
-- [ ] Parameter read/write works independently per vehicle
-- [ ] Mission upload/download works independently per vehicle
-- [ ] Telemetry streaming on each vehicle's port
-- [ ] System ID in MAVLink messages matches `VehicleId`
-- [ ] GCS can connect to multiple ports simultaneously
-- [ ] Port conflicts detected and reported as error
-- [ ] Unit tests for multi-port MAVLink handling
+- [x] Each vehicle has configurable MAVLink TCP port in `VehicleConfig`
+- [x] Default port assignment: 14550 + vehicle_index
+- [x] MAVLink HEARTBEAT sent on each vehicle's port (per-process model)
+- [x] Parameter read/write works independently per vehicle
+- [x] Mission upload/download works independently per vehicle
+- [x] Telemetry streaming on each vehicle's port (per-process model)
+- [x] System ID in MAVLink messages matches `VehicleId`
+- [ ] GCS can connect to multiple ports simultaneously (requires manual validation with Mission Planner + mavp2p)
+- [x] Port conflicts detected and reported as error
+- [x] Unit tests for multi-port MAVLink handling
 
 ## Technical Details (if applicable)
 
@@ -66,62 +67,47 @@ impl Default for VehicleConfig {
 ### MAVLink System ID Mapping
 
 ```text
-Vehicle ID  | System ID | UDP Port
+Vehicle ID  | System ID | TCP Port
 ------------|-----------|----------
-VehicleId(1)|     1     |  14550
-VehicleId(2)|     2     |  14551
-VehicleId(3)|     3     |  14552
+VehicleId(1)|     1     |  5760
+VehicleId(2)|     2     |  5762
+VehicleId(3)|     3     |  5764
 ...         |   ...     |   ...
 ```
 
-### Multi-Port Listener
+### Per-Process Architecture
 
-```rust
-impl SitlBridge {
-    async fn setup_mavlink(&mut self) -> Result<(), SitlError> {
-        for (id, vehicle) in &mut self.vehicles {
-            let port = vehicle.config.mavlink_port;
-            let socket = UdpSocket::bind(format!("0.0.0.0:{}", port)).await?;
-            vehicle.mavlink_socket = Some(socket);
-        }
-        Ok(())
-    }
-
-    async fn handle_mavlink(&mut self) {
-        // Use tokio::select! to handle messages from all ports
-        loop {
-            tokio::select! {
-                // For each vehicle's socket...
-            }
-        }
-    }
-}
-```
-
-### GCS Connection Example
+Each vehicle runs as a separate OS process with its own TCP port. mavp2p aggregates all vehicle connections into a single GCS endpoint.
 
 ```bash
-# Connect Mission Planner to 3 vehicles
-# Vehicle 1: UDP 14550
-# Vehicle 2: UDP 14551
-# Vehicle 3: UDP 14552
+# Start 3 vehicles via launch script
+scripts/sitl-multi-vehicle.sh 3
 
-# In QGroundControl: Add multiple UDP links
+# Or manually:
+gazebo_bridge --system-id 1 --gazebo-port 9002 --mavlink-port 5760 &
+gazebo_bridge --system-id 2 --gazebo-port 9012 --mavlink-port 5762 &
+gazebo_bridge --system-id 3 --gazebo-port 9022 --mavlink-port 5764 &
+
+# Aggregate via mavp2p
+mavp2p tcpc:127.0.0.1:5760 tcpc:127.0.0.1:5762 tcpc:127.0.0.1:5764 tcps:0.0.0.0:5770
+
+# Connect Mission Planner to TCP:5770
 ```
 
 ## Platform Considerations
 
 ### Host Only
 
-- Uses async UDP (tokio/async-std)
-- Each vehicle gets its own socket
-- No port sharing - each vehicle is independent
+- Uses TCP via `GcsLink` (TcpListener/TcpStream)
+- Each vehicle process gets its own TCP port
+- mavp2p aggregates multiple TCP connections for GCS access
+- TCP chosen over UDP for WSL2 compatibility (UDP port forwarding unreliable)
 
 ### GCS Compatibility
 
-- Mission Planner: Supports multiple UDP connections
-- QGroundControl: Add multiple comm links
-- MAVProxy: `--master=udp:127.0.0.1:14550 --master=udp:127.0.0.1:14551`
+- Mission Planner: Connect via TCP to mavp2p aggregation port
+- QGroundControl: Add TCP comm link to mavp2p port
+- MAVProxy: `--master=tcp:127.0.0.1:5770`
 
 ## Risks & Mitigation
 
@@ -133,11 +119,12 @@ impl SitlBridge {
 
 ## Implementation Notes
 
-- Consider supporting TCP as well as UDP for GCS connection
-- MAVLink component ID can remain 1 (autopilot) for all vehicles
-- Log which ports are active at startup
+- TCP is used instead of UDP for WSL2 compatibility (per ADR-00165)
+- Per-process model provides full autopilot state isolation (ADR-00165)
+- MAVLink component ID remains 1 (autopilot) for all vehicles
+- Each process logs its active port at startup
 
 ## External References
 
-- [MAVLink UDP Setup](https://mavlink.io/en/mavgen_python/howto_requestmessages.html)
+- [mavp2p](https://github.com/bluenviron/mavp2p) — MAVLink proxy for TCP aggregation
 - [Mission Planner Multiple Vehicles](https://ardupilot.org/planner/docs/mission-planner-swarm.html)

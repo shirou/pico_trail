@@ -29,12 +29,14 @@
 - Related ADRs:
   - [ADR-00156-sitl-pluggable-adapter-architecture](../adr/ADR-00156-sitl-pluggable-adapter-architecture.md)
   - [ADR-00161-sitl-autopilot-integration-layer](../adr/ADR-00161-sitl-autopilot-integration-layer.md)
+  - [ADR-00165-sitl-per-process-multi-vehicle](../adr/ADR-00165-sitl-per-process-multi-vehicle.md)
 - Related Tasks:
   - [T-00157-sitl-simulator-integration](../tasks/T-00157-sitl-simulator-integration/README.md)
   - [T-00158-sitl-platform-and-lightweight-adapter](../tasks/T-00158-sitl-platform-and-lightweight-adapter/README.md)
   - [T-00159-sitl-gazebo-adapter](../tasks/T-00159-sitl-gazebo-adapter/README.md)
   - [T-00160-sitl-multi-vehicle-lockstep-ci](../tasks/T-00160-sitl-multi-vehicle-lockstep-ci/README.md)
   - [T-00164-sitl-autopilot-core-integration](../tasks/T-00164-sitl-autopilot-core-integration/README.md)
+  - [T-00166-sitl-per-process-multi-vehicle](../tasks/T-00166-sitl-per-process-multi-vehicle/README.md)
 
 ## Executive Summary
 

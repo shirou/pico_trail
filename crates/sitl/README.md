@@ -4,7 +4,9 @@ Software-In-The-Loop (SITL) simulator integration for the pico_trail autopilot.
 
 ## Overview
 
-This crate provides a simulation environment that mirrors the firmware's `Platform` abstraction, enabling testing of autopilot logic on the host without embedded hardware. The core component is `SitlBridge`, which orchestrates adapters, vehicles, and timing. A built-in `GcsLink` multiplexes MAVLink telemetry for all vehicles over a single TCP connection, so Mission Planner auto-detects every vehicle without extra configuration.
+This crate provides a simulation environment that mirrors the firmware's `Platform` abstraction, enabling testing of autopilot logic on the host without embedded hardware. The core component is `SitlBridge`, which orchestrates adapters, vehicles, and timing. Each process runs exactly one vehicle with its own autopilot state, and a `GcsLink` provides MAVLink TCP transport for GCS communication.
+
+For multi-vehicle operation, run one process per vehicle and use [mavp2p](https://github.com/bluenviron/mavp2p) to aggregate all TCP streams into a single GCS endpoint.
 
 ### Adapters
 
@@ -133,14 +135,15 @@ async fn main() {
 }
 ```
 
-## Running 3 Vehicles with Gazebo
+## Running Vehicles with Gazebo
 
-This section describes how to run 3 simulated rovers using Gazebo Harmonic and the `GazeboAdapter`.
+This section describes how to run simulated rovers using Gazebo Harmonic and the `GazeboAdapter`.
 
 ### Prerequisites
 
 - [Gazebo Harmonic](https://gazebosim.org/docs/harmonic/install) (gz-sim 8.x) — native install or Docker (see below)
 - [ardupilot_gazebo](https://github.com/ArduPilot/ardupilot_gazebo) plugin (for sensor/actuator UDP bridge)
+- [mavp2p](https://github.com/bluenviron/mavp2p) — for multi-vehicle GCS aggregation
 - Rust toolchain with `cargo`
 
 ### 1. Prepare the Gazebo World
@@ -309,36 +312,81 @@ After launch, Gazebo starts and waits for actuator commands on the configured po
 
 ### 3. Run the SITL Bridge
 
-The `gazebo_bridge` binary connects `GazeboAdapter` instances to the running Gazebo world. All vehicles share a single MAVLink TCP port for GCS communication.
+Each `gazebo_bridge` process handles exactly one vehicle. For multi-vehicle, run one process per vehicle.
+
+#### Single vehicle
 
 ```bash
-# 3 vehicles (default), MAVLink on TCP :14550
 cargo run -p pico_trail_sitl --bin gazebo_bridge
 
+# Custom ports
+cargo run -p pico_trail_sitl --bin gazebo_bridge -- \
+    --system-id 1 --gazebo-port 9002 --mavlink-port 5760
+```
+
+#### Multiple vehicles (launch script)
+
+The launch script starts N `gazebo_bridge` processes and a mavp2p aggregator:
+
+```bash
+# 3 vehicles (default)
+./scripts/sitl-multi-vehicle.sh
+
 # 5 vehicles
-cargo run -p pico_trail_sitl --bin gazebo_bridge -- -n 5
+./scripts/sitl-multi-vehicle.sh 5
 
 # Custom port configuration
-cargo run -p pico_trail_sitl --bin gazebo_bridge -- -n 3 --gazebo-port-base 9002 --port-stride 10
-
-# Custom MAVLink TCP port
-cargo run -p pico_trail_sitl --bin gazebo_bridge -- --mavlink-port 14551
-
-# Show all options
-cargo run -p pico_trail_sitl --bin gazebo_bridge -- --help
+GAZEBO_PORT_BASE=9002 MAVLINK_PORT_BASE=5760 ./scripts/sitl-multi-vehicle.sh 3
 ```
+
+| Variable | Default | Description |
+|---|---|---|
+| `GAZEBO_PORT_BASE` | 9002 | Gazebo fdm_port_in for vehicle 1 |
+| `GAZEBO_PORT_STRIDE` | 10 | Port offset between Gazebo vehicles |
+| `MAVLINK_PORT_BASE` | 5760 | MAVLink TCP port for vehicle 1 |
+| `MAVLINK_PORT_STRIDE` | 2 | Port offset between MAVLink ports |
+| `MAVP2P_PORT` | 5770 | mavp2p GCS listen port |
+
+#### Manual multi-vehicle setup (without launch script)
+
+```bash
+# Terminal 1: Vehicle 1
+cargo run -p pico_trail_sitl --bin gazebo_bridge -- \
+    --system-id 1 --gazebo-port 9002 --mavlink-port 5760
+
+# Terminal 2: Vehicle 2
+cargo run -p pico_trail_sitl --bin gazebo_bridge -- \
+    --system-id 2 --gazebo-port 9012 --mavlink-port 5762
+
+# Terminal 3: Vehicle 3
+cargo run -p pico_trail_sitl --bin gazebo_bridge -- \
+    --system-id 3 --gazebo-port 9022 --mavlink-port 5764
+
+# Terminal 4: mavp2p aggregator
+mavp2p tcpc:127.0.0.1:5760 tcpc:127.0.0.1:5762 tcpc:127.0.0.1:5764 tcps:0.0.0.0:5770
+```
+
+CLI flags:
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--system-id` | u8 | 1 | MAVLink system ID for this vehicle |
+| `--gazebo-port` | u16 | 9002 | UDP port for Gazebo communication |
+| `--mavlink-port` | u16 | 5760 | TCP port for MAVLink GCS connection |
 
 Source: `src/bin/gazebo_bridge.rs`
 
 ### 4. Connect a Ground Control Station
 
-While both Gazebo and the SITL bridge are running, connect Mission Planner or QGroundControl to the MAVLink TCP port. All vehicles share a single TCP connection — the GCS auto-detects them via distinct MAVLink `system_id` values.
+Connect Mission Planner or QGroundControl to the mavp2p aggregation port. Each vehicle is identified by its MAVLink `system_id`.
 
-Default port: **14550** (configurable via `--mavlink-port`).
+Default mavp2p port: **5770** (configurable via `MAVP2P_PORT`).
 
-In **Mission Planner**: Connection type → TCP, then enter `127.0.0.1` and port `14550`. All vehicles appear automatically in the vehicle selector dropdown.
+In **Mission Planner**: Connection type -> TCP, then enter `127.0.0.1` and port `5770`. All vehicles appear automatically in the vehicle selector dropdown.
 
-In **QGroundControl**: Settings → Comm Links → Add a TCP connection to `127.0.0.1:14550`. All vehicles are discovered automatically.
+In **QGroundControl**: Settings -> Comm Links -> Add a TCP connection to `127.0.0.1:5770`. All vehicles are discovered automatically.
+
+For a single vehicle without mavp2p, connect directly to the vehicle's MAVLink port (default `5760`).
 
 ### 5. GCS Command Handling
 
@@ -347,7 +395,7 @@ Each vehicle has a `VehicleAutopilot` that processes incoming MAVLink commands u
 ```text
 GCS (Mission Planner / QGC)
     |
-    v (TCP)
+    v (TCP via mavp2p)
 GcsLink::poll_incoming()        -- parse MAVLink frames
     |
     v
@@ -375,37 +423,34 @@ Supported commands:
 - `execute_mode()` — runs the current flight mode's control loop (reads RC input, writes actuators)
 - `update_telemetry()` — generates rate-limited telemetry messages (HEARTBEAT, ATTITUDE, GPS, etc.)
 
+All telemetry (HEARTBEAT, ATTITUDE, GPS_RAW_INT, GLOBAL_POSITION_INT, SYS_STATUS) flows through core's `TelemetryStreamer` via `VehicleAutopilot::update_telemetry()`. There is no SITL-side telemetry bypass.
+
 ### Architecture
 
 ```text
-Gazebo Harmonic (gz-sim)
-  r1_rover_1      r1_rover_2      r1_rover_3
-  fdm_port:9002   fdm_port:9012   fdm_port:9022
-    |                |                |
-    v (UDP)          v (UDP)          v (UDP)
-+---------------+---------------+---------------+
-| GazeboAdapter | GazeboAdapter | GazeboAdapter |
-| "gazebo1"     | "gazebo2"     | "gazebo3"     |
-+-------+-------+-------+-------+-------+-------+
-        |               |               |
-    Vehicle 1       Vehicle 2       Vehicle 3
-    SitlPlatform    SitlPlatform    SitlPlatform
-        \               |               /
-         \              |              /
-          +--- GcsLink (TCP :14550) --+
-                        |
-                        v
-              Mission Planner / QGC
-           (auto-detects all vehicles
-            via MAVLink system_id)
+Process 1 (system-id=1)         Process 2 (system-id=2)         Process 3 (system-id=3)
++-- SitlBridge (1 vehicle)      +-- SitlBridge (1 vehicle)      +-- SitlBridge (1 vehicle)
+|   +-- GazeboAdapter           |   +-- GazeboAdapter           |   +-- GazeboAdapter
+|       UDP :9002               |       UDP :9012               |       UDP :9022
++-- VehicleAutopilot            +-- VehicleAutopilot            +-- VehicleAutopilot
++-- GcsLink (TCP :5760)         +-- GcsLink (TCP :5762)         +-- GcsLink (TCP :5764)
+         |                               |                               |
+         +-------------------------------+-------------------------------+
+                                         |
+                                    mavp2p (TCP :5770)
+                                         |
+                                    Mission Planner
 ```
+
+Each process has its own `SYSTEM_STATE`, `RC_INPUT`, etc. — isolated by OS process boundaries. All telemetry flows through core's `TelemetryStreamer`.
 
 ### Troubleshooting
 
 - **"Failed to bind sensor socket"**: Another process is using the port. Check with `ss -ulnp | grep 900`.
 - **No sensor data received**: Verify Gazebo is running and the `ardupilot_gazebo` plugin is loaded. Check the Gazebo console for plugin errors.
 - **Vehicles not moving**: Ensure PWM channels are created and duty is set (see step 3 code). Verify the rover model in Gazebo responds to actuator commands.
-- **GCS not connecting**: Confirm the MAVLink TCP port (default 14550) is not blocked by a firewall. On WSL2, use TCP (not UDP) — UDP return packets may not reach the Windows host.
+- **GCS not connecting**: Confirm the MAVLink TCP port is not blocked by a firewall. On WSL2, use TCP (not UDP) — UDP return packets may not reach the Windows host.
+- **Vertical speed oscillation**: This was caused by duplicate telemetry from SITL and core. The per-process model eliminates this — all telemetry now flows through core only.
 
 ## Running tests
 

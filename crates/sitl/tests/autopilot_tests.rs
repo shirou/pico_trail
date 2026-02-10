@@ -442,3 +442,129 @@ fn test_set_mode_via_dispatcher() {
 
     reset_system_state();
 }
+
+/// Full closed-loop integration test: SitlBridge + LightweightAdapter + VehicleAutopilot.
+///
+/// Exercises the complete pipeline without Gazebo:
+/// ARM → RC input → execute mode → bridge.step() → sensors → telemetry
+#[tokio::test]
+async fn test_full_closed_loop_with_lightweight_adapter() {
+    reset_system_state();
+
+    use pico_trail_sitl::{
+        LightweightAdapter, LightweightConfig, SitlBridge, TimeMode, VehicleConfig, VehicleType,
+    };
+
+    // 1. Set up bridge with LightweightAdapter
+    let mut bridge = SitlBridge::new();
+    bridge.set_time_mode(TimeMode::Lockstep {
+        step_size_us: 10_000,
+    });
+
+    let id = VehicleId(1);
+    let config = LightweightConfig {
+        seed: Some(42),
+        gps_noise_m: 0.0, // deterministic
+        gps_rate_hz: 100, // GPS every step for reliable test
+        step_size_us: 10_000,
+        ..Default::default()
+    };
+    let adapter = LightweightAdapter::new("sim1", id, config);
+    bridge
+        .register_adapter(Box::new(adapter))
+        .expect("register adapter");
+    bridge
+        .spawn_vehicle(VehicleConfig::new(id, VehicleType::Rover))
+        .expect("spawn vehicle");
+    bridge
+        .assign_vehicle_to_adapter(id, "sim1")
+        .expect("assign vehicle");
+    bridge
+        .get_adapter_mut("sim1")
+        .unwrap()
+        .connect()
+        .await
+        .expect("connect adapter");
+
+    // Set up PWM channels
+    let v = bridge.get_vehicle(id).unwrap();
+    v.platform.create_pwm(0, 50).unwrap();
+    v.platform.create_pwm(1, 50).unwrap();
+
+    // 2. Create autopilot
+    let mut autopilot = VehicleAutopilot::new(1);
+
+    // 3. ARM the vehicle
+    let header = gcs_header();
+    autopilot.dispatch(&header, &arm_command(true), 1_000_000);
+    let armed = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).is_armed());
+    assert!(armed, "Vehicle should be armed");
+
+    // 4. Send RC input (throttle forward)
+    let rc_msg = MavMessage::RC_CHANNELS_OVERRIDE(RC_CHANNELS_OVERRIDE_DATA {
+        target_system: 1,
+        target_component: 1,
+        chan1_raw: 1500, // steering neutral
+        chan2_raw: 1500,
+        chan3_raw: 1700, // throttle forward
+        chan4_raw: 1500,
+        chan5_raw: 0,
+        chan6_raw: 0,
+        chan7_raw: 0,
+        chan8_raw: 0,
+        chan9_raw: 0,
+        chan10_raw: 0,
+        chan11_raw: 0,
+        chan12_raw: 0,
+        chan13_raw: 0,
+        chan14_raw: 0,
+        chan15_raw: 0,
+        chan16_raw: 0,
+        chan17_raw: 0,
+        chan18_raw: 0,
+    });
+    autopilot.process_rc_input(&rc_msg, 2_000_000).await;
+
+    // 5. Execute mode → writes actuator output
+    autopilot.execute_mode(2_000_000);
+
+    // 6. Apply actuators to platform PWM channels
+    if let Some(vehicle) = bridge.get_vehicle(id) {
+        autopilot.apply_actuators_to_platform(&vehicle.platform);
+    }
+
+    // 7. Step bridge → sends actuators, advances physics, receives sensors
+    for _ in 0..5 {
+        bridge.step().await.expect("bridge step");
+    }
+
+    // 8. Read sensor data from bridge and update autopilot state
+    if let Some(sensors) = bridge
+        .get_vehicle(id)
+        .and_then(|v| v.platform.peek_sensors())
+    {
+        autopilot.update_from_sensors(&sensors);
+    }
+
+    // 9. Verify sensors were propagated (GPS should be populated by LightweightAdapter)
+    let has_gps = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).gps_position.is_some());
+    assert!(
+        has_gps,
+        "GPS data should be populated from LightweightAdapter sensors"
+    );
+
+    // 10. Generate telemetry — should produce messages
+    let telemetry = autopilot.update_telemetry(5_000_000);
+    assert!(
+        !telemetry.is_empty(),
+        "Telemetry should contain at least HEARTBEAT"
+    );
+
+    // Verify HEARTBEAT is in telemetry
+    let has_heartbeat = telemetry
+        .iter()
+        .any(|m| matches!(m, MavMessage::HEARTBEAT(_)));
+    assert!(has_heartbeat, "Telemetry should include HEARTBEAT");
+
+    reset_system_state();
+}
