@@ -50,7 +50,7 @@ critical-section = { version = "1.2", features = ["std"] }
 serial_test = "3.2"
 
 [features]
-default = ["embedded-mavlink"]
+default = ["std-mavlink"]
 embassy = ["dep:embassy-sync", "dep:embassy-futures"]
 embedded-mavlink = ["mavlink/embedded"]
 std-mavlink = ["mavlink/std"]
