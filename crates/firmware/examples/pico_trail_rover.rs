@@ -1236,10 +1236,8 @@ fn get_compass_yaw_offset() -> f32 {
 async fn navigation_task() {
     use pico_trail_firmware::communication::mavlink::state::{FlightMode, SYSTEM_STATE};
     use pico_trail_firmware::core::mission::{
-        advance_waypoint, complete_mission, get_current_target, get_mission_state,
-        set_mission_state, set_single_waypoint, MissionState, Waypoint,
+        advance_waypoint, complete_mission, get_current_target, get_mission_state, MissionState,
     };
-    use pico_trail_firmware::subsystems::navigation::take_reposition_target;
 
     pico_trail_firmware::log_info!("Navigation task started");
 
@@ -1258,48 +1256,6 @@ async fn navigation_task() {
     );
 
     loop {
-        // Check for reposition command (from MAV_CMD_DO_REPOSITION / Fly Here)
-        if let Some(reposition) = take_reposition_target() {
-            pico_trail_firmware::log_info!(
-                "Reposition target received: lat={}, lon={}",
-                reposition.latitude,
-                reposition.longitude
-            );
-
-            // Create waypoint from reposition target
-            let waypoint = Waypoint {
-                seq: 0,
-                frame: 0,    // MAV_FRAME_GLOBAL
-                command: 16, // MAV_CMD_NAV_WAYPOINT
-                current: 1,
-                autocontinue: 0,
-                param1: 0.0,
-                param2: 2.0, // WP_RADIUS default
-                param3: 0.0,
-                param4: 0.0,
-                x: (reposition.latitude * 1e7) as i32,
-                y: (reposition.longitude * 1e7) as i32,
-                z: reposition.altitude.unwrap_or(0.0),
-            };
-
-            // Update MISSION_STORAGE (clear and add single waypoint)
-            set_single_waypoint(waypoint);
-
-            // Get current mode to check if we should start navigation
-            let mode = critical_section::with(|cs| {
-                let state = SYSTEM_STATE.borrow_ref(cs);
-                state.mode
-            });
-
-            // If in GUIDED mode, set MissionState::Running
-            if mode == FlightMode::Guided {
-                set_mission_state(MissionState::Running);
-                pico_trail_firmware::log_info!(
-                    "GUIDED mode: Starting navigation to reposition target"
-                );
-            }
-        }
-
         // Get current mode and GPS from SYSTEM_STATE
         let (mode, gps_position) = critical_section::with(|cs| {
             let state = SYSTEM_STATE.borrow_ref(cs);

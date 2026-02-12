@@ -327,7 +327,8 @@ impl<V: VehicleType> CommandHandler<V> {
     }
 
     fn handle_do_reposition(&mut self, cmd: &COMMAND_LONG_DATA) -> MavResult {
-        use crate::navigation::PositionTarget;
+        use crate::autopilot::state::{FlightMode, SYSTEM_STATE};
+        use crate::mission::{set_mission_state, set_single_waypoint, MissionState, Waypoint};
 
         let latitude = cmd.param5;
         let longitude = cmd.param6;
@@ -347,17 +348,39 @@ impl<V: VehicleType> CommandHandler<V> {
             return MavResult::MAV_RESULT_DENIED;
         }
 
-        let target = PositionTarget {
-            latitude,
-            longitude,
-            altitude,
+        // Create waypoint from reposition target
+        let waypoint = Waypoint {
+            seq: 0,
+            frame: 0,    // MAV_FRAME_GLOBAL
+            command: 16, // MAV_CMD_NAV_WAYPOINT
+            current: 1,
+            autocontinue: 0,
+            param1: 0.0,
+            param2: 2.0, // WP_RADIUS default
+            param3: 0.0,
+            param4: 0.0,
+            x: (latitude * 1e7) as i32,
+            y: (longitude * 1e7) as i32,
+            z: altitude.unwrap_or(0.0),
         };
 
-        crate::navigation::set_reposition_target(target);
+        // Update mission storage with single waypoint
+        set_single_waypoint(waypoint);
 
-        crate::log_info!("Reposition target set: lat={}, lon={}", latitude, longitude);
+        // If in Guided mode, start navigation immediately
+        let mode = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).mode);
+        if mode == FlightMode::Guided {
+            set_mission_state(MissionState::Running);
+            crate::log_info!(
+                "GUIDED: Navigation started to lat={}, lon={}",
+                latitude,
+                longitude
+            );
+        } else {
+            crate::log_info!("Reposition target set: lat={}, lon={}", latitude, longitude);
+        }
+
         status_notifier::send_info("Fly to target set");
-
         MavResult::MAV_RESULT_ACCEPTED
     }
 

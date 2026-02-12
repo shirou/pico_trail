@@ -54,7 +54,7 @@ pub use heading::{FusedHeadingSource, HeadingSource, HeadingSourceType};
 pub use path_recorder::{PathPoint, PathRecorder, PATH_RECORDER};
 pub use types::{NavigationOutput, PositionTarget, SimpleNavConfig};
 
-use crate::core::traits::{EmbassyState, SharedState};
+use crate::core::traits::EmbassyState;
 
 /// Global navigation target (protected by EmbassyState)
 ///
@@ -79,25 +79,3 @@ pub static NAV_OUTPUT: EmbassyState<NavigationOutput> = EmbassyState::new(Naviga
     heading_error_deg: 0.0,
     at_target: false,
 });
-
-/// Reposition target from MAV_CMD_DO_REPOSITION command (synchronous access)
-///
-/// Set by CommandHandler when receiving MAV_CMD_DO_REPOSITION.
-/// Read and cleared by navigation_task to update NAV_TARGET.
-pub static REPOSITION_TARGET: EmbassyState<Option<PositionTarget>> = EmbassyState::new(None);
-
-/// Set reposition target from command handler (synchronous)
-///
-/// Called by CommandHandler when receiving MAV_CMD_DO_REPOSITION.
-/// The navigation_task will pick this up and update NAV_TARGET.
-pub fn set_reposition_target(target: PositionTarget) {
-    REPOSITION_TARGET.with_mut(|t| *t = Some(target));
-}
-
-/// Take reposition target if available (synchronous)
-///
-/// Called by navigation_task to check for reposition commands.
-/// Returns and clears the target.
-pub fn take_reposition_target() -> Option<PositionTarget> {
-    REPOSITION_TARGET.with_mut(|t| t.take())
-}

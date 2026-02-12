@@ -23,6 +23,7 @@ use pico_trail_core::communication::handlers::{
     CommandHandler, MissionHandler, ParamHandler, RcInputHandler, TelemetryStreamer,
 };
 use pico_trail_core::mode::{ManualMode, Mode, ModeExecutor};
+use pico_trail_core::navigation::NavigationRunner;
 use pico_trail_core::parameters::ParameterStore;
 use pico_trail_core::rc::RcInput;
 use pico_trail_core::servo::ActuatorInterface;
@@ -127,6 +128,8 @@ pub struct VehicleAutopilot {
     pub dispatcher: MessageDispatcher<GroundRover>,
     pub mode_executor: ModeExecutor,
     pub system_id: u8,
+    /// Navigation runner for Guided/Auto modes (shared core logic)
+    nav_runner: NavigationRunner,
 }
 
 impl VehicleAutopilot {
@@ -163,6 +166,7 @@ impl VehicleAutopilot {
             dispatcher,
             mode_executor,
             system_id,
+            nav_runner: NavigationRunner::new(),
         }
     }
 
@@ -195,9 +199,35 @@ impl VehicleAutopilot {
     }
 
     /// Execute the active mode.
+    ///
+    /// For Manual mode, runs the ModeExecutor (RC → actuators).
+    /// For Guided/Auto modes, runs the NavigationRunner (core shared logic).
     pub fn execute_mode(&mut self, current_time_us: u64) {
-        if let Err(e) = self.mode_executor.execute(current_time_us) {
-            eprintln!("  [Autopilot] Mode execute error: {e}");
+        let mode = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).mode);
+
+        match mode {
+            FlightMode::Guided | FlightMode::Auto => {
+                // Use shared NavigationRunner for autonomous modes
+                if let Some(output) = self.nav_runner.step(
+                    sitl_gps_provider,
+                    sitl_heading_provider,
+                    0.02, // 50 Hz
+                    None, // No gyro yaw rate in SITL
+                ) {
+                    // Write navigation output to actuators
+                    critical_section::with(|cs| {
+                        let mut out = ACTUATOR_OUTPUT.borrow_ref_mut(cs);
+                        out.0 = output.steering;
+                        out.1 = output.throttle;
+                    });
+                }
+            }
+            _ => {
+                // Manual and other modes use ModeExecutor
+                if let Err(e) = self.mode_executor.execute(current_time_us) {
+                    eprintln!("  [Autopilot] Mode execute error: {e}");
+                }
+            }
         }
     }
 
@@ -274,6 +304,26 @@ impl VehicleAutopilot {
         platform.set_pwm_duty(0, left_duty);
         platform.set_pwm_duty(1, right_duty);
     }
+}
+
+/// GPS provider for SITL modes (reads from SYSTEM_STATE).
+fn sitl_gps_provider() -> Option<pico_trail_core::navigation::GpsPosition> {
+    critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).gps_position)
+}
+
+/// Heading provider for SITL modes (reads yaw from SYSTEM_STATE attitude).
+fn sitl_heading_provider() -> Option<f32> {
+    critical_section::with(|cs| {
+        let state = SYSTEM_STATE.borrow_ref(cs);
+        // Use yaw from attitude (converted to 0-360 degrees)
+        let yaw_deg = state.attitude.yaw.to_degrees();
+        let heading = if yaw_deg < 0.0 {
+            yaw_deg + 360.0
+        } else {
+            yaw_deg
+        };
+        Some(heading)
+    })
 }
 
 /// Read current FlightMode from the global SYSTEM_STATE.
