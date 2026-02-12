@@ -16,6 +16,8 @@
 //! PWM implementations belong in the firmware crate. Armed state checking
 //! is the responsibility of the caller (via `MotorGroup::set_group_speed`).
 
+pub mod runner;
+
 /// Motor control error types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MotorError {

@@ -282,8 +282,8 @@ impl VehicleAutopilot {
     /// Apply actuator outputs to the platform's PWM channels.
     ///
     /// Reads steering/throttle from the global `ACTUATOR_OUTPUT` (written by `SitlActuator`
-    /// during mode execution) and applies differential drive mixing to PWM channels
-    /// 0 (left) and 1 (right).
+    /// during mode execution) and applies `DifferentialDrive::mix()` from core for
+    /// consistent mixing with firmware. Output is mapped to PWM channels 0 (left) and 1 (right).
     pub fn apply_actuators_to_platform(&self, platform: &SitlPlatform) {
         let (steering, throttle) = critical_section::with(|cs| {
             if !SYSTEM_STATE.borrow_ref(cs).is_armed() {
@@ -293,9 +293,8 @@ impl VehicleAutopilot {
             (out.0, out.1)
         });
 
-        // Differential drive mixing: left = throttle + steering, right = throttle - steering
-        let left = (throttle + steering).clamp(-1.0, 1.0);
-        let right = (throttle - steering).clamp(-1.0, 1.0);
+        // Use core's DifferentialDrive for consistent mixing with firmware
+        let (left, right) = pico_trail_core::kinematics::DifferentialDrive::mix(steering, throttle);
 
         // Convert from [-1, 1] to [0, 1] duty cycle for PWM
         let left_duty = (left + 1.0) / 2.0;

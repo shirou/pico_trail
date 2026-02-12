@@ -69,9 +69,9 @@ impl NavigationRunner {
         let heading = heading_provider().or(gps.course_over_ground)?;
 
         // Compute navigation output
-        let output = self
-            .controller
-            .update(gps.latitude, gps.longitude, &target, heading, dt, yaw_rate);
+        let output =
+            self.controller
+                .update(gps.latitude, gps.longitude, &target, heading, dt, yaw_rate);
 
         // Handle waypoint arrival
         if output.at_target {
@@ -116,10 +116,11 @@ impl Default for NavigationRunner {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use super::*;
     use crate::mission::{set_mission_state, set_single_waypoint, MissionState, Waypoint};
     use crate::navigation::GpsPosition;
-    use crate::traits::sync::SharedState;
+    use std::vec;
 
     fn reset_state() {
         critical_section::with(|cs| {
