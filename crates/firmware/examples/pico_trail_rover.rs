@@ -127,11 +127,14 @@ use pico_trail_firmware::{
     communication::mavlink::{
         dispatcher::MessageDispatcher,
         handlers::{
-            command::CommandHandler, mission::MissionHandler, param::ParamHandler,
-            rc_input::RcInputHandler, telemetry::TelemetryStreamer,
+            command::CommandHandler,
+            mission::MissionHandler,
+            param::{ParamHandler, ParamHandlerInit},
+            rc_input::RcInputHandler,
+            telemetry::TelemetryStreamer,
         },
         parser::MavlinkParser,
-        state::BatteryAdcReader,
+        state::SystemStateExt,
         transport::udp::UdpTransport,
         transport_router::TransportRouter,
         vehicle::GroundRover,
@@ -140,7 +143,7 @@ use pico_trail_firmware::{
     core::traits::SharedState,
     devices::gps::GpsPosition,
     devices::imu::bno086::{Bno086DriverWithGpio, Bno086GpioConfig, EmbassyIntPin, EmbassyRstPin},
-    libraries::{kinematics::DifferentialDrive, motor_driver::MotorGroup, RC_INPUT},
+    libraries::{motor_driver::MotorGroup, RC_INPUT},
     parameters::wifi::WifiParams,
     platform::rp2350::{network::WifiConfig, Rp2350Flash},
     subsystems::ahrs::Bno086ExternalAhrs,
@@ -172,7 +175,7 @@ async fn main(spawner: Spawner) {
     let mut flash = Rp2350Flash::new();
 
     // Initialize ParamHandler which loads/registers parameters
-    let param_handler = ParamHandler::new(&mut flash);
+    let param_handler = ParamHandler::new_from_flash(&mut flash);
 
     // Initialize WiFi and UDP transport
     #[cfg(feature = "pico2_w")]
@@ -706,10 +709,7 @@ impl<'a> Rp2350AdcReader<'a> {
         let avg = (sum / 5) as u16;
         self.last_value.set(avg);
     }
-}
 
-#[cfg(feature = "pico2_w")]
-impl BatteryAdcReader for Rp2350AdcReader<'_> {
     /// Read the most recent averaged ADC value (synchronous)
     ///
     /// Returns the cached value from the last `update_adc_value()` call.
@@ -718,7 +718,7 @@ impl BatteryAdcReader for Rp2350AdcReader<'_> {
     /// # Returns
     ///
     /// Raw 12-bit ADC value (0-4095) representing voltage at ADC pin (0-3.3V range)
-    fn read_battery_adc(&mut self) -> u16 {
+    pub fn read_battery_adc(&self) -> u16 {
         self.last_value.get()
     }
 }
@@ -770,9 +770,8 @@ async fn rover_mavlink_task(
 ) {
     use embassy_time::Instant;
     use mavlink::Message;
-    use pico_trail_firmware::subsystems::battery_failsafe::{
-        BatteryFailsafeChecker, BatteryFailsafeConfig, BatteryFailsafeLevel,
-    };
+    use pico_trail_core::autopilot::battery::BatteryFailsafeConfig;
+    use pico_trail_core::autopilot::mavlink_runner::{BatteryAction, MavlinkLoopRunner};
 
     pico_trail_firmware::log_info!("Rover MAVLink task started");
 
@@ -784,13 +783,12 @@ async fn rover_mavlink_task(
     let mut last_battery_update = Instant::now();
     const BATTERY_UPDATE_INTERVAL: Duration = Duration::from_millis(100);
 
-    // Initialize battery failsafe checker from parameter store
+    // Initialize MavlinkLoopRunner with battery failsafe from parameter store
     let battery_params = pico_trail_firmware::parameters::battery::BatteryParams::from_store(
         dispatcher.param_handler().store(),
     );
     let battery_failsafe_config = BatteryFailsafeConfig::from_params(&battery_params);
-    let mut battery_failsafe = BatteryFailsafeChecker::new(battery_failsafe_config);
-    let mut was_armed = false;
+    let mut mavlink_runner = MavlinkLoopRunner::new(battery_failsafe_config);
 
     loop {
         // Non-blocking receive with timeout
@@ -938,73 +936,43 @@ async fn rover_mavlink_task(
             critical_section::with(|cs| {
                 let mut state = pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
                     .borrow_ref_mut(cs);
-                state.update_battery(&mut adc_reader);
+                state.update_battery(adc_reader.read_battery_adc());
             });
 
-            // Battery failsafe check
+            // Battery failsafe check via MavlinkLoopRunner
             let (voltage, is_armed) = critical_section::with(|cs| {
                 let state =
                     pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE.borrow_ref(cs);
                 (state.battery.voltage, state.is_armed())
             });
 
-            // On arm transition: reset sticky flags and reload config from param store
-            if is_armed && !was_armed {
-                let fresh_params =
-                    pico_trail_firmware::parameters::battery::BatteryParams::from_store(
-                        dispatcher.param_handler().store(),
+            let action =
+                mavlink_runner.check_battery(voltage, is_armed, dispatcher.param_handler().store());
+            match action {
+                BatteryAction::None => {}
+                BatteryAction::SetMode(mode) => {
+                    pico_trail_firmware::log_warn!(
+                        "Battery failsafe: voltage={}, setting mode",
+                        voltage
                     );
-                battery_failsafe
-                    .reset_with_config(BatteryFailsafeConfig::from_params(&fresh_params));
-                pico_trail_firmware::log_info!("Battery failsafe reset on arm");
-            }
-            was_armed = is_armed;
-
-            if let Some(event) = battery_failsafe.check(voltage, is_armed) {
-                use pico_trail_firmware::parameters::battery::BatteryFailsafeAction;
-
-                match event.level {
-                    BatteryFailsafeLevel::Low => {
-                        pico_trail_firmware::log_warn!("Battery LOW failsafe: voltage={}", voltage);
-                    }
-                    BatteryFailsafeLevel::Critical => {
-                        pico_trail_firmware::log_error!(
-                            "Battery CRITICAL failsafe: voltage={}",
-                            voltage
-                        );
-                    }
+                    critical_section::with(|cs| {
+                        let mut state =
+                            pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
+                                .borrow_ref_mut(cs);
+                        let _ = state.set_mode(mode);
+                    });
                 }
-
-                match event.action {
-                    BatteryFailsafeAction::None => {}
-                    BatteryFailsafeAction::Hold => {
-                        critical_section::with(|cs| {
-                            let mut state =
-                                pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
-                                    .borrow_ref_mut(cs);
-                            let _ = state.set_mode(
-                                pico_trail_firmware::communication::mavlink::state::FlightMode::Hold,
-                            );
-                        });
-                    }
-                    BatteryFailsafeAction::RTL => {
-                        critical_section::with(|cs| {
-                            let mut state =
-                                pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
-                                    .borrow_ref_mut(cs);
-                            let _ = state.set_mode(
-                                pico_trail_firmware::communication::mavlink::state::FlightMode::Rtl,
-                            );
-                        });
-                    }
-                    BatteryFailsafeAction::Disarm => {
-                        critical_section::with(|cs| {
-                            let mut state =
-                                pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
-                                    .borrow_ref_mut(cs);
-                            let _ = state.disarm_forced();
-                        });
-                    }
+                BatteryAction::Disarm => {
+                    pico_trail_firmware::log_error!(
+                        "Battery CRITICAL failsafe: voltage={}, disarming",
+                        voltage
+                    );
+                    critical_section::with(|cs| {
+                        let mut state =
+                            pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
+                                .borrow_ref_mut(cs);
+                        let _ = state.disarm_forced();
+                    });
                 }
             }
 
@@ -1017,9 +985,9 @@ async fn rover_mavlink_task(
 
 /// Motor control task
 ///
-/// Reads input from RC (Manual mode) or Navigation Controller (Guided mode),
-/// applies differential drive kinematics, and controls the 4-wheel drive motors.
-/// Enforces armed state check.
+/// Uses `MotorControlRunner` from core for mode-based input selection,
+/// differential drive kinematics, and safety checks. This task only handles
+/// hardware motor output and logging.
 #[cfg(feature = "pico2_w")]
 #[embassy_executor::task]
 async fn motor_control_task(
@@ -1030,9 +998,22 @@ async fn motor_control_task(
         >,
     >,
 ) {
-    use pico_trail_firmware::communication::mavlink::state::{FlightMode, SYSTEM_STATE};
+    use pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE;
+    use pico_trail_firmware::libraries::motor_driver::MotorError;
 
     pico_trail_firmware::log_info!("Motor control task started");
+
+    let mut runner = pico_trail_core::motor::runner::MotorControlRunner::new();
+
+    /// RC input provider: reads steering (ch1) and throttle (ch3) from global RC_INPUT
+    fn rc_provider() -> (f32, f32, Option<pico_trail_core::rc::RcStatus>) {
+        RC_INPUT.with(|rc| (rc.channels[0], rc.channels[2], Some(rc.status)))
+    }
+
+    /// Navigation provider: reads steering and throttle from global NAV_OUTPUT
+    fn nav_provider() -> (f32, f32) {
+        NAV_OUTPUT.with(|nav| (nav.steering, nav.throttle))
+    }
 
     loop {
         // Get current mode and armed state
@@ -1041,93 +1022,37 @@ async fn motor_control_task(
             (state.mode, state.is_armed())
         });
 
-        // Get steering/throttle based on mode
-        let (steering, throttle, rc_status) = match mode {
-            FlightMode::Manual => {
-                // Manual mode: use RC input directly (blocking mutex with critical section)
-                RC_INPUT.with(|rc| {
-                    let steering = rc.channels[0]; // Channel 1 (index 0)
-                    let throttle = rc.channels[2]; // Channel 3 (index 2)
-                    (steering, throttle, Some(rc.status))
-                })
-            }
-            FlightMode::Guided => {
-                // Guided mode: use navigation controller output
-                // Navigation output: steering is [-1, 1], throttle is [0, 1]
-                // For bidirectional movement, we keep throttle as-is (forward only in Guided)
-                NAV_OUTPUT.with(|nav_output| (nav_output.steering, nav_output.throttle, None))
-                // No RC status in Guided mode
-            }
-            FlightMode::Hold => {
-                // Hold mode: stop all motors (battery failsafe or user-commanded hold)
-                (0.0, 0.0, None)
-            }
-            _ => {
-                // Other modes (Stabilize, Loiter, Auto, RTL): not implemented yet
-                // For now, use RC input as fallback (blocking mutex with critical section)
-                RC_INPUT.with(|rc| (rc.channels[0], rc.channels[2], Some(rc.status)))
-            }
-        };
-
-        // Apply differential drive kinematics
-        // steering: -1.0 (left) to +1.0 (right)
-        // throttle: -1.0 (reverse) to +1.0 (forward)
-        let (left_speed, right_speed) = DifferentialDrive::mix(steering, throttle);
-
-        // For 4WD: Left side = M1+M2, Right side = M3+M4
-        let speeds = [
-            left_speed,  // Motor 1 (Left Front)
-            left_speed,  // Motor 2 (Left Rear)
-            right_speed, // Motor 3 (Right Rear)
-            right_speed, // Motor 4 (Right Front)
-        ];
+        let output = runner.step(mode, is_armed, rc_provider, nav_provider);
 
         // Rate-limited motor log (every ~1s = 100 iterations at 100Hz)
-        // Prevents flooding LOG_CHANNEL which blocks navigation diagnostics
         static mut MOTOR_LOG_CTR: u32 = 0;
         unsafe {
             MOTOR_LOG_CTR += 1;
-            if MOTOR_LOG_CTR >= 100 && is_armed && (steering.abs() > 0.05 || throttle.abs() > 0.05)
-            {
-                MOTOR_LOG_CTR = 0;
-                pico_trail_firmware::log_debug!(
-                    "Motor: mode={:?}, steer={}, thr={}, L={}, R={}",
-                    mode,
-                    steering,
-                    throttle,
-                    left_speed,
-                    right_speed
-                );
+            if MOTOR_LOG_CTR >= 100 && !output.should_stop {
+                let s = &output.motor_speeds;
+                if s[0].abs() > 0.05 || s[2].abs() > 0.05 {
+                    MOTOR_LOG_CTR = 0;
+                    pico_trail_firmware::log_debug!(
+                        "Motor: mode={:?}, L={}, R={}",
+                        mode,
+                        s[0],
+                        s[2]
+                    );
+                }
             }
         }
 
-        if !is_armed {
-            // Stop all motors when disarmed (critical safety behavior)
+        if output.should_stop {
             if motor_group.stop_all().is_err() {
-                pico_trail_firmware::log_warn!("Failed to stop motors on disarm");
+                pico_trail_firmware::log_warn!("Failed to stop motors");
             }
-        } else if let Err(e) = motor_group.set_group_speed(&speeds, is_armed) {
-            // Note: MotorError is from core crate (no defmt::Format), match manually
+        } else if let Err(e) = motor_group.set_group_speed(&output.motor_speeds, is_armed) {
             let err_str = match e {
-                pico_trail_firmware::libraries::motor_driver::MotorError::NotArmed => "NotArmed",
-                pico_trail_firmware::libraries::motor_driver::MotorError::InvalidSpeed => {
-                    "InvalidSpeed"
-                }
-                pico_trail_firmware::libraries::motor_driver::MotorError::HardwareFault => {
-                    "HardwareFault"
-                }
+                MotorError::NotArmed => "NotArmed",
+                MotorError::InvalidSpeed => "InvalidSpeed",
+                MotorError::HardwareFault => "HardwareFault",
             };
             pico_trail_firmware::log_warn!("Motor control error: {}", err_str);
-        }
-
-        // Check RC timeout (only in modes that use RC)
-        if let Some(status) = rc_status {
-            if status != pico_trail_firmware::libraries::RcStatus::Active {
-                // RC lost or never connected - ensure motors stop
-                if motor_group.stop_all().is_err() {
-                    pico_trail_firmware::log_warn!("Failed to stop motors on RC timeout");
-                }
-            }
         }
 
         // 10 ms update rate (100 Hz)
@@ -1236,10 +1161,8 @@ fn get_compass_yaw_offset() -> f32 {
 async fn navigation_task() {
     use pico_trail_firmware::communication::mavlink::state::{FlightMode, SYSTEM_STATE};
     use pico_trail_firmware::core::mission::{
-        advance_waypoint, complete_mission, get_current_target, get_mission_state,
-        set_mission_state, set_single_waypoint, MissionState, Waypoint,
+        advance_waypoint, complete_mission, get_current_target, get_mission_state, MissionState,
     };
-    use pico_trail_firmware::subsystems::navigation::take_reposition_target;
 
     pico_trail_firmware::log_info!("Navigation task started");
 
@@ -1258,48 +1181,6 @@ async fn navigation_task() {
     );
 
     loop {
-        // Check for reposition command (from MAV_CMD_DO_REPOSITION / Fly Here)
-        if let Some(reposition) = take_reposition_target() {
-            pico_trail_firmware::log_info!(
-                "Reposition target received: lat={}, lon={}",
-                reposition.latitude,
-                reposition.longitude
-            );
-
-            // Create waypoint from reposition target
-            let waypoint = Waypoint {
-                seq: 0,
-                frame: 0,    // MAV_FRAME_GLOBAL
-                command: 16, // MAV_CMD_NAV_WAYPOINT
-                current: 1,
-                autocontinue: 0,
-                param1: 0.0,
-                param2: 2.0, // WP_RADIUS default
-                param3: 0.0,
-                param4: 0.0,
-                x: (reposition.latitude * 1e7) as i32,
-                y: (reposition.longitude * 1e7) as i32,
-                z: reposition.altitude.unwrap_or(0.0),
-            };
-
-            // Update MISSION_STORAGE (clear and add single waypoint)
-            set_single_waypoint(waypoint);
-
-            // Get current mode to check if we should start navigation
-            let mode = critical_section::with(|cs| {
-                let state = SYSTEM_STATE.borrow_ref(cs);
-                state.mode
-            });
-
-            // If in GUIDED mode, set MissionState::Running
-            if mode == FlightMode::Guided {
-                set_mission_state(MissionState::Running);
-                pico_trail_firmware::log_info!(
-                    "GUIDED mode: Starting navigation to reposition target"
-                );
-            }
-        }
-
         // Get current mode and GPS from SYSTEM_STATE
         let (mode, gps_position) = critical_section::with(|cs| {
             let state = SYSTEM_STATE.borrow_ref(cs);

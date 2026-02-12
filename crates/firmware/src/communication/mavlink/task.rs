@@ -34,8 +34,11 @@
 use super::{
     dispatcher::{DispatcherStats, MessageDispatcher},
     handlers::{
-        command::CommandHandler, mission::MissionHandler, param::ParamHandler,
-        rc_input::RcInputHandler, telemetry::TelemetryStreamer,
+        command::CommandHandler,
+        mission::MissionHandler,
+        param::{ParamHandler, ParamHandlerInit},
+        rc_input::RcInputHandler,
+        telemetry::TelemetryStreamer,
     },
     parser::MavlinkParser,
     state::SystemState,
@@ -44,7 +47,8 @@ use super::{
 };
 use crate::platform::traits::flash::FlashInterface;
 
-// Re-export mavlink_task from platform
+// Re-export mavlink_task from platform (ARM-only)
+#[cfg(target_arch = "arm")]
 pub use crate::platform::rp2350::tasks::mavlink::mavlink_task;
 
 /// MAVLink task configuration
@@ -85,7 +89,7 @@ pub struct MavlinkContext<V: VehicleType> {
 
 impl<V: VehicleType> MavlinkContext<V> {
     pub fn new<F: FlashInterface>(config: MavlinkConfig, flash: &mut F) -> Self {
-        let param_handler = ParamHandler::new(flash);
+        let param_handler = ParamHandler::new_from_flash(flash);
         let command_handler = CommandHandler::new();
         let telemetry_streamer = TelemetryStreamer::new(config.system_id, config.component_id);
         let mission_handler = MissionHandler::new(config.system_id, config.component_id);
@@ -217,14 +221,5 @@ mod tests {
 
         // Read state through immutable reference
         assert_eq!(context.state().battery.voltage, 11.5);
-    }
-
-    #[tokio::test]
-    async fn test_task_placeholder() {
-        let config = MavlinkConfig::default();
-        let mut flash = MockFlash::new();
-
-        // Task should complete immediately on host (not in infinite loop)
-        mavlink_task_placeholder(config, &mut flash).await;
     }
 }

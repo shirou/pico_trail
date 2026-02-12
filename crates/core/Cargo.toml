@@ -31,6 +31,18 @@ crc = "3.2"
 # Critical section for thread-safe global state access (scheduler stats)
 critical-section = "1.2"
 
+# MAVLink 2.0 protocol (IO feature selected via embedded-mavlink or std-mavlink feature flags)
+mavlink = { version = "0.17.0", default-features = false, features = ["common", "emit-extensions"] }
+# Numeric trait conversion (used by mavlink's FromPrimitive-derived enums)
+num-traits = { version = "0.2", default-features = false }
+
+# Optional: defmt formatting support for embedded targets
+defmt = { version = "0.3", optional = true }
+
+# Optional: Embassy async sync primitives (for SharedState, MessageDispatcher)
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", optional = true }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", optional = true }
+
 [dev-dependencies]
 # Host test dependencies - enable std feature for critical-section
 critical-section = { version = "1.2", features = ["std"] }
@@ -38,4 +50,7 @@ critical-section = { version = "1.2", features = ["std"] }
 serial_test = "3.2"
 
 [features]
-default = []
+default = ["std-mavlink"]
+embassy = ["dep:embassy-sync", "dep:embassy-futures"]
+embedded-mavlink = ["mavlink/embedded"]
+std-mavlink = ["mavlink/std"]

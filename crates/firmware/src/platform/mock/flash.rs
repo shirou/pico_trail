@@ -2,7 +2,7 @@
 //!
 //! Provides in-memory Flash simulation for unit tests.
 
-use crate::platform::{error::FlashError, traits::FlashInterface, Result};
+use crate::platform::traits::{FlashError, FlashInterface};
 use core::cell::RefCell;
 use std::vec::Vec;
 
@@ -130,14 +130,14 @@ impl Default for MockFlash {
 }
 
 impl FlashInterface for MockFlash {
-    fn read(&mut self, address: u32, buf: &mut [u8]) -> Result<()> {
+    fn read(&mut self, address: u32, buf: &mut [u8]) -> Result<(), FlashError> {
         // Validate address range
         if address >= FLASH_CAPACITY {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         if address as usize + buf.len() > FLASH_CAPACITY as usize {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // Copy from storage
@@ -147,15 +147,15 @@ impl FlashInterface for MockFlash {
         Ok(())
     }
 
-    fn write(&mut self, address: u32, data: &[u8]) -> Result<()> {
+    fn write(&mut self, address: u32, data: &[u8]) -> Result<(), FlashError> {
         // Validate address is in writable region
         if !self.is_writable(address) {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // Validate write doesn't exceed capacity
         if address as usize + data.len() > FLASH_CAPACITY as usize {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // Simulate power loss (partial write)
@@ -177,25 +177,25 @@ impl FlashInterface for MockFlash {
         Ok(())
     }
 
-    fn erase(&mut self, address: u32, size: u32) -> Result<()> {
+    fn erase(&mut self, address: u32, size: u32) -> Result<(), FlashError> {
         // Validate address is in writable region
         if !self.is_writable(address) {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // Validate address is block-aligned
         if !self.is_block_aligned(address) {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // Validate size is multiple of block size
         if !size.is_multiple_of(BLOCK_SIZE) {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // Validate erase doesn't exceed capacity
         if address + size > FLASH_CAPACITY {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // Erase blocks (set to 0xFF)

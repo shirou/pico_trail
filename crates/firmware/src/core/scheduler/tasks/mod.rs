@@ -15,9 +15,11 @@
 //! because they require Embassy runtime (`#[embassy_executor::task]`).
 //! This module re-exports them for API compatibility.
 
-// Re-export tasks from platform module
+// Re-export tasks from platform module (ARM-only)
+#[cfg(target_arch = "arm")]
 pub use crate::platform::rp2350::tasks::control::control_loop_task;
 
+#[cfg(target_arch = "arm")]
 pub use crate::platform::rp2350::tasks::examples::{
     ahrs_task, control_task, imu_task, telemetry_task,
 };

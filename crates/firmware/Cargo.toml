@@ -13,40 +13,18 @@ categories = ["embedded", "no-std"]
 
 [dependencies]
 # Core business logic (workspace dependency)
-pico_trail_core = { path = "../core" }
+pico_trail_core = { path = "../core", default-features = false, features = ["embassy", "embedded-mavlink", "defmt"] }
 
-# Cortex-M dependencies (always enabled for RP2350)
-cortex-m = "0.7"
-cortex-m-rt = "0.7"
+# defmt logging
 defmt = "1.0.1"
-defmt-rtt = "1.0.1"
-panic-probe = { version = "1.0", features = ["print-defmt"] }
-panic-halt = "1.0"
 
-# Embassy async framework (always enabled)
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", features = ["arch-cortex-m", "executor-thread"] }
+# Embassy async framework
 embassy-time = { git = "https://github.com/embassy-rs/embassy", features = ["tick-hz-1_000_000"] }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", features = ["time-driver", "rp235xa", "critical-section-impl", "binary-info"] }
-embassy-usb = { git = "https://github.com/embassy-rs/embassy" }
 embassy-sync = { git = "https://github.com/embassy-rs/embassy" }
 embassy-futures = { git = "https://github.com/embassy-rs/embassy" }
-embassy-net = { git = "https://github.com/embassy-rs/embassy", features = ["tcp", "udp", "dhcpv4", "dns"] }
-
-# WiFi driver for Pico W/2W (CYW43439)
-cyw43 = { git = "https://github.com/embassy-rs/embassy", features = ["firmware-logs"] }
-cyw43-pio = { git = "https://github.com/embassy-rs/embassy" }
-
-# Static cell for embassy static variables
-static_cell = "2.1.1"
-
-# Embassy embedded HAL utilities (for shared I2C bus, etc.)
-embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy" }
 
 # heapless for no_std collections (required for parameter storage)
 heapless = "0.9"
-
-# Heap allocator for no_std (required for Box in mode manager)
-embedded-alloc = "0.6"
 
 # Synchronization primitives
 critical-section = "1.2"
@@ -74,14 +52,57 @@ libm = "0.2"
 # GPS NMEA parser
 nmea0183 = { version = "0.6", default-features = false }
 
-# Platform HALs (always enabled for RP2350)
-rp235x-hal = "0.3.0"
+# HAL trait definitions (host-compatible)
 embedded-hal = { version = "0.2.7", features = ["unproven"] }
 embedded-hal-1 = { package = "embedded-hal", version = "1.0" }
 embedded-hal-async = "1.0"
 embedded-hal-nb = "1.0"
 nb = "1.1.0"
 fugit = "0.3.7"
+
+# =============================================================================
+# ARM-only dependencies
+#
+# embassy-rp enables critical-section/restore-state-u8 which conflicts with
+# the host test's critical-section/std (restore-state-bool).
+# embassy-executor uses ARM assembly (sev instruction) via arch-cortex-m.
+# =============================================================================
+[target.'cfg(target_arch = "arm")'.dependencies]
+# Cortex-M runtime
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+defmt-rtt = "1.0.1"
+panic-probe = { version = "1.0", features = ["print-defmt"] }
+panic-halt = "1.0"
+
+# Embassy executor (ARM: arch-cortex-m)
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", features = ["arch-cortex-m", "executor-thread"] }
+
+# RP2350 HAL (enables critical-section-impl → restore-state-u8)
+embassy-rp = { git = "https://github.com/embassy-rs/embassy", features = ["time-driver", "rp235xa", "critical-section-impl", "binary-info"] }
+embassy-usb = { git = "https://github.com/embassy-rs/embassy" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy", features = ["tcp", "udp", "dhcpv4", "dns"] }
+embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy" }
+
+# WiFi driver for Pico W/2W (CYW43439)
+cyw43 = { git = "https://github.com/embassy-rs/embassy", features = ["firmware-logs"] }
+cyw43-pio = { git = "https://github.com/embassy-rs/embassy" }
+
+# Static cell for embassy static variables
+static_cell = "2.1.1"
+
+# Heap allocator for no_std (required for Box in mode manager)
+embedded-alloc = "0.6"
+
+# Platform HAL (RP2350-specific)
+rp235x-hal = "0.3.0"
+
+# =============================================================================
+# Host-only dependencies (for cargo test on x86_64)
+# =============================================================================
+[target.'cfg(not(target_arch = "arm"))'.dependencies]
+# Embassy executor (host: arch-std)
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", features = ["arch-std", "executor-thread"] }
 
 [dev-dependencies]
 defmt-test = "0.3"

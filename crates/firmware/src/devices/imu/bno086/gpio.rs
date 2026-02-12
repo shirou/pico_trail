@@ -71,14 +71,16 @@ impl RstPin for NoRstPin {
 }
 
 // =============================================================================
-// Embassy GPIO Implementations (RP2350)
+// Embassy GPIO Implementations (RP2350, ARM-only)
 // =============================================================================
 
 /// INT pin implementation using Embassy GPIO
+#[cfg(target_arch = "arm")]
 pub struct EmbassyIntPin<'d> {
     pin: embassy_rp::gpio::Input<'d>,
 }
 
+#[cfg(target_arch = "arm")]
 impl<'d> EmbassyIntPin<'d> {
     /// Create INT pin from Embassy GPIO input
     ///
@@ -89,6 +91,7 @@ impl<'d> EmbassyIntPin<'d> {
     }
 }
 
+#[cfg(target_arch = "arm")]
 impl IntPin for EmbassyIntPin<'_> {
     async fn wait_for_falling_edge(&mut self) {
         self.pin.wait_for_falling_edge().await;
@@ -107,10 +110,12 @@ impl IntPin for EmbassyIntPin<'_> {
 ///
 /// The BNO086 RST pin must NOT be actively driven HIGH - it must be
 /// released to high-Z and allowed to float up via external pull-up.
+#[cfg(target_arch = "arm")]
 pub struct EmbassyRstPin<'d> {
     pin: embassy_rp::gpio::Flex<'d>,
 }
 
+#[cfg(target_arch = "arm")]
 impl<'d> EmbassyRstPin<'d> {
     /// Create RST pin from Embassy GPIO Flex
     ///
@@ -125,6 +130,7 @@ impl<'d> EmbassyRstPin<'d> {
     }
 }
 
+#[cfg(target_arch = "arm")]
 impl RstPin for EmbassyRstPin<'_> {
     fn set_low(&mut self) {
         // Switch to output and drive LOW

@@ -85,7 +85,9 @@ pub use driver::{Bno086Config, Bno086Driver};
 pub use driver_gpio::{Bno086DriverWithGpio, Bno086GpioConfig};
 
 // GPIO abstractions
-pub use gpio::{EmbassyIntPin, EmbassyRstPin, IntPin, NoIntPin, NoRstPin, RstPin};
+#[cfg(target_arch = "arm")]
+pub use gpio::{EmbassyIntPin, EmbassyRstPin};
+pub use gpio::{IntPin, NoIntPin, NoRstPin, RstPin};
 
 // Report types
 pub use reports::{

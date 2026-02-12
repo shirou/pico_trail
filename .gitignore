@@ -3,6 +3,7 @@ node_modules
 
 repo
 datasheets
+worlds
 
 # Environment variables (WiFi credentials)
 .env

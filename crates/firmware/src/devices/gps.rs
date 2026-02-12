@@ -92,36 +92,7 @@ const fn const_parse_f32(s: &str) -> f32 {
     }
 }
 
-/// GPS fix type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum GpsFixType {
-    /// No GPS fix
-    NoFix,
-    /// 2D fix (latitude, longitude only)
-    Fix2D,
-    /// 3D fix (latitude, longitude, altitude)
-    Fix3D,
-}
-
-/// GPS position data
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct GpsPosition {
-    /// Latitude in degrees (-90 to +90)
-    pub latitude: f32,
-    /// Longitude in degrees (-180 to +180)
-    pub longitude: f32,
-    /// Altitude in meters above sea level
-    pub altitude: f32,
-    /// Speed in meters per second
-    pub speed: f32,
-    /// Course over ground in degrees (0-360), None if invalid (speed < 0.5 m/s)
-    pub course_over_ground: Option<f32>,
-    /// GPS fix type
-    pub fix_type: GpsFixType,
-    /// Number of satellites used in fix
-    pub satellites: u8,
-}
+pub use pico_trail_core::navigation::{GpsFixType, GpsPosition};
 
 /// Internal state for combining GGA and RMC data
 #[derive(Debug, Clone, Copy, Default)]

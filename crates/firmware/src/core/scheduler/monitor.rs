@@ -111,7 +111,8 @@ fn report_task_stats() {
     }
 }
 
-// Re-export monitor_task from platform module
+// Re-export monitor_task from platform module (ARM-only)
+#[cfg(target_arch = "arm")]
 pub use crate::platform::rp2350::tasks::monitor::monitor_task;
 
 #[cfg(test)]

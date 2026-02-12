@@ -159,16 +159,23 @@ crates/
 │       ├── servo/     # Servo PWM conversion
 │       └── traits/    # Time, platform abstractions
 │
-└── firmware/          # Embassy/RP2350 binary (platform-specific)
+├── firmware/          # Embassy/RP2350 binary (platform-specific)
+│   └── src/
+│       ├── platform/  # Hardware abstraction layer (UART, I2C, SPI, PWM)
+│       ├── devices/   # Device drivers (GPS, IMU: BNO086/ICM20948/MPU9250)
+│       ├── subsystems/# Functional subsystems (AHRS, Navigation)
+│       ├── rover/     # Rover vehicle modes and mode manager
+│       ├── communication/ # MAVLink protocol and SHTP
+│       ├── libraries/ # RC channel, servo output, motor driver
+│       ├── parameters/# ArduPilot parameter definitions
+│       └── core/      # Logging, parameter saver, arming tasks
+│
+└── sitl/              # SITL simulator (host-only, see crates/sitl/README.md)
     └── src/
-        ├── platform/  # Hardware abstraction layer (UART, I2C, SPI, PWM)
-        ├── devices/   # Device drivers (GPS, IMU: BNO086/ICM20948/MPU9250)
-        ├── subsystems/# Functional subsystems (AHRS, Navigation)
-        ├── rover/     # Rover vehicle modes and mode manager
-        ├── communication/ # MAVLink protocol and SHTP
-        ├── libraries/ # RC channel, servo output, motor driver
-        ├── parameters/# ArduPilot parameter definitions
-        └── core/      # Logging, parameter saver, arming tasks
+        ├── adapter/   # Simulator adapters (Lightweight, Gazebo)
+        ├── bridge/    # SitlBridge orchestrator and timing
+        ├── platform/  # SitlPlatform (mirrors firmware Platform trait)
+        └── vehicle/   # Vehicle config and instance
 ```
 
 See [docs/architecture.md](docs/architecture.md) for detailed architecture documentation.
@@ -308,6 +315,7 @@ Telemetry is broadcast to all active transports (UART and UDP).
 
 ## Documentation
 
+- [SITL Simulator](crates/sitl/README.md) - Software-In-The-Loop simulation (run autopilot logic on host without hardware)
 - [Architecture & Structure](docs/architecture.md) - Project structure, components, and design
 - [WiFi Configuration Guide](docs/wifi-configuration.md) - WiFi and UDP transport setup
 - [MAVLink Guide](docs/mavlink.md) - MAVLink protocol usage and GCS setup

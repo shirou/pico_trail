@@ -135,9 +135,6 @@ impl ParamSaver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::parameters::{ParamMetadata, ParamValue};
-    use crate::platform::mock::flash::MockFlash;
-
     #[test]
     fn test_save_request_types() {
         // Just verify enum can be created

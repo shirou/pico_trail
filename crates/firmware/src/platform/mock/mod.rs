@@ -22,7 +22,7 @@
 
 #![cfg(any(test, feature = "mock"))]
 
-mod flash;
+pub mod flash;
 mod gpio;
 mod i2c;
 mod platform;

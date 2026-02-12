@@ -1,6 +1,7 @@
 //! MAVLink Protocol Handlers
 //!
 //! Message-specific handlers for MAVLink protocol implementation.
+//! Most handlers are re-exported from `pico_trail_core::communication::handlers`.
 //!
 //! # Handlers
 //!
@@ -22,6 +23,6 @@ pub mod telemetry;
 pub use command::CommandHandler;
 pub use mission::MissionHandler;
 pub use navigation::NavigationHandler;
-pub use param::ParamHandler;
+pub use param::{ParamHandler, ParamHandlerInit};
 pub use rc_input::RcInputHandler;
 pub use telemetry::TelemetryStreamer;

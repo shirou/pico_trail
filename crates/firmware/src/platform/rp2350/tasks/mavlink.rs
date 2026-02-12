@@ -10,6 +10,7 @@
 //! 4. **Connection Monitoring**: Track GCS connection status
 
 use crate::communication::mavlink::{
+    state::SystemStateExt,
     task::{MavlinkConfig, MavlinkContext},
     vehicle::GroundRover,
 };

@@ -1,9 +1,53 @@
 //! Navigation type definitions
 //!
 //! This module contains core types used by the navigation subsystem:
+//! - `GpsPosition`: GPS position data with fix quality information
 //! - `PositionTarget`: Target position for navigation
 //! - `NavigationOutput`: Output from navigation controller
 //! - `SimpleNavConfig`: Configuration for simple navigation controller
+
+/// GPS fix type.
+///
+/// Variants are ordered by quality — `NoFix` is worst, `RtkFixed` is best —
+/// so comparisons like `fix_type >= GpsFixType::Fix3D` work correctly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum GpsFixType {
+    /// No GPS fix available.
+    NoFix,
+    /// 2D fix (latitude, longitude only).
+    Fix2D,
+    /// 3D fix (latitude, longitude, altitude).
+    Fix3D,
+    /// Differential GPS (SBAS-aided 3D).
+    DGps,
+    /// RTK float solution.
+    RtkFloat,
+    /// RTK fixed solution (highest precision).
+    RtkFixed,
+}
+
+/// GPS position data
+///
+/// Represents a complete GPS position fix with coordinates, speed, and quality information.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct GpsPosition {
+    /// Latitude in degrees (-90 to +90)
+    pub latitude: f32,
+    /// Longitude in degrees (-180 to +180)
+    pub longitude: f32,
+    /// Altitude in meters above sea level
+    pub altitude: f32,
+    /// Speed in meters per second
+    pub speed: f32,
+    /// Course over ground in degrees (0-360), None if invalid (speed < 0.5 m/s)
+    pub course_over_ground: Option<f32>,
+    /// GPS fix type
+    pub fix_type: GpsFixType,
+    /// Number of satellites used in fix
+    pub satellites: u8,
+}
 
 /// Target position for navigation
 #[derive(Clone, Copy, Debug, Default)]

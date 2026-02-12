@@ -7,8 +7,15 @@
 //!
 //! - Trait definitions are pure and have no feature gates
 //! - Mock implementations are always available for host testing
-//! - Platform implementations (Embassy) live in the firmware crate
+//! - Embassy implementations are behind the `embassy` feature flag
+//! - Platform implementations (Embassy tasks) live in the firmware crate
 
+pub mod flash;
+pub mod sync;
 pub mod time;
 
+pub use flash::{FlashError, FlashInterface};
+#[cfg(feature = "embassy")]
+pub use sync::EmbassyState;
+pub use sync::{MockState, SharedState};
 pub use time::{MockTime, TimeSource};

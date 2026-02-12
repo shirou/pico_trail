@@ -7,10 +7,15 @@ pub mod geo;
 pub mod heading;
 pub mod heading_filter;
 pub mod path_recorder;
+#[cfg(feature = "embassy")]
+pub mod runner;
 mod types;
 
 pub use geo::{
     calculate_bearing, calculate_distance, haversine_distance_bearing, normalize_angle,
     offset_position, wrap_180, wrap_360,
 };
-pub use types::{NavigationOutput, PositionTarget, SimpleNavConfig};
+pub use types::{GpsFixType, GpsPosition, NavigationOutput, PositionTarget, SimpleNavConfig};
+
+#[cfg(feature = "embassy")]
+pub use runner::NavigationRunner;

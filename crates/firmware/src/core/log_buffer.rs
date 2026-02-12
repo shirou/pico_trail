@@ -110,6 +110,12 @@ impl RingBufferSink {
     pub fn clear(&mut self) {
         self.buffer.clear();
     }
+
+    /// Reset the buffer completely, clearing messages and overflow count.
+    pub fn reset(&mut self) {
+        self.buffer.clear();
+        self.overflow_count = 0;
+    }
 }
 
 impl Default for RingBufferSink {

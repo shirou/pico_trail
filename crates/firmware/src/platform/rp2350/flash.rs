@@ -21,7 +21,7 @@
 //! - Not access XIP memory during erase/write
 //! - Validate addresses are not in firmware region
 
-use crate::platform::{error::FlashError, traits::FlashInterface, Result};
+use crate::platform::traits::{FlashError, FlashInterface};
 use rp235x_hal::rom_data;
 
 /// Minimum firmware size (protect first 256 KB)
@@ -125,14 +125,14 @@ impl Default for Rp2350Flash {
 }
 
 impl FlashInterface for Rp2350Flash {
-    fn read(&mut self, address: u32, buf: &mut [u8]) -> Result<()> {
+    fn read(&mut self, address: u32, buf: &mut [u8]) -> Result<(), FlashError> {
         // Validate address range
         if address >= FLASH_CAPACITY {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         if address as usize + buf.len() > FLASH_CAPACITY as usize {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // SAFETY: Flash is memory-mapped at XIP_BASE (0x10000000)
@@ -148,15 +148,15 @@ impl FlashInterface for Rp2350Flash {
         Ok(())
     }
 
-    fn write(&mut self, address: u32, data: &[u8]) -> Result<()> {
+    fn write(&mut self, address: u32, data: &[u8]) -> Result<(), FlashError> {
         // Validate address is in writable region
         if !self.is_writable(address) {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // Validate write doesn't exceed Flash capacity
         if address as usize + data.len() > FLASH_CAPACITY as usize {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // Note: Write alignment is 256 bytes, but we don't enforce it here
@@ -177,25 +177,25 @@ impl FlashInterface for Rp2350Flash {
         Ok(())
     }
 
-    fn erase(&mut self, address: u32, size: u32) -> Result<()> {
+    fn erase(&mut self, address: u32, size: u32) -> Result<(), FlashError> {
         // Validate address is in writable region
         if !self.is_writable(address) {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // Validate address is block-aligned
         if !self.is_block_aligned(address) {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // Validate size is multiple of block size
         if !size.is_multiple_of(BLOCK_SIZE) {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // Validate erase doesn't exceed Flash capacity
         if address + size > FLASH_CAPACITY {
-            return Err(FlashError::InvalidAddress.into());
+            return Err(FlashError::InvalidAddress);
         }
 
         // SAFETY: Execute Flash erase with XIP disabled
