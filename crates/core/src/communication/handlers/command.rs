@@ -384,6 +384,62 @@ impl<V: VehicleType> CommandHandler<V> {
         MavResult::MAV_RESULT_ACCEPTED
     }
 
+    /// Handle DO_REPOSITION via COMMAND_INT (int32 lat/lon for higher precision).
+    fn handle_do_reposition_int(&mut self, cmd: &COMMAND_INT_DATA) -> MavResult {
+        use crate::autopilot::state::{FlightMode, SYSTEM_STATE};
+        use crate::mission::{set_mission_state, set_single_waypoint, MissionState, Waypoint};
+
+        let latitude = cmd.x as f64 / 1e7;
+        let longitude = cmd.y as f64 / 1e7;
+        let altitude = if cmd.z.is_finite() && cmd.z != 0.0 {
+            Some(cmd.z)
+        } else {
+            None
+        };
+
+        if !(-90.0..=90.0).contains(&latitude) || !(-180.0..=180.0).contains(&longitude) {
+            crate::log_warn!(
+                "Invalid reposition target: lat={}, lon={}",
+                latitude,
+                longitude
+            );
+            status_notifier::send_error("Invalid position");
+            return MavResult::MAV_RESULT_DENIED;
+        }
+
+        let waypoint = Waypoint {
+            seq: 0,
+            frame: 0,
+            command: 16,
+            current: 1,
+            autocontinue: 0,
+            param1: 0.0,
+            param2: 2.0,
+            param3: 0.0,
+            param4: 0.0,
+            x: cmd.x,
+            y: cmd.y,
+            z: altitude.unwrap_or(0.0),
+        };
+
+        set_single_waypoint(waypoint);
+
+        let mode = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).mode);
+        if mode == FlightMode::Guided {
+            set_mission_state(MissionState::Running);
+            crate::log_info!(
+                "GUIDED: Navigation started to lat={}, lon={}",
+                latitude,
+                longitude
+            );
+        } else {
+            crate::log_info!("Reposition target set: lat={}, lon={}", latitude, longitude);
+        }
+
+        status_notifier::send_info("Fly to target set");
+        MavResult::MAV_RESULT_ACCEPTED
+    }
+
     fn handle_mission_start(&mut self) -> MavResult {
         match mission_ops::start_from_beginning() {
             Some(true) => {
@@ -465,6 +521,7 @@ impl<V: VehicleType> CommandHandler<V> {
 
         let (result, extra_messages) = match cmd.command {
             MavCmd::MAV_CMD_DO_SET_HOME => self.handle_set_home(cmd),
+            MavCmd::MAV_CMD_DO_REPOSITION => (self.handle_do_reposition_int(cmd), Vec::new()),
             _ => {
                 crate::log_warn!("Unsupported COMMAND_INT: {}", cmd.command as u32);
                 (MavResult::MAV_RESULT_UNSUPPORTED, Vec::new())
