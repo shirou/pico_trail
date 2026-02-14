@@ -192,6 +192,9 @@ async fn main() {
 
                     // Process RC input (async) for ManualMode
                     autopilot.process_rc_input(msg, wall_us).await;
+
+                    // Process navigation input (SET_POSITION_TARGET_GLOBAL_INT for GUIDED)
+                    autopilot.process_navigation_input(msg).await;
                 }
 
                 // 2. Step the simulation bridge (Gazebo physics)
