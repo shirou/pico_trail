@@ -14,13 +14,21 @@ use crate::traits::sync::SharedState;
 /// RC input message handler
 ///
 /// Processes RC_CHANNELS and RC_CHANNELS_OVERRIDE messages to update the global RC state.
-/// This handler is stateless and updates the global RC_INPUT directly.
-pub struct RcInputHandler;
+/// This handler updates the global RC_INPUT directly.
+pub struct RcInputHandler {
+    /// This vehicle's MAVLink system ID for target filtering.
+    system_id: u8,
+}
 
 impl RcInputHandler {
-    /// Create a new RC input handler
+    /// Create a new RC input handler for the given system ID.
     pub fn new() -> Self {
-        Self
+        Self { system_id: 1 }
+    }
+
+    /// Create a new RC input handler with a specific system ID.
+    pub fn with_system_id(system_id: u8) -> Self {
+        Self { system_id }
     }
 }
 
@@ -73,7 +81,7 @@ impl RcInputHandler {
         rc_override: &mavlink::common::RC_CHANNELS_OVERRIDE_DATA,
         current_time_us: u64,
     ) -> bool {
-        if rc_override.target_system != 1 && rc_override.target_system != 0 {
+        if rc_override.target_system != self.system_id && rc_override.target_system != 0 {
             return false;
         }
 
@@ -118,8 +126,8 @@ impl RcInputHandler {
         data: &mavlink::common::MANUAL_CONTROL_DATA,
         current_time_us: u64,
     ) -> bool {
-        // Validate target (accept 0 = broadcast or 1 = autopilot)
-        if data.target != 0 && data.target != 1 {
+        // Validate target (accept 0 = broadcast or own system_id)
+        if data.target != 0 && data.target != self.system_id {
             return false;
         }
 

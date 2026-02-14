@@ -148,10 +148,13 @@ async fn main() {
         .await
         .expect("Failed to connect adapter");
 
-    // Set up PWM channels for motor outputs
+    // Set up PWM channels for motor outputs.
+    // Gazebo ArduPilotPlugin expects: channel 0 = left motors, channel 2 = right motors.
+    // We create 3 PWM slots so that index 0 → servo slot 0, index 2 → servo slot 2.
     let v = bridge.get_vehicle(id).unwrap();
-    v.platform.create_pwm(0, 50).unwrap(); // left motor
-    v.platform.create_pwm(1, 50).unwrap(); // right motor
+    v.platform.create_pwm(0, 50).unwrap(); // index 0: left motor (servo slot 0)
+    v.platform.create_pwm(1, 50).unwrap(); // index 1: unused (servo slot 1)
+    v.platform.create_pwm(2, 50).unwrap(); // index 2: right motor (servo slot 2)
 
     println!(
         "Bridge running. MAVLink TCP on port {}. Press Ctrl+C to stop.\n",

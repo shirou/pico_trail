@@ -174,7 +174,7 @@ impl VehicleAutopilot {
         let command_handler = CommandHandler::new();
         let telemetry_streamer = TelemetryStreamer::new(system_id, 1);
         let mission_handler = MissionHandler::new(system_id, 1);
-        let rc_input_handler = RcInputHandler::new();
+        let rc_input_handler = RcInputHandler::with_system_id(system_id);
 
         let dispatcher = MessageDispatcher::new(
             param_handler,
@@ -366,7 +366,11 @@ impl VehicleAutopilot {
     ///
     /// Reads steering/throttle from the global `ACTUATOR_OUTPUT` (written by `SitlActuator`
     /// during mode execution) and applies `DifferentialDrive::mix()` from core for
-    /// consistent mixing with firmware. Output is mapped to PWM channels 0 (left) and 1 (right).
+    /// consistent mixing with firmware.
+    ///
+    /// Output mapping matches Gazebo ArduPilotPlugin servo channels:
+    /// - PWM index 0 → servo slot 0 → left motors (motor_0, motor_1)
+    /// - PWM index 2 → servo slot 2 → right motors (motor_2, motor_3)
     pub fn apply_actuators_to_platform(&self, platform: &SitlPlatform) {
         let (steering, throttle) = critical_section::with(|cs| {
             if !SYSTEM_STATE.borrow_ref(cs).is_armed() {
@@ -383,8 +387,8 @@ impl VehicleAutopilot {
         let left_duty = (left + 1.0) / 2.0;
         let right_duty = (right + 1.0) / 2.0;
 
-        platform.set_pwm_duty(0, left_duty);
-        platform.set_pwm_duty(1, right_duty);
+        platform.set_pwm_duty(0, left_duty); // servo slot 0: left motors
+        platform.set_pwm_duty(2, right_duty); // servo slot 2: right motors
     }
 }
 
