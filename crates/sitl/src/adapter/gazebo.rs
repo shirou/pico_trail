@@ -203,6 +203,7 @@ impl GazeboAdapter {
             compass: None,
             barometer: None,
             attitude_quat,
+            battery_voltage: Some(12.6),
         })
     }
 }

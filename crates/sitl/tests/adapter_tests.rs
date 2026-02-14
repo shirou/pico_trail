@@ -134,6 +134,7 @@ fn sensor_data_construction_and_clone() {
         compass: None,
         barometer: None,
         attitude_quat: None,
+        battery_voltage: None,
     };
 
     let cloned = data.clone();

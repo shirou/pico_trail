@@ -170,6 +170,9 @@ async fn main() {
     let mut step_count: u64 = 0;
     let wall_start = std::time::Instant::now();
 
+    let mut last_battery_check = std::time::Instant::now();
+    const BATTERY_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
 
@@ -233,10 +236,21 @@ async fn main() {
                     autopilot.apply_actuators_to_platform(&vehicle.platform);
                 }
 
+                // 5b. Battery failsafe check (~10 Hz)
+                if last_battery_check.elapsed() >= BATTERY_CHECK_INTERVAL {
+                    autopilot.check_battery_failsafe();
+                    last_battery_check = std::time::Instant::now();
+                }
+
                 // 6. Send telemetry (core dispatcher handles HEARTBEAT, ATTITUDE, GPS, SYS_STATUS)
                 let telemetry = autopilot.update_telemetry(wall_us);
                 for msg in &telemetry {
                     let _ = gcs.send_message_as(args.system_id, msg);
+                }
+
+                // 7. Check mission protocol timeouts
+                if let Some(mission_ack) = autopilot.check_mission_timeout(wall_us) {
+                    let _ = gcs.send_message_as(args.system_id, &mission_ack);
                 }
 
                 // Connection status tracking

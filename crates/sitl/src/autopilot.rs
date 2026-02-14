@@ -16,6 +16,8 @@
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex as EmbassyMutex;
 
+use pico_trail_core::autopilot::battery::BatteryFailsafeConfig;
+use pico_trail_core::autopilot::mavlink_runner::{BatteryAction, MavlinkLoopRunner};
 use pico_trail_core::autopilot::state::{FlightMode, SystemState, SYSTEM_STATE};
 use pico_trail_core::autopilot::vehicle::GroundRover;
 use pico_trail_core::communication::dispatcher::MessageDispatcher;
@@ -130,6 +132,8 @@ pub struct VehicleAutopilot {
     pub system_id: u8,
     /// Navigation runner for Guided/Auto modes (shared core logic)
     nav_runner: NavigationRunner,
+    /// Battery failsafe runner (reused from core)
+    mavlink_runner: MavlinkLoopRunner,
 }
 
 impl VehicleAutopilot {
@@ -162,6 +166,10 @@ impl VehicleAutopilot {
             ParamFlags::empty(),
         );
 
+        // Extract battery config before store is consumed by ParamHandler
+        let battery_params = pico_trail_core::parameters::BatteryParams::from_store(&store);
+        let battery_failsafe_config = BatteryFailsafeConfig::from_params(&battery_params);
+
         let param_handler = ParamHandler::from_store(store);
         let command_handler = CommandHandler::new();
         let telemetry_streamer = TelemetryStreamer::new(system_id, 1);
@@ -188,6 +196,7 @@ impl VehicleAutopilot {
             mode_executor,
             system_id,
             nav_runner: NavigationRunner::new(),
+            mavlink_runner: MavlinkLoopRunner::new(battery_failsafe_config),
         }
     }
 
@@ -306,8 +315,51 @@ impl VehicleAutopilot {
                 state.update_gps(pos, sensors.timestamp_us);
             }
 
+            // Update battery voltage
+            if let Some(voltage) = sensors.battery_voltage {
+                state.update_battery_voltage(voltage);
+            }
+
             state.update_uptime(sensors.timestamp_us);
         });
+    }
+
+    /// Check battery voltage and trigger failsafe actions if needed.
+    ///
+    /// Should be called at ~10 Hz from the main loop.
+    pub fn check_battery_failsafe(&mut self) {
+        let (voltage, is_armed) = critical_section::with(|cs| {
+            let state = SYSTEM_STATE.borrow_ref(cs);
+            (state.battery.voltage, state.is_armed())
+        });
+        let action = self.mavlink_runner.check_battery(
+            voltage,
+            is_armed,
+            self.dispatcher.param_handler().store(),
+        );
+        match action {
+            BatteryAction::None => {}
+            BatteryAction::SetMode(mode) => {
+                eprintln!("  [Autopilot] Battery failsafe: voltage={voltage}, mode={mode:?}");
+                critical_section::with(|cs| {
+                    let _ = SYSTEM_STATE.borrow_ref_mut(cs).set_mode(mode);
+                });
+            }
+            BatteryAction::Disarm => {
+                eprintln!("  [Autopilot] Battery CRITICAL: voltage={voltage}, disarming");
+                critical_section::with(|cs| {
+                    let _ = SYSTEM_STATE.borrow_ref_mut(cs).disarm_forced();
+                });
+            }
+        }
+    }
+
+    /// Check for mission protocol timeouts and return an ACK if one expired.
+    pub fn check_mission_timeout(
+        &mut self,
+        timestamp_us: u64,
+    ) -> Option<mavlink::common::MavMessage> {
+        self.dispatcher.check_mission_timeout(timestamp_us)
     }
 
     /// Apply actuator outputs to the platform's PWM channels.
