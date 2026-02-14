@@ -161,7 +161,7 @@ impl GcsLink {
         self.parse_buffered_messages()
     }
 
-    /// Send a MAVLink v1 message on behalf of the given `system_id`.
+    /// Send a MAVLink v2 message on behalf of the given `system_id`.
     ///
     /// Does nothing if no GCS is connected.
     pub fn send_message_as(&mut self, system_id: u8, msg: &MavMessage) -> io::Result<()> {
@@ -177,7 +177,7 @@ impl GcsLink {
         self.sequence = self.sequence.wrapping_add(1);
 
         let mut buf = Cursor::new(Vec::with_capacity(280));
-        mavlink::write_v1_msg(&mut buf, header, msg)
+        mavlink::write_v2_msg(&mut buf, header, msg)
             .map_err(|e| io::Error::other(format!("{e:?}")))?;
 
         let bytes = buf.into_inner();
