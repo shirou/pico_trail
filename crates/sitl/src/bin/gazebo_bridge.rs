@@ -148,10 +148,13 @@ async fn main() {
         .await
         .expect("Failed to connect adapter");
 
-    // Set up PWM channels for motor outputs
+    // Set up PWM channels for motor outputs.
+    // Gazebo ArduPilotPlugin expects: channel 0 = left motors, channel 2 = right motors.
+    // We create 3 PWM slots so that index 0 → servo slot 0, index 2 → servo slot 2.
     let v = bridge.get_vehicle(id).unwrap();
-    v.platform.create_pwm(0, 50).unwrap(); // left motor
-    v.platform.create_pwm(1, 50).unwrap(); // right motor
+    v.platform.create_pwm(0, 50).unwrap(); // index 0: left motor (servo slot 0)
+    v.platform.create_pwm(1, 50).unwrap(); // index 1: unused (servo slot 1)
+    v.platform.create_pwm(2, 50).unwrap(); // index 2: right motor (servo slot 2)
 
     println!(
         "Bridge running. MAVLink TCP on port {}. Press Ctrl+C to stop.\n",
@@ -169,6 +172,9 @@ async fn main() {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(10));
     let mut step_count: u64 = 0;
     let wall_start = std::time::Instant::now();
+
+    let mut last_battery_check = std::time::Instant::now();
+    const BATTERY_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
 
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
@@ -192,6 +198,9 @@ async fn main() {
 
                     // Process RC input (async) for ManualMode
                     autopilot.process_rc_input(msg, wall_us).await;
+
+                    // Process navigation input (SET_POSITION_TARGET_GLOBAL_INT for GUIDED)
+                    autopilot.process_navigation_input(msg).await;
                 }
 
                 // 2. Step the simulation bridge (Gazebo physics)
@@ -230,10 +239,21 @@ async fn main() {
                     autopilot.apply_actuators_to_platform(&vehicle.platform);
                 }
 
+                // 5b. Battery failsafe check (~10 Hz)
+                if last_battery_check.elapsed() >= BATTERY_CHECK_INTERVAL {
+                    autopilot.check_battery_failsafe();
+                    last_battery_check = std::time::Instant::now();
+                }
+
                 // 6. Send telemetry (core dispatcher handles HEARTBEAT, ATTITUDE, GPS, SYS_STATUS)
                 let telemetry = autopilot.update_telemetry(wall_us);
                 for msg in &telemetry {
                     let _ = gcs.send_message_as(args.system_id, msg);
+                }
+
+                // 7. Check mission protocol timeouts
+                if let Some(mission_ack) = autopilot.check_mission_timeout(wall_us) {
+                    let _ = gcs.send_message_as(args.system_id, &mission_ack);
                 }
 
                 // Connection status tracking

@@ -151,14 +151,13 @@ impl GazeboAdapter {
             temperature_c: 25.0,
         };
 
-        // The ardupilot_gazebo plugin sends the quaternion as earth-to-body
-        // rotation in NED frame. We need body-to-earth, so take the conjugate
-        // (negate x, y, z components).
+        // The ardupilot_gazebo plugin sends the quaternion as body-to-earth
+        // rotation in NED frame (ArduPilot convention). Use directly.
         let attitude_quat = Some([
             fdm.quaternion[0] as f32,
-            -(fdm.quaternion[1] as f32),
-            -(fdm.quaternion[2] as f32),
-            -(fdm.quaternion[3] as f32),
+            fdm.quaternion[1] as f32,
+            fdm.quaternion[2] as f32,
+            fdm.quaternion[3] as f32,
         ]);
 
         // Velocity NED [north, east, down] m/s
@@ -203,6 +202,7 @@ impl GazeboAdapter {
             compass: None,
             barometer: None,
             attitude_quat,
+            battery_voltage: Some(12.6),
         })
     }
 }

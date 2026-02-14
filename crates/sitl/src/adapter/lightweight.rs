@@ -189,6 +189,7 @@ impl LightweightAdapter {
             compass: Some(compass),
             barometer: None,
             attitude_quat,
+            battery_voltage: Some(12.6),
         }
     }
 

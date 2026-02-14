@@ -154,6 +154,7 @@ fn test_update_from_sensors_propagates_gps() {
         compass: None,
         barometer: None,
         attitude_quat: None,
+        battery_voltage: None,
     };
 
     autopilot.update_from_sensors(&sensors);
@@ -196,6 +197,7 @@ fn test_update_from_sensors_propagates_attitude() {
         compass: None,
         barometer: None,
         attitude_quat: Some(yaw_90),
+        battery_voltage: None,
     };
 
     autopilot.update_from_sensors(&sensors);

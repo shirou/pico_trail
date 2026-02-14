@@ -275,6 +275,7 @@ mod tests {
             compass: None,
             barometer: None,
             attitude_quat: None,
+            battery_voltage: None,
         };
         platform.inject_sensors(&data);
 
@@ -343,6 +344,7 @@ mod tests {
             compass: None,
             barometer: None,
             attitude_quat: None,
+            battery_voltage: None,
         };
         platform.inject_sensors(&data);
 

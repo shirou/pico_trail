@@ -16,6 +16,8 @@
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex as EmbassyMutex;
 
+use pico_trail_core::autopilot::battery::BatteryFailsafeConfig;
+use pico_trail_core::autopilot::mavlink_runner::{BatteryAction, MavlinkLoopRunner};
 use pico_trail_core::autopilot::state::{FlightMode, SystemState, SYSTEM_STATE};
 use pico_trail_core::autopilot::vehicle::GroundRover;
 use pico_trail_core::communication::dispatcher::MessageDispatcher;
@@ -130,6 +132,8 @@ pub struct VehicleAutopilot {
     pub system_id: u8,
     /// Navigation runner for Guided/Auto modes (shared core logic)
     nav_runner: NavigationRunner,
+    /// Battery failsafe runner (reused from core)
+    mavlink_runner: MavlinkLoopRunner,
 }
 
 impl VehicleAutopilot {
@@ -139,13 +143,38 @@ impl VehicleAutopilot {
     ///
     /// * `system_id` - MAVLink system ID for this vehicle
     pub fn new(system_id: u8) -> Self {
-        // Create dispatcher with default handlers
-        let store = ParameterStore::default();
+        // Create parameter store and register core defaults
+        let mut store = ParameterStore::default();
+        let _ = pico_trail_core::parameters::ArmingParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::BatteryParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::FailsafeParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::FenceParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::CompassParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::NavigationParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::CircleParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::LoiterParams::register_defaults(&mut store);
+
+        // Register MAVLink stream rate and system ID parameters
+        use pico_trail_core::parameters::{ParamFlags, ParamValue};
+        let _ = store.register("SR_EXTRA1", ParamValue::Int(10), ParamFlags::empty());
+        let _ = store.register("SR_POSITION", ParamValue::Int(5), ParamFlags::empty());
+        let _ = store.register("SR_RC_CHAN", ParamValue::Int(5), ParamFlags::empty());
+        let _ = store.register("SR_RAW_SENS", ParamValue::Int(5), ParamFlags::empty());
+        let _ = store.register(
+            "SYSID_THISMAV",
+            ParamValue::Int(system_id as i32),
+            ParamFlags::empty(),
+        );
+
+        // Extract battery config before store is consumed by ParamHandler
+        let battery_params = pico_trail_core::parameters::BatteryParams::from_store(&store);
+        let battery_failsafe_config = BatteryFailsafeConfig::from_params(&battery_params);
+
         let param_handler = ParamHandler::from_store(store);
         let command_handler = CommandHandler::new();
         let telemetry_streamer = TelemetryStreamer::new(system_id, 1);
         let mission_handler = MissionHandler::new(system_id, 1);
-        let rc_input_handler = RcInputHandler::new();
+        let rc_input_handler = RcInputHandler::with_system_id(system_id);
 
         let dispatcher = MessageDispatcher::new(
             param_handler,
@@ -167,6 +196,7 @@ impl VehicleAutopilot {
             mode_executor,
             system_id,
             nav_runner: NavigationRunner::new(),
+            mavlink_runner: MavlinkLoopRunner::new(battery_failsafe_config),
         }
     }
 
@@ -196,6 +226,16 @@ impl VehicleAutopilot {
             sync_rc_input();
         }
         result
+    }
+
+    /// Process navigation input messages (async).
+    ///
+    /// Handles SET_POSITION_TARGET_GLOBAL_INT for GUIDED mode targets.
+    pub async fn process_navigation_input(
+        &mut self,
+        message: &mavlink::common::MavMessage,
+    ) -> bool {
+        self.dispatcher.process_navigation_input(message).await
     }
 
     /// Execute the active mode.
@@ -275,15 +315,62 @@ impl VehicleAutopilot {
                 state.update_gps(pos, sensors.timestamp_us);
             }
 
+            // Update battery voltage
+            if let Some(voltage) = sensors.battery_voltage {
+                state.update_battery_voltage(voltage);
+            }
+
             state.update_uptime(sensors.timestamp_us);
         });
+    }
+
+    /// Check battery voltage and trigger failsafe actions if needed.
+    ///
+    /// Should be called at ~10 Hz from the main loop.
+    pub fn check_battery_failsafe(&mut self) {
+        let (voltage, is_armed) = critical_section::with(|cs| {
+            let state = SYSTEM_STATE.borrow_ref(cs);
+            (state.battery.voltage, state.is_armed())
+        });
+        let action = self.mavlink_runner.check_battery(
+            voltage,
+            is_armed,
+            self.dispatcher.param_handler().store(),
+        );
+        match action {
+            BatteryAction::None => {}
+            BatteryAction::SetMode(mode) => {
+                eprintln!("  [Autopilot] Battery failsafe: voltage={voltage}, mode={mode:?}");
+                critical_section::with(|cs| {
+                    let _ = SYSTEM_STATE.borrow_ref_mut(cs).set_mode(mode);
+                });
+            }
+            BatteryAction::Disarm => {
+                eprintln!("  [Autopilot] Battery CRITICAL: voltage={voltage}, disarming");
+                critical_section::with(|cs| {
+                    let _ = SYSTEM_STATE.borrow_ref_mut(cs).disarm_forced();
+                });
+            }
+        }
+    }
+
+    /// Check for mission protocol timeouts and return an ACK if one expired.
+    pub fn check_mission_timeout(
+        &mut self,
+        timestamp_us: u64,
+    ) -> Option<mavlink::common::MavMessage> {
+        self.dispatcher.check_mission_timeout(timestamp_us)
     }
 
     /// Apply actuator outputs to the platform's PWM channels.
     ///
     /// Reads steering/throttle from the global `ACTUATOR_OUTPUT` (written by `SitlActuator`
     /// during mode execution) and applies `DifferentialDrive::mix()` from core for
-    /// consistent mixing with firmware. Output is mapped to PWM channels 0 (left) and 1 (right).
+    /// consistent mixing with firmware.
+    ///
+    /// Output mapping matches Gazebo ArduPilotPlugin servo channels:
+    /// - PWM index 0 → servo slot 0 → left motors (motor_0, motor_1)
+    /// - PWM index 2 → servo slot 2 → right motors (motor_2, motor_3)
     pub fn apply_actuators_to_platform(&self, platform: &SitlPlatform) {
         let (steering, throttle) = critical_section::with(|cs| {
             if !SYSTEM_STATE.borrow_ref(cs).is_armed() {
@@ -300,8 +387,15 @@ impl VehicleAutopilot {
         let left_duty = (left + 1.0) / 2.0;
         let right_duty = (right + 1.0) / 2.0;
 
-        platform.set_pwm_duty(0, left_duty);
-        platform.set_pwm_duty(1, right_duty);
+        platform.set_pwm_duty(0, left_duty); // servo slot 0: left motors
+
+        // Prefer PWM index 2 for right motors when available (matches ArduPilotPlugin).
+        // Fall back to index 1 on platforms that only expose two PWM channels.
+        if platform.get_pwm_duty(2).is_some() {
+            platform.set_pwm_duty(2, right_duty);
+        } else {
+            platform.set_pwm_duty(1, right_duty);
+        }
     }
 }
 

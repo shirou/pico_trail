@@ -14,6 +14,7 @@ use mavlink::peek_reader::PeekReader;
 use mavlink::MavHeader;
 #[cfg(test)]
 use mavlink::Message;
+use num_traits::FromPrimitive;
 
 /// MAVLink TCP transport for GCS communication.
 ///
@@ -146,7 +147,6 @@ impl GcsLink {
                 messages.push(msg);
                 self.read_buf.drain(..frame_size);
             } else {
-                // Parse failed (CRC error, unknown msg_id, etc.) — skip entire frame
                 self.read_buf.drain(..frame_size);
             }
         }
@@ -161,7 +161,7 @@ impl GcsLink {
         self.parse_buffered_messages()
     }
 
-    /// Send a MAVLink v1 message on behalf of the given `system_id`.
+    /// Send a MAVLink v2 message on behalf of the given `system_id`.
     ///
     /// Does nothing if no GCS is connected.
     pub fn send_message_as(&mut self, system_id: u8, msg: &MavMessage) -> io::Result<()> {
@@ -177,7 +177,7 @@ impl GcsLink {
         self.sequence = self.sequence.wrapping_add(1);
 
         let mut buf = Cursor::new(Vec::with_capacity(280));
-        mavlink::write_v1_msg(&mut buf, header, msg)
+        mavlink::write_v2_msg(&mut buf, header, msg)
             .map_err(|e| io::Error::other(format!("{e:?}")))?;
 
         let bytes = buf.into_inner();
@@ -208,11 +208,99 @@ fn parse_mavlink_frame(data: &[u8]) -> Option<(MavHeader, MavMessage)> {
     }
     let cursor = Cursor::new(data);
     let mut reader = PeekReader::new(cursor);
-    if data[0] == 0xFD {
-        mavlink::read_v2_msg::<MavMessage, _>(&mut reader).ok()
+    let result = if data[0] == 0xFD {
+        mavlink::read_v2_msg::<MavMessage, _>(&mut reader)
     } else {
-        mavlink::read_v1_msg::<MavMessage, _>(&mut reader).ok()
+        mavlink::read_v1_msg::<MavMessage, _>(&mut reader)
+    };
+    match result {
+        Ok(msg) => Some(msg),
+        Err(e) => {
+            // Extract msg_id for debug
+            let msg_id = if data[0] == 0xFD && data.len() >= 10 {
+                data[7] as u32 | (data[8] as u32) << 8 | (data[9] as u32) << 16
+            } else if data.len() >= 6 {
+                data[5] as u32
+            } else {
+                9999
+            };
+
+            // Fallback for SET_POSITION_TARGET_GLOBAL_INT (msg_id=86).
+            // Mission Planner sends type_mask with bits 12-15 set, which
+            // `from_bits()` rejects. Parse raw bytes with `from_bits_truncate()`.
+            if msg_id == 86 && data[0] == 0xFD && data.len() >= 63 {
+                if let Some(parsed) = fallback_parse_set_position_target_global_int(data) {
+                    eprintln!("  [GCS] Fallback parsed SET_POSITION_TARGET_GLOBAL_INT");
+                    return Some(parsed);
+                }
+            }
+
+            eprintln!("  [GCS] Parse error msg_id={}: {:?}", msg_id, e);
+            None
+        }
     }
+}
+
+/// Fallback parser for SET_POSITION_TARGET_GLOBAL_INT (msg_id=86).
+///
+/// The mavlink crate's `from_bits()` rejects `type_mask` values with
+/// undefined bits (12-15) that Mission Planner sets. This function
+/// manually extracts fields from the MAVLink v2 wire format and uses
+/// `from_bits_truncate()` to ignore unknown bits.
+fn fallback_parse_set_position_target_global_int(data: &[u8]) -> Option<(MavHeader, MavMessage)> {
+    // MAVLink v2 header: [0]=magic, [1]=len, [2]=incompat, [3]=compat,
+    // [4]=seq, [5]=sysid, [6]=compid, [7..10]=msgid
+    let header = MavHeader {
+        system_id: data[5],
+        component_id: data[6],
+        sequence: data[4],
+    };
+
+    // Payload starts at byte 10. Wire order (largest types first):
+    let p = &data[10..];
+
+    let time_boot_ms = u32::from_le_bytes(p[0..4].try_into().ok()?);
+    let lat_int = i32::from_le_bytes(p[4..8].try_into().ok()?);
+    let lon_int = i32::from_le_bytes(p[8..12].try_into().ok()?);
+    let alt = f32::from_le_bytes(p[12..16].try_into().ok()?);
+    let vx = f32::from_le_bytes(p[16..20].try_into().ok()?);
+    let vy = f32::from_le_bytes(p[20..24].try_into().ok()?);
+    let vz = f32::from_le_bytes(p[24..28].try_into().ok()?);
+    let afx = f32::from_le_bytes(p[28..32].try_into().ok()?);
+    let afy = f32::from_le_bytes(p[32..36].try_into().ok()?);
+    let afz = f32::from_le_bytes(p[36..40].try_into().ok()?);
+    let yaw = f32::from_le_bytes(p[40..44].try_into().ok()?);
+    let yaw_rate = f32::from_le_bytes(p[44..48].try_into().ok()?);
+    let type_mask_raw = u16::from_le_bytes(p[48..50].try_into().ok()?);
+    let target_system = p[50];
+    let target_component = p[51];
+    let coordinate_frame_raw = p[52];
+
+    let type_mask = PositionTargetTypemask::from_bits_truncate(type_mask_raw);
+    let coordinate_frame =
+        MavFrame::from_u32(coordinate_frame_raw as u32).unwrap_or(MavFrame::MAV_FRAME_GLOBAL);
+
+    #[allow(deprecated)]
+    let msg = MavMessage::SET_POSITION_TARGET_GLOBAL_INT(SET_POSITION_TARGET_GLOBAL_INT_DATA {
+        time_boot_ms,
+        lat_int,
+        lon_int,
+        alt,
+        vx,
+        vy,
+        vz,
+        afx,
+        afy,
+        afz,
+        yaw,
+        yaw_rate,
+        type_mask,
+        target_system,
+        target_component,
+        coordinate_frame,
+    });
+
+    Some((header, msg))
 }
 
 #[cfg(test)]

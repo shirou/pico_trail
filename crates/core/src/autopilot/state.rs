@@ -460,6 +460,20 @@ impl SystemState {
         self.battery.remaining_percent = BatteryState::estimate_remaining_percent(voltage);
     }
 
+    /// Update battery state from a direct voltage reading (e.g., from SITL).
+    ///
+    /// Unlike `update_battery()` which takes a raw ADC value, this method
+    /// accepts voltage directly — suitable for simulators that provide
+    /// pre-converted battery voltage.
+    ///
+    /// # Arguments
+    ///
+    /// * `voltage` - Battery voltage in volts
+    pub fn update_battery_voltage(&mut self, voltage: f32) {
+        self.battery.voltage = voltage;
+        self.battery.remaining_percent = BatteryState::estimate_remaining_percent(voltage);
+    }
+
     /// Update system uptime
     pub fn update_uptime(&mut self, uptime_us: u64) {
         self.uptime_us = uptime_us;

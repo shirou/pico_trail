@@ -77,6 +77,8 @@ pub struct SensorData {
     pub barometer: Option<BarometerData>,
     /// Attitude quaternion [w, x, y, z] from simulator (NED frame).
     pub attitude_quat: Option<[f32; 4]>,
+    /// Battery voltage (volts). Used for battery failsafe checking.
+    pub battery_voltage: Option<f32>,
 }
 
 /// Actuator commands sent to a simulator.

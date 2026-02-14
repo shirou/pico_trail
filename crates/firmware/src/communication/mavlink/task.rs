@@ -93,7 +93,7 @@ impl<V: VehicleType> MavlinkContext<V> {
         let command_handler = CommandHandler::new();
         let telemetry_streamer = TelemetryStreamer::new(config.system_id, config.component_id);
         let mission_handler = MissionHandler::new(config.system_id, config.component_id);
-        let rc_input_handler = RcInputHandler::new();
+        let rc_input_handler = RcInputHandler::with_system_id(config.system_id);
 
         let dispatcher = MessageDispatcher::new(
             param_handler,
