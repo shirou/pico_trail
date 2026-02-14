@@ -21,7 +21,7 @@ pub struct RcInputHandler {
 }
 
 impl RcInputHandler {
-    /// Create a new RC input handler for the given system ID.
+    /// Create a new RC input handler using the default system ID (1).
     pub fn new() -> Self {
         Self { system_id: 1 }
     }

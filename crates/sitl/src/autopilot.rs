@@ -388,7 +388,14 @@ impl VehicleAutopilot {
         let right_duty = (right + 1.0) / 2.0;
 
         platform.set_pwm_duty(0, left_duty); // servo slot 0: left motors
-        platform.set_pwm_duty(2, right_duty); // servo slot 2: right motors
+
+        // Prefer PWM index 2 for right motors when available (matches ArduPilotPlugin).
+        // Fall back to index 1 on platforms that only expose two PWM channels.
+        if platform.get_pwm_duty(2).is_some() {
+            platform.set_pwm_duty(2, right_duty);
+        } else {
+            platform.set_pwm_duty(1, right_duty);
+        }
     }
 }
 
