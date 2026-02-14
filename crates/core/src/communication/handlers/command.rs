@@ -32,11 +32,33 @@ mod mission_ops {
     use crate::autopilot::state::FlightMode;
     use crate::mission::{start_mission_from_beginning, start_mission_from_current, stop_mission};
 
-    pub fn start_on_arm_if_guided(mode: FlightMode) {
-        if mode == FlightMode::Guided && start_mission_from_current() {
-            crate::log_info!("GUIDED: Mission started on ARM");
-        } else if mode == FlightMode::Guided {
-            crate::log_debug!("GUIDED: No waypoint, waiting for target");
+    /// Start mission on ARM for autonomous modes (Guided/Auto).
+    pub fn start_on_arm(mode: FlightMode) {
+        match mode {
+            FlightMode::Guided => {
+                if start_mission_from_current() {
+                    crate::log_info!("GUIDED: Mission started on ARM");
+                } else {
+                    crate::log_debug!("GUIDED: No waypoint, waiting for target");
+                }
+            }
+            FlightMode::Auto => {
+                if start_mission_from_current() {
+                    crate::log_info!("AUTO: Mission started on ARM");
+                } else {
+                    crate::log_debug!("AUTO: No waypoints uploaded");
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Start mission when entering Auto mode (ArduPilot behavior).
+    pub fn start_on_enter_auto() {
+        if start_mission_from_current() {
+            crate::log_info!("AUTO: Mission started on mode enter");
+        } else {
+            crate::log_debug!("AUTO: No waypoints, waiting for upload");
         }
     }
 
@@ -89,7 +111,7 @@ impl<V: VehicleType> CommandHandler<V> {
                 let (result, heartbeat, messages) = self.handle_arm_disarm(cmd);
                 (result, heartbeat, messages)
             }
-            MavCmd::MAV_CMD_DO_SET_MODE => (self.handle_set_mode(cmd), false, Vec::new()),
+            MavCmd::MAV_CMD_DO_SET_MODE => (self.handle_set_mode(cmd), true, Vec::new()),
             MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION => {
                 (self.handle_preflight_calibration(cmd), false, Vec::new())
             }
@@ -165,7 +187,7 @@ impl<V: VehicleType> CommandHandler<V> {
                         status_notifier::send_info("Armed");
                     }
 
-                    mission_ops::start_on_arm_if_guided(mode);
+                    mission_ops::start_on_arm(mode);
 
                     (MavResult::MAV_RESULT_ACCEPTED, true, Vec::new())
                 }
@@ -252,7 +274,14 @@ impl<V: VehicleType> CommandHandler<V> {
                 match result {
                     Ok(()) => {
                         crate::log_info!("Mode changed to {}", mode.as_str());
-                        mission_ops::stop();
+
+                        // Auto mode: start mission automatically (ArduPilot behavior)
+                        // Other modes: stop any running mission
+                        if mode == FlightMode::Auto {
+                            mission_ops::start_on_enter_auto();
+                        } else {
+                            mission_ops::stop();
+                        }
 
                         let mut msg: String<32> = String::new();
                         let _ = write!(msg, "Mode: {}", mode.as_str());

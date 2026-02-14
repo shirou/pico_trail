@@ -15,6 +15,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 mavlink = { version = "0.17.0", default-features = false, features = ["std", "common", "emit-extensions"] }
+num-traits = "0.2"
 pico_trail_core = { path = "../core", default-features = false, features = ["embassy", "std-mavlink"] }
 critical-section = { version = "1.2", features = ["std"] }
 embassy-sync = { git = "https://github.com/embassy-rs/embassy" }
