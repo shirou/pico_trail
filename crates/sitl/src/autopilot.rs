@@ -139,8 +139,29 @@ impl VehicleAutopilot {
     ///
     /// * `system_id` - MAVLink system ID for this vehicle
     pub fn new(system_id: u8) -> Self {
-        // Create dispatcher with default handlers
-        let store = ParameterStore::default();
+        // Create parameter store and register core defaults
+        let mut store = ParameterStore::default();
+        let _ = pico_trail_core::parameters::ArmingParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::BatteryParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::FailsafeParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::FenceParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::CompassParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::NavigationParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::CircleParams::register_defaults(&mut store);
+        let _ = pico_trail_core::parameters::LoiterParams::register_defaults(&mut store);
+
+        // Register MAVLink stream rate and system ID parameters
+        use pico_trail_core::parameters::{ParamFlags, ParamValue};
+        let _ = store.register("SR_EXTRA1", ParamValue::Int(10), ParamFlags::empty());
+        let _ = store.register("SR_POSITION", ParamValue::Int(5), ParamFlags::empty());
+        let _ = store.register("SR_RC_CHAN", ParamValue::Int(5), ParamFlags::empty());
+        let _ = store.register("SR_RAW_SENS", ParamValue::Int(5), ParamFlags::empty());
+        let _ = store.register(
+            "SYSID_THISMAV",
+            ParamValue::Int(system_id as i32),
+            ParamFlags::empty(),
+        );
+
         let param_handler = ParamHandler::from_store(store);
         let command_handler = CommandHandler::new();
         let telemetry_streamer = TelemetryStreamer::new(system_id, 1);
@@ -196,6 +217,16 @@ impl VehicleAutopilot {
             sync_rc_input();
         }
         result
+    }
+
+    /// Process navigation input messages (async).
+    ///
+    /// Handles SET_POSITION_TARGET_GLOBAL_INT for GUIDED mode targets.
+    pub async fn process_navigation_input(
+        &mut self,
+        message: &mavlink::common::MavMessage,
+    ) -> bool {
+        self.dispatcher.process_navigation_input(message).await
     }
 
     /// Execute the active mode.
