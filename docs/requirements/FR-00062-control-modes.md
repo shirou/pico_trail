@@ -22,6 +22,7 @@
   - [FR-00043-manual-mode-implementation](FR-00043-manual-mode-implementation.md)
   - [FR-00003-failsafe-mechanisms](FR-00003-failsafe-mechanisms.md)
   - [FR-00041-gcs-loss-failsafe](FR-00041-gcs-loss-failsafe.md)
+  - [FR-00168-hold-mode-actuator-stop](FR-00168-hold-mode-actuator-stop.md)
 
 - Related Tasks: N/A - Tasks will be created after ADRs
 

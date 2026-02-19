@@ -23,6 +23,7 @@ mod traits;
 
 // Mode implementations (no embassy dependency)
 pub mod circle;
+pub mod hold;
 pub mod loiter;
 pub mod rtl;
 pub mod smartrtl;
@@ -43,6 +44,7 @@ pub use traits::Mode;
 
 // Re-export mode types (non-embassy)
 pub use circle::{CircleConfig, CircleMode};
+pub use hold::HoldMode;
 pub use loiter::{LoiterState, RoverLoiter};
 pub use rtl::RtlMode;
 pub use smartrtl::SmartRtlMode;
