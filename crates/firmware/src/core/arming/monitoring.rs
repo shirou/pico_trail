@@ -71,8 +71,6 @@ pub enum FailsafeReason {
     BatteryCritical,
     /// Geofence boundary violated
     FenceViolation,
-    /// GCS heartbeat lost
-    GcsLoss,
     /// Sensor failure detected
     SensorFailure,
 }
@@ -83,7 +81,6 @@ impl core::fmt::Display for FailsafeReason {
             FailsafeReason::RcLoss => write!(f, "RC signal loss"),
             FailsafeReason::BatteryCritical => write!(f, "Battery critical"),
             FailsafeReason::FenceViolation => write!(f, "Geofence violation"),
-            FailsafeReason::GcsLoss => write!(f, "GCS heartbeat loss"),
             FailsafeReason::SensorFailure => write!(f, "Sensor failure"),
         }
     }
@@ -94,7 +91,9 @@ impl core::fmt::Display for FailsafeReason {
 /// Monitors system health at different rates during armed operation:
 /// - Fast checks (400 Hz): RC signal, sensor flags
 /// - Medium checks (10 Hz): Battery voltage, EKF health
-/// - Slow checks (1 Hz): Geofence, GCS status
+/// - Slow checks (1 Hz): Geofence
+///
+/// GCS heartbeat monitoring has moved to core's `GcsFailsafeChecker`.
 pub struct ArmedStateMonitor {
     // High-frequency state (400 Hz)
     /// Last RC signal received timestamp (milliseconds since boot)
@@ -113,8 +112,6 @@ pub struct ArmedStateMonitor {
     // Low-frequency state (1 Hz)
     /// Geofence status
     fence_status: FenceStatus,
-    /// Last GCS heartbeat timestamp (milliseconds since boot)
-    gcs_last_heartbeat_ms: Option<u64>,
 }
 
 impl ArmedStateMonitor {
@@ -131,7 +128,6 @@ impl ArmedStateMonitor {
             battery_critical_threshold,
             ekf_status: EkfStatus::default(),
             fence_status: FenceStatus::default(),
-            gcs_last_heartbeat_ms: None,
         }
     }
 
@@ -233,7 +229,8 @@ impl ArmedStateMonitor {
     ///
     /// Checks:
     /// - Geofence violations
-    /// - GCS heartbeat timeout
+    ///
+    /// GCS heartbeat monitoring has moved to core's `GcsFailsafeChecker`.
     ///
     /// Returns Some(FailsafeReason) if a failsafe condition is detected.
     ///
@@ -244,7 +241,7 @@ impl ArmedStateMonitor {
     pub fn update_slow(
         &mut self,
         _state: &SystemState,
-        current_time_ms: u64,
+        _current_time_ms: u64,
     ) -> Option<FailsafeReason> {
         // Update geofence status
         // TODO: When fence system is implemented, read from context.fence.check_boundaries()
@@ -259,17 +256,6 @@ impl ArmedStateMonitor {
         if self.fence_status.enabled && self.fence_status.violated {
             crate::log_warn!("Geofence violation detected");
             return Some(FailsafeReason::FenceViolation);
-        }
-
-        // Check GCS heartbeat timeout
-        // TODO: When MAVLink telemetry tracking is implemented
-        if let Some(last_heartbeat) = self.gcs_last_heartbeat_ms {
-            let heartbeat_age_ms = current_time_ms.saturating_sub(last_heartbeat);
-            if heartbeat_age_ms > 5000 {
-                // GCS timeout: 5 seconds
-                crate::log_warn!("GCS heartbeat timeout: {} ms", heartbeat_age_ms);
-                return Some(FailsafeReason::GcsLoss);
-            }
         }
 
         // Generate SYS_STATUS message for GCS
@@ -290,15 +276,6 @@ impl ArmedStateMonitor {
     /// * `timestamp_ms` - Timestamp when RC signal was received (milliseconds since boot)
     pub fn update_rc_timestamp(&mut self, timestamp_ms: u64) {
         self.rc_last_received_ms = Some(timestamp_ms);
-    }
-
-    /// Update GCS heartbeat timestamp (called when GCS heartbeat received)
-    ///
-    /// # Arguments
-    ///
-    /// * `timestamp_ms` - Timestamp when GCS heartbeat was received (milliseconds since boot)
-    pub fn update_gcs_heartbeat(&mut self, timestamp_ms: u64) {
-        self.gcs_last_heartbeat_ms = Some(timestamp_ms);
     }
 
     /// Get current sensor health flags
@@ -331,7 +308,6 @@ mod tests {
         let monitor = ArmedStateMonitor::new(10.5);
         assert_eq!(monitor.battery_critical_threshold, 10.5);
         assert!(monitor.rc_last_received_ms.is_none());
-        assert!(monitor.gcs_last_heartbeat_ms.is_none());
     }
 
     #[test]
@@ -365,23 +341,6 @@ mod tests {
         state.battery.voltage = 10.0;
         let result = monitor.update_medium(&state);
         assert_eq!(result, Some(FailsafeReason::BatteryCritical));
-    }
-
-    #[test]
-    fn test_update_slow_gcs_timeout() {
-        let mut monitor = ArmedStateMonitor::new(10.5);
-        let state = SystemState::new();
-
-        // Set GCS heartbeat at t=0
-        monitor.update_gcs_heartbeat(0);
-
-        // Update at t=3000ms - should be OK
-        let result = monitor.update_slow(&state, 3000);
-        assert!(result.is_none());
-
-        // Update at t=6000ms - should trigger GCS loss failsafe
-        let result = monitor.update_slow(&state, 6000);
-        assert_eq!(result, Some(FailsafeReason::GcsLoss));
     }
 
     #[test]
