@@ -25,7 +25,8 @@
   - [NFR-00044-no-false-failsafe-triggers](../requirements/NFR-00044-no-false-failsafe-triggers.md)
   - [NFR-00031-failsafe-ram-overhead](../requirements/NFR-00031-failsafe-ram-overhead.md)
 - Related ADRs: N/A - ADRs will be created based on this analysis
-- Related Tasks: N/A - Tasks will be created after requirements and ADRs
+- Related Tasks:
+  - [T-00167-gcs-failsafe-implementation](../tasks/T-00167-gcs-failsafe-implementation/README.md)
 
 ## Executive Summary
 

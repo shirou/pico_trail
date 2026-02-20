@@ -783,12 +783,16 @@ async fn rover_mavlink_task(
     let mut last_battery_update = Instant::now();
     const BATTERY_UPDATE_INTERVAL: Duration = Duration::from_millis(100);
 
-    // Initialize MavlinkLoopRunner with battery failsafe from parameter store
+    // Initialize MavlinkLoopRunner with battery and GCS failsafe from parameter store
     let battery_params = pico_trail_firmware::parameters::battery::BatteryParams::from_store(
         dispatcher.param_handler().store(),
     );
     let battery_failsafe_config = BatteryFailsafeConfig::from_params(&battery_params);
-    let mut mavlink_runner = MavlinkLoopRunner::new(battery_failsafe_config);
+    let failsafe_params =
+        pico_trail_core::parameters::FailsafeParams::from_store(dispatcher.param_handler().store());
+    let gcs_failsafe_config =
+        pico_trail_core::autopilot::gcs_failsafe::GcsFailsafeConfig::from_params(&failsafe_params);
+    let mut mavlink_runner = MavlinkLoopRunner::new(battery_failsafe_config, gcs_failsafe_config);
 
     loop {
         // Non-blocking receive with timeout
@@ -974,6 +978,50 @@ async fn rover_mavlink_task(
                         let _ = state.disarm_forced();
                     });
                 }
+            }
+
+            // GCS failsafe check (shares battery update 10 Hz interval)
+            let conn = dispatcher.connection();
+            let last_heartbeat_us = conn.last_heartbeat_us;
+            let heartbeat_count = conn.heartbeat_count;
+
+            let (is_armed, current_mode) = critical_section::with(|cs| {
+                let state =
+                    pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE.borrow_ref(cs);
+                (state.is_armed(), state.mode)
+            });
+
+            let current_time_us = Instant::now().as_micros();
+            let gcs_action = mavlink_runner.check_gcs_failsafe(
+                last_heartbeat_us,
+                heartbeat_count,
+                current_time_us,
+                is_armed,
+                current_mode,
+                dispatcher.param_handler().store(),
+            );
+            if let Some(text) = gcs_action.status_text() {
+                match gcs_action.is_warning() {
+                    Some(true) => {
+                        pico_trail_firmware::log_warn!("GCS failsafe: {}", text);
+                        pico_trail_core::communication::status_notifier::send_warning(text);
+                    }
+                    Some(false) => {
+                        pico_trail_firmware::log_info!("{}", text);
+                        pico_trail_core::communication::status_notifier::send_info(text);
+                    }
+                    None => {}
+                }
+            }
+            if let pico_trail_core::autopilot::gcs_failsafe::GcsFailsafeAction::SetMode(mode) =
+                gcs_action
+            {
+                critical_section::with(|cs| {
+                    let mut state =
+                        pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
+                            .borrow_ref_mut(cs);
+                    let _ = state.set_mode(mode);
+                });
             }
 
             last_battery_update = Instant::now();

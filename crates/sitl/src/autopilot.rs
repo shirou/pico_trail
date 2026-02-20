@@ -17,6 +17,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex as EmbassyMutex;
 
 use pico_trail_core::autopilot::battery::BatteryFailsafeConfig;
+use pico_trail_core::autopilot::gcs_failsafe::{GcsFailsafeAction, GcsFailsafeConfig};
 use pico_trail_core::autopilot::mavlink_runner::{BatteryAction, MavlinkLoopRunner};
 use pico_trail_core::autopilot::state::{FlightMode, SystemState, SYSTEM_STATE};
 use pico_trail_core::autopilot::vehicle::GroundRover;
@@ -166,9 +167,11 @@ impl VehicleAutopilot {
             ParamFlags::empty(),
         );
 
-        // Extract battery config before store is consumed by ParamHandler
+        // Extract failsafe configs before store is consumed by ParamHandler
         let battery_params = pico_trail_core::parameters::BatteryParams::from_store(&store);
         let battery_failsafe_config = BatteryFailsafeConfig::from_params(&battery_params);
+        let failsafe_params = pico_trail_core::parameters::FailsafeParams::from_store(&store);
+        let gcs_failsafe_config = GcsFailsafeConfig::from_params(&failsafe_params);
 
         let param_handler = ParamHandler::from_store(store);
         let command_handler = CommandHandler::new();
@@ -196,7 +199,7 @@ impl VehicleAutopilot {
             mode_executor,
             system_id,
             nav_runner: NavigationRunner::new(),
-            mavlink_runner: MavlinkLoopRunner::new(battery_failsafe_config),
+            mavlink_runner: MavlinkLoopRunner::new(battery_failsafe_config, gcs_failsafe_config),
         }
     }
 
@@ -351,6 +354,49 @@ impl VehicleAutopilot {
                     let _ = SYSTEM_STATE.borrow_ref_mut(cs).disarm_forced();
                 });
             }
+        }
+    }
+
+    /// Check GCS heartbeat and trigger failsafe actions if needed.
+    ///
+    /// Should be called at ~10 Hz from the main loop.
+    pub fn check_gcs_failsafe(&mut self, current_time_us: u64) {
+        let conn = self.dispatcher.connection();
+        let last_heartbeat_us = conn.last_heartbeat_us;
+        let heartbeat_count = conn.heartbeat_count;
+
+        let (is_armed, current_mode) = critical_section::with(|cs| {
+            let state = SYSTEM_STATE.borrow_ref(cs);
+            (state.is_armed(), state.mode)
+        });
+
+        let action = self.mavlink_runner.check_gcs_failsafe(
+            last_heartbeat_us,
+            heartbeat_count,
+            current_time_us,
+            is_armed,
+            current_mode,
+            self.dispatcher.param_handler().store(),
+        );
+
+        if let Some(text) = action.status_text() {
+            match action.is_warning() {
+                Some(true) => {
+                    eprintln!("  [Autopilot] GCS failsafe: {text}");
+                    pico_trail_core::communication::status_notifier::send_warning(text);
+                }
+                Some(false) => {
+                    eprintln!("  [Autopilot] {text}");
+                    pico_trail_core::communication::status_notifier::send_info(text);
+                }
+                None => {}
+            }
+        }
+
+        if let GcsFailsafeAction::SetMode(mode) = action {
+            critical_section::with(|cs| {
+                let _ = SYSTEM_STATE.borrow_ref_mut(cs).set_mode(mode);
+            });
         }
     }
 
@@ -551,5 +597,88 @@ mod tests {
 
         assert!((ch1 - 0.5).abs() < 0.001);
         assert!((ch3 - 0.8).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_gcs_failsafe_hold_on_heartbeat_loss() {
+        let mut autopilot = VehicleAutopilot::new(1);
+
+        // Arm the vehicle in Manual mode
+        critical_section::with(|cs| {
+            let mut state = SYSTEM_STATE.borrow_ref_mut(cs);
+            state.armed = ArmedState::Armed;
+            let _ = state.set_mode(FlightMode::Manual);
+        });
+
+        // Simulate receiving a heartbeat (sets connection state)
+        autopilot.dispatcher.connection_mut().heartbeat_count = 10;
+        autopilot.dispatcher.connection_mut().last_heartbeat_us = 1_000_000;
+        autopilot.dispatcher.connection_mut().connected = true;
+
+        // Arm transition via check_battery to initialize failsafe
+        autopilot.check_battery_failsafe();
+
+        // t = 2s: still within GCS timeout, no action
+        autopilot.check_gcs_failsafe(2_000_000);
+        let mode = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).mode);
+        assert_eq!(mode, FlightMode::Manual);
+
+        // t = 6s: past GCS timeout (5s from last hb at 1s), stage 1 detected
+        autopilot.check_gcs_failsafe(6_000_000);
+        let mode = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).mode);
+        assert_eq!(mode, FlightMode::Manual); // Not yet - persistence not met
+
+        // t = 8s: persistence met (1.5s after detection at 6s), failsafe fires
+        autopilot.check_gcs_failsafe(8_000_000);
+        let mode = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).mode);
+        assert_eq!(mode, FlightMode::Hold);
+
+        // Clean up
+        critical_section::with(|cs| {
+            let _ = SYSTEM_STATE.borrow_ref_mut(cs).disarm_forced();
+        });
+    }
+
+    #[test]
+    fn test_gcs_failsafe_clears_on_heartbeat_resume() {
+        let mut autopilot = VehicleAutopilot::new(2);
+
+        // Arm the vehicle
+        critical_section::with(|cs| {
+            let mut state = SYSTEM_STATE.borrow_ref_mut(cs);
+            state.armed = ArmedState::Armed;
+            let _ = state.set_mode(FlightMode::Manual);
+        });
+
+        // Simulate heartbeat at t=1s
+        autopilot.dispatcher.connection_mut().heartbeat_count = 10;
+        autopilot.dispatcher.connection_mut().last_heartbeat_us = 1_000_000;
+        autopilot.dispatcher.connection_mut().connected = true;
+
+        // Arm transition
+        autopilot.check_battery_failsafe();
+
+        // Trigger failsafe (two-stage: detect at 6s, persist at 8s)
+        autopilot.check_gcs_failsafe(6_000_000);
+        autopilot.check_gcs_failsafe(8_000_000);
+        let mode = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).mode);
+        assert_eq!(mode, FlightMode::Hold);
+
+        // Heartbeat resumes at t=9s
+        autopilot.dispatcher.connection_mut().last_heartbeat_us = 9_000_000;
+        autopilot.dispatcher.connection_mut().heartbeat_count = 11;
+
+        // Check at t=9s via public API: failsafe should clear
+        // (mode stays Hold since Cleared doesn't change mode)
+        autopilot.check_gcs_failsafe(9_000_000);
+
+        // Verify mode is still Hold (Cleared doesn't change mode back)
+        let mode = critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).mode);
+        assert_eq!(mode, FlightMode::Hold);
+
+        // Clean up
+        critical_section::with(|cs| {
+            let _ = SYSTEM_STATE.borrow_ref_mut(cs).disarm_forced();
+        });
     }
 }

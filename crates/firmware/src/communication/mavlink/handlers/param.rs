@@ -115,7 +115,7 @@ mod tests {
         // - SYSID_THISMAV: 1
         // - Arming: 5 (ARMING_CHECK, ARMING_OPTIONS, ARMING_REQUIRE, ARMING_ACCTHRESH, ARMING_RUDDER)
         // - Battery: 6 (BATT_ARM_VOLT, BATT_CRT_VOLT, BATT_FS_CRT_ACT, BATT_LOW_VOLT, BATT_CAPACITY, BATT_VOLT_MULT)
-        // - Failsafe: 3 (FS_ACTION, FS_TIMEOUT, FS_GCS_ENABLE)
+        // - Failsafe: 4 (FS_ACTION, FS_TIMEOUT, FS_GCS_TIMEOUT, FS_GCS_ENABLE)
         // - Fence: 2 (FENCE_AUTOENABLE, FENCE_ACTION)
         // - Compass: 4 (COMPASS_OFS_X, COMPASS_OFS_Y, COMPASS_OFS_Z, COMPASS_USE)
         // - Navigation: 12 (WP_RADIUS, WP_APPR_DIST, ATC_HDG_ERR, etc.)
@@ -126,16 +126,16 @@ mod tests {
 
         #[cfg(feature = "pico2_w")]
         {
-            // With pico2_w: 6 + 4 + 1 + 5 + 6 + 3 + 2 + 4 + 12 + 11 = 54 total
-            // Minus 1 hidden (NET_PASS) = 53 visible
-            assert_eq!(handler.count(), 53);
+            // With pico2_w: 6 + 4 + 1 + 5 + 6 + 4 + 2 + 4 + 12 + 11 = 55 total
+            // Minus 1 hidden (NET_PASS) = 54 visible
+            assert_eq!(handler.count(), 54);
         }
 
         #[cfg(not(feature = "pico2_w"))]
         {
-            // Without pico2_w: 54 - 11 (Board) = 43 total
-            // Minus 1 hidden (NET_PASS) = 42 visible
-            assert_eq!(handler.count(), 42);
+            // Without pico2_w: 55 - 11 (Board) = 44 total
+            // Minus 1 hidden (NET_PASS) = 43 visible
+            assert_eq!(handler.count(), 43);
         }
     }
 
@@ -156,10 +156,10 @@ mod tests {
         // Sendable = count() minus non-hidden String params (NET_SSID)
 
         #[cfg(feature = "pico2_w")]
-        assert_eq!(messages.len(), 52); // 53 visible - 1 String (NET_SSID)
+        assert_eq!(messages.len(), 53); // 54 visible - 1 String (NET_SSID)
 
         #[cfg(not(feature = "pico2_w"))]
-        assert_eq!(messages.len(), 41); // 42 visible - 1 String (NET_SSID)
+        assert_eq!(messages.len(), 42); // 43 visible - 1 String (NET_SSID)
 
         // Verify NET_PASS is not in the list
         for msg in &messages {
