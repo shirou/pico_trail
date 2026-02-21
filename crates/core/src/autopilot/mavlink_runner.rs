@@ -12,7 +12,8 @@
 
 use crate::autopilot::battery::{BatteryFailsafeChecker, BatteryFailsafeConfig};
 use crate::autopilot::gcs_failsafe::{GcsFailsafeAction, GcsFailsafeChecker, GcsFailsafeConfig};
-use crate::autopilot::state::FlightMode;
+use crate::autopilot::state::{FlightMode, HomePosition};
+use crate::navigation::{GpsFixType, GpsPosition};
 use crate::parameters::battery::{BatteryFailsafeAction, BatteryParams};
 use crate::parameters::failsafe::FailsafeParams;
 use crate::parameters::ParameterStore;
@@ -116,6 +117,53 @@ impl MavlinkLoopRunner {
             current_mode,
         )
     }
+
+    /// Check if home should be auto-set on first GPS 3D fix.
+    ///
+    /// Returns true when home is not yet set and GPS has at least a 3D fix.
+    /// Called on each control loop iteration.
+    pub fn check_home_auto_set(
+        &self,
+        has_home: bool,
+        gps_position: Option<&GpsPosition>,
+        gps_fix_type: GpsFixType,
+    ) -> bool {
+        !has_home && gps_position.is_some() && gps_fix_type >= GpsFixType::Fix3D
+    }
+
+    /// Check if home should be updated while disarmed.
+    ///
+    /// Returns true when home is unlocked and the current GPS position
+    /// has moved more than 0.5m from the current home. Called at 1 Hz while disarmed.
+    pub fn check_home_update(
+        &self,
+        home: &HomePosition,
+        gps: &GpsPosition,
+        home_locked: bool,
+    ) -> bool {
+        if home_locked {
+            return false;
+        }
+        let distance =
+            calculate_distance_flat(home.latitude, home.longitude, gps.latitude, gps.longitude);
+        distance >= DISTANCE_HOME_MINCHANGE
+    }
+}
+
+/// Minimum distance in meters for disarmed home update (matches ArduPilot).
+const DISTANCE_HOME_MINCHANGE: f32 = 0.5;
+
+/// Earth radius in meters for flat-earth distance approximation.
+const EARTH_RADIUS: f32 = 6_371_000.0;
+
+/// Flat-earth distance approximation between two lat/lon positions.
+///
+/// Sufficient for the 0.5m home update threshold. Uses equirectangular projection.
+fn calculate_distance_flat(lat1: f32, lon1: f32, lat2: f32, lon2: f32) -> f32 {
+    const DEG_TO_RAD: f32 = core::f32::consts::PI / 180.0;
+    let dlat = (lat2 - lat1) * DEG_TO_RAD * EARTH_RADIUS;
+    let dlon = (lon2 - lon1) * DEG_TO_RAD * EARTH_RADIUS * libm::cosf(lat1 * DEG_TO_RAD);
+    libm::sqrtf(dlat * dlat + dlon * dlon)
 }
 
 #[cfg(test)]
@@ -422,5 +470,96 @@ mod tests {
             &store,
         );
         assert_eq!(action, GcsFailsafeAction::None);
+    }
+
+    // --- Home management tests ---
+
+    use crate::autopilot::state::HomePosition;
+    use crate::navigation::{GpsFixType, GpsPosition};
+
+    fn make_gps(lat: f32, lon: f32, alt: f32) -> GpsPosition {
+        GpsPosition {
+            latitude: lat,
+            longitude: lon,
+            altitude: alt,
+            speed: 0.0,
+            course_over_ground: None,
+            fix_type: GpsFixType::Fix3D,
+            satellites: 10,
+        }
+    }
+
+    #[test]
+    fn test_home_auto_set_no_home_with_3d_fix() {
+        let runner = new_runner();
+        let gps = make_gps(35.6812, 139.7671, 40.0);
+        assert!(runner.check_home_auto_set(false, Some(&gps), GpsFixType::Fix3D));
+    }
+
+    #[test]
+    fn test_home_auto_set_already_has_home() {
+        let runner = new_runner();
+        let gps = make_gps(35.6812, 139.7671, 40.0);
+        assert!(!runner.check_home_auto_set(true, Some(&gps), GpsFixType::Fix3D));
+    }
+
+    #[test]
+    fn test_home_auto_set_no_gps() {
+        let runner = new_runner();
+        assert!(!runner.check_home_auto_set(false, None, GpsFixType::NoFix));
+    }
+
+    #[test]
+    fn test_home_auto_set_2d_fix_insufficient() {
+        let runner = new_runner();
+        let gps = make_gps(35.6812, 139.7671, 0.0);
+        assert!(!runner.check_home_auto_set(false, Some(&gps), GpsFixType::Fix2D));
+    }
+
+    #[test]
+    fn test_home_auto_set_fires_only_once() {
+        let runner = new_runner();
+        let gps = make_gps(35.6812, 139.7671, 40.0);
+        // First call: no home, returns true
+        assert!(runner.check_home_auto_set(false, Some(&gps), GpsFixType::Fix3D));
+        // After setting home (has_home=true), returns false
+        assert!(!runner.check_home_auto_set(true, Some(&gps), GpsFixType::Fix3D));
+    }
+
+    #[test]
+    fn test_home_update_moved_enough_unlocked() {
+        let runner = new_runner();
+        let home = HomePosition::new(35.6812, 139.7671, 40.0);
+        // ~111m north
+        let gps = make_gps(35.6822, 139.7671, 40.0);
+        assert!(runner.check_home_update(&home, &gps, false));
+    }
+
+    #[test]
+    fn test_home_update_locked_skips() {
+        let runner = new_runner();
+        let home = HomePosition::new(35.6812, 139.7671, 40.0);
+        let gps = make_gps(35.6822, 139.7671, 40.0);
+        assert!(!runner.check_home_update(&home, &gps, true));
+    }
+
+    #[test]
+    fn test_home_update_below_threshold() {
+        let runner = new_runner();
+        let home = HomePosition::new(35.6812, 139.7671, 40.0);
+        // Very small movement (~0.1m)
+        let gps = make_gps(35.681201, 139.7671, 40.0);
+        assert!(!runner.check_home_update(&home, &gps, false));
+    }
+
+    #[test]
+    fn test_distance_calculation_accuracy() {
+        // 1 degree latitude ≈ 111,195 m at equator
+        let dist = calculate_distance_flat(0.0, 0.0, 1.0, 0.0);
+        assert!((dist - 111_195.0).abs() < 100.0, "dist={dist}");
+
+        // At 45°N, 1 degree longitude ≈ 78,847 m (f32 equirectangular gives ~78,627)
+        let dist_lon = calculate_distance_flat(45.0, 0.0, 45.0, 1.0);
+        assert!((dist_lon - 78_627.0).abs() < 500.0, "dist_lon={dist_lon}");
     }
 }

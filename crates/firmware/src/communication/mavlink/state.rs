@@ -52,6 +52,7 @@ impl SystemStateExt for SystemState {
             gps_position: None,
             gps_timestamp_us: 0,
             home_position: None,
+            home_locked: false,
             uptime_us: 0,
             cpu_load: 0.0,
             arming_checks: arming_params.check_bitmask as u16,

@@ -236,9 +236,38 @@ impl PreArmCheck for SystemStateCheck {
     }
 }
 
+/// Home position check
+///
+/// Verifies that home position has been set before allowing arming.
+/// Home is normally auto-set on first GPS 3D fix. This check ensures
+/// RTL and other home-dependent operations have a valid destination.
+pub struct HomePositionCheck;
+
+impl PreArmCheck for HomePositionCheck {
+    fn check(&self, state: &SystemState) -> CheckResult {
+        if state.home_position.is_none() {
+            Err(ArmingError::CheckFailed {
+                reason: "waiting for home",
+                category: CheckCategory::Gps,
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "Home Position"
+    }
+
+    fn category(&self) -> CheckCategory {
+        CheckCategory::Gps
+    }
+}
+
 // Static instances of built-in checks for registration
 static BATTERY_CHECK: BatteryVoltageCheck = BatteryVoltageCheck;
 static SYSTEM_CHECK: SystemStateCheck = SystemStateCheck;
+static HOME_CHECK: HomePositionCheck = HomePositionCheck;
 
 /// Create a default arming checker with built-in checks registered
 ///
@@ -256,6 +285,7 @@ pub fn create_default_checker(enabled_categories: u16) -> ArmingChecker {
     // Ignore registration errors since we control the count
     let _ = checker.register(&BATTERY_CHECK);
     let _ = checker.register(&SYSTEM_CHECK);
+    let _ = checker.register(&HOME_CHECK);
 
     checker
 }
@@ -406,5 +436,44 @@ mod tests {
         let s = checker.enabled_categories_str();
         assert!(s.contains("Battery"));
         assert!(s.contains("System"));
+    }
+
+    // --- HomePositionCheck tests ---
+
+    #[test]
+    fn test_home_check_passes_when_home_set() {
+        let mut state = SystemState::new();
+        state.home_position = Some(crate::autopilot::state::HomePosition::new(
+            35.6812, 139.7671, 40.0,
+        ));
+        let check = HomePositionCheck;
+        assert!(check.check(&state).is_ok());
+    }
+
+    #[test]
+    fn test_home_check_fails_when_home_not_set() {
+        let state = SystemState::new();
+        assert!(state.home_position.is_none());
+        let check = HomePositionCheck;
+        let result = check.check(&state);
+        assert!(result.is_err());
+        if let Err(ArmingError::CheckFailed { reason, category }) = result {
+            assert_eq!(reason, "waiting for home");
+            assert_eq!(category, CheckCategory::Gps);
+        } else {
+            panic!("Expected CheckFailed");
+        }
+    }
+
+    #[test]
+    fn test_home_check_skipped_when_gps_category_disabled() {
+        let state = SystemState::new();
+        assert!(state.home_position.is_none());
+
+        // GPS bit is 0x0004 (bit 2). Enable all except GPS.
+        let enabled: u16 = !0x0004;
+        let checker = create_default_checker(enabled);
+        // Should pass because GPS category (which includes HomePositionCheck) is disabled
+        assert!(checker.run_checks(&state).is_ok());
     }
 }

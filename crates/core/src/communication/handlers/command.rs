@@ -6,6 +6,7 @@
 //!
 //! - **MAV_CMD_COMPONENT_ARM_DISARM**: Arm or disarm vehicle
 //! - **MAV_CMD_DO_SET_MODE**: Change flight mode
+//! - **MAV_CMD_DO_SET_HOME** (179): Set home position for RTL
 //! - **MAV_CMD_DO_REPOSITION**: Navigate to position (Fly Here)
 //! - **MAV_CMD_MISSION_START**: Start AUTO mode mission from waypoint 0
 //! - **MAV_CMD_PREFLIGHT_CALIBRATION**: Sensor calibration (placeholder)
@@ -116,7 +117,19 @@ impl<V: VehicleType> CommandHandler<V> {
                 (self.handle_preflight_calibration(cmd), false, Vec::new())
             }
             MavCmd::MAV_CMD_REQUEST_MESSAGE => {
-                (self.handle_request_message(cmd), false, Vec::new())
+                const MAVLINK_MSG_ID_HOME_POSITION: u32 = 242;
+                let msg_id = cmd.param1 as u32;
+                if msg_id == MAVLINK_MSG_ID_HOME_POSITION {
+                    self.handle_home_position_request()
+                } else {
+                    (self.handle_request_message(cmd), false, Vec::new())
+                }
+            }
+            #[allow(deprecated)]
+            MavCmd::MAV_CMD_GET_HOME_POSITION => self.handle_home_position_request(),
+            MavCmd::MAV_CMD_DO_SET_HOME => {
+                let (result, messages) = self.handle_set_home_long(cmd);
+                (result, false, messages)
             }
             MavCmd::MAV_CMD_DO_REPOSITION => (self.handle_do_reposition(cmd), false, Vec::new()),
             MavCmd::MAV_CMD_MISSION_START => (self.handle_mission_start(), false, Vec::new()),
@@ -350,6 +363,26 @@ impl<V: VehicleType> CommandHandler<V> {
         }
     }
 
+    /// Handle HOME_POSITION request (REQUEST_MESSAGE param1=242 or GET_HOME_POSITION).
+    ///
+    /// Returns HOME_POSITION in extra_messages when home is set,
+    /// or MAV_RESULT_FAILED when home is None.
+    fn handle_home_position_request(&self) -> (MavResult, bool, Vec<MavMessage, 4>) {
+        use crate::autopilot::state::SYSTEM_STATE;
+
+        let home_msg = critical_section::with(|cs| {
+            let state = SYSTEM_STATE.borrow_ref(cs);
+            state.home_position.as_ref().map(|h| h.to_mavlink_message())
+        });
+        if let Some(msg) = home_msg {
+            let mut msgs = Vec::new();
+            let _ = msgs.push(MavMessage::HOME_POSITION(msg));
+            (MavResult::MAV_RESULT_ACCEPTED, false, msgs)
+        } else {
+            (MavResult::MAV_RESULT_FAILED, false, Vec::new())
+        }
+    }
+
     fn handle_request_autopilot_capabilities(&mut self) -> MavResult {
         crate::log_debug!("Autopilot capabilities requested (command 520)");
         MavResult::MAV_RESULT_ACCEPTED
@@ -577,7 +610,11 @@ impl<V: VehicleType> CommandHandler<V> {
         if use_current {
             let result = critical_section::with(|cs| {
                 let mut state = SYSTEM_STATE.borrow_ref_mut(cs);
-                state.set_home_to_current()
+                let r = state.set_home_to_current();
+                if r.is_ok() {
+                    state.home_locked = true;
+                }
+                r
             });
 
             match result {
@@ -626,6 +663,96 @@ impl<V: VehicleType> CommandHandler<V> {
             critical_section::with(|cs| {
                 let mut state = SYSTEM_STATE.borrow_ref_mut(cs);
                 state.set_home(home);
+                state.home_locked = true;
+            });
+
+            crate::log_info!(
+                "Home set to lat={}, lon={}, alt={}",
+                home.latitude,
+                home.longitude,
+                home.altitude
+            );
+            let mut msg: String<48> = String::new();
+            let _ = write!(msg, "Home: {:.5},{:.5}", home.latitude, home.longitude);
+            status_notifier::send_info(&msg);
+
+            let mut messages = Vec::new();
+            let _ = messages.push(MavMessage::HOME_POSITION(home_pos_msg));
+
+            (MavResult::MAV_RESULT_ACCEPTED, messages)
+        }
+    }
+
+    /// Handle MAV_CMD_DO_SET_HOME via COMMAND_LONG.
+    ///
+    /// param1: 1=use current location, 0=use specified location
+    /// param5: latitude (degrees), param6: longitude (degrees), param7: altitude (meters)
+    fn handle_set_home_long(&mut self, cmd: &COMMAND_LONG_DATA) -> (MavResult, Vec<MavMessage, 4>) {
+        use crate::autopilot::state::{HomePosition, SYSTEM_STATE};
+
+        let use_current = cmd.param1 > 0.5;
+
+        if use_current {
+            let result = critical_section::with(|cs| {
+                let mut state = SYSTEM_STATE.borrow_ref_mut(cs);
+                let r = state.set_home_to_current();
+                if r.is_ok() {
+                    state.home_locked = true;
+                }
+                r
+            });
+
+            match result {
+                Ok(()) => {
+                    crate::log_info!("Home set to current location");
+                    status_notifier::send_info("Home set to current");
+
+                    let home_msg = critical_section::with(|cs| {
+                        let state = SYSTEM_STATE.borrow_ref(cs);
+                        state
+                            .home_position
+                            .as_ref()
+                            .map(|h| self.build_home_position_message(h))
+                    });
+
+                    let mut messages = Vec::new();
+                    if let Some(msg) = home_msg {
+                        let _ = messages.push(MavMessage::HOME_POSITION(msg));
+                    }
+
+                    (MavResult::MAV_RESULT_ACCEPTED, messages)
+                }
+                Err(_reason) => {
+                    crate::log_warn!("Failed to set home: no GPS fix");
+                    status_notifier::send_error("No GPS fix for home");
+                    (MavResult::MAV_RESULT_DENIED, Vec::new())
+                }
+            }
+        } else {
+            let latitude = cmd.param5;
+            let longitude = cmd.param6;
+            let altitude = cmd.param7;
+
+            let home = HomePosition::new(latitude, longitude, altitude);
+
+            if !(-90.0..=90.0).contains(&home.latitude)
+                || !(-180.0..=180.0).contains(&home.longitude)
+            {
+                crate::log_warn!(
+                    "Invalid home position: lat={}, lon={}",
+                    home.latitude,
+                    home.longitude
+                );
+                status_notifier::send_error("Invalid home position");
+                return (MavResult::MAV_RESULT_DENIED, Vec::new());
+            }
+
+            let home_pos_msg = self.build_home_position_message(&home);
+
+            critical_section::with(|cs| {
+                let mut state = SYSTEM_STATE.borrow_ref_mut(cs);
+                state.set_home(home);
+                state.home_locked = true;
             });
 
             crate::log_info!(
@@ -649,19 +776,7 @@ impl<V: VehicleType> CommandHandler<V> {
         &self,
         home: &crate::autopilot::state::HomePosition,
     ) -> HOME_POSITION_DATA {
-        HOME_POSITION_DATA {
-            latitude: (home.latitude * 1e7) as i32,
-            longitude: (home.longitude * 1e7) as i32,
-            altitude: (home.altitude * 1000.0) as i32,
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-            q: [f32::NAN, f32::NAN, f32::NAN, f32::NAN],
-            approach_x: 0.0,
-            approach_y: 0.0,
-            approach_z: 0.0,
-            time_usec: 0,
-        }
+        home.to_mavlink_message()
     }
 
     pub fn create_protocol_version_message() -> PROTOCOL_VERSION_DATA {
@@ -763,6 +878,9 @@ mod tests {
     fn test_arm_command_accepted() {
         let mut state = SystemState::new();
         state.battery.voltage = 12.0;
+        state.home_position = Some(crate::autopilot::state::HomePosition::new(
+            35.6812, 139.7671, 40.0,
+        ));
         critical_section::with(|cs| {
             *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
         });
@@ -1335,6 +1453,108 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
+    fn test_set_home_locks_home() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        // Verify home_locked starts as false
+        let locked_before = critical_section::with(|cs| {
+            crate::autopilot::state::SYSTEM_STATE
+                .borrow_ref(cs)
+                .home_locked
+        });
+        assert!(!locked_before);
+
+        let lat_e7 = (35.6762 * 1e7) as i32;
+        let lon_e7 = (139.6503 * 1e7) as i32;
+        let cmd = COMMAND_INT_DATA {
+            target_system: 1,
+            target_component: 1,
+            frame: mavlink::common::MavFrame::MAV_FRAME_GLOBAL,
+            command: MavCmd::MAV_CMD_DO_SET_HOME,
+            current: 0,
+            autocontinue: 0,
+            param1: 0.0,
+            param2: 0.0,
+            param3: 0.0,
+            param4: 0.0,
+            x: lat_e7,
+            y: lon_e7,
+            z: 100.0,
+        };
+        let (ack, _) = handler.handle_command_int(&cmd, 255, 1);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+
+        // Verify home_locked is now true
+        let locked_after = critical_section::with(|cs| {
+            crate::autopilot::state::SYSTEM_STATE
+                .borrow_ref(cs)
+                .home_locked
+        });
+        assert!(locked_after);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_set_home_use_current_locks_home() {
+        use crate::navigation::{GpsFixType, GpsPosition};
+
+        let mut state = SystemState::new();
+        state.gps_position = Some(GpsPosition {
+            latitude: 35.6762,
+            longitude: 139.6503,
+            altitude: 50.0,
+            speed: 0.0,
+            course_over_ground: None,
+            fix_type: GpsFixType::Fix3D,
+            satellites: 10,
+        });
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        // Verify home_locked starts as false
+        let locked_before = critical_section::with(|cs| {
+            crate::autopilot::state::SYSTEM_STATE
+                .borrow_ref(cs)
+                .home_locked
+        });
+        assert!(!locked_before);
+
+        // param1=1.0 means "use current location"
+        let cmd = COMMAND_INT_DATA {
+            target_system: 1,
+            target_component: 1,
+            frame: mavlink::common::MavFrame::MAV_FRAME_GLOBAL,
+            command: MavCmd::MAV_CMD_DO_SET_HOME,
+            current: 0,
+            autocontinue: 0,
+            param1: 1.0,
+            param2: 0.0,
+            param3: 0.0,
+            param4: 0.0,
+            x: 0,
+            y: 0,
+            z: 0.0,
+        };
+        let (ack, _) = handler.handle_command_int(&cmd, 255, 1);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+
+        // Verify home_locked is now true
+        let locked_after = critical_section::with(|cs| {
+            crate::autopilot::state::SYSTEM_STATE
+                .borrow_ref(cs)
+                .home_locked
+        });
+        assert!(locked_after);
+    }
+
+    #[test]
+    #[serial_test::serial]
     fn test_command_int_unsupported() {
         let state = SystemState::new();
         critical_section::with(|cs| {
@@ -1401,5 +1621,95 @@ mod tests {
 
         assert_eq!(ack.command, MavCmd::MAV_CMD_FIXED_MAG_CAL_YAW);
         assert_eq!(ack.result, MavResult::MAV_RESULT_DENIED);
+    }
+
+    // --- HOME_POSITION request tests ---
+
+    #[test]
+    #[serial_test::serial]
+    fn test_request_message_home_position_with_home_set() {
+        let mut state = SystemState::new();
+        state.home_position = Some(crate::autopilot::state::HomePosition::new(
+            35.6812, 139.7671, 40.0,
+        ));
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        // REQUEST_MESSAGE with param1=242 (HOME_POSITION)
+        let cmd = create_command_long(MavCmd::MAV_CMD_REQUEST_MESSAGE, 242.0, 0.0);
+        let (ack, messages) = handler.handle_command_long(&cmd, 255, 1);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+        assert!(messages
+            .iter()
+            .any(|m| matches!(m, MavMessage::HOME_POSITION(_))));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_request_message_home_position_no_home() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = create_command_long(MavCmd::MAV_CMD_REQUEST_MESSAGE, 242.0, 0.0);
+        let (ack, messages) = handler.handle_command_long(&cmd, 255, 1);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_FAILED);
+        assert!(messages.is_empty());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_request_message_148_still_works() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        // param1=148 (AUTOPILOT_VERSION) should still route to handle_request_message
+        let cmd = create_command_long(MavCmd::MAV_CMD_REQUEST_MESSAGE, 148.0, 0.0);
+        let (ack, _) = handler.handle_command_long(&cmd, 255, 1);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    #[allow(deprecated)]
+    fn test_get_home_position_with_home_set() {
+        let mut state = SystemState::new();
+        state.home_position = Some(crate::autopilot::state::HomePosition::new(
+            35.6812, 139.7671, 40.0,
+        ));
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = create_command_long(MavCmd::MAV_CMD_GET_HOME_POSITION, 0.0, 0.0);
+        let (ack, messages) = handler.handle_command_long(&cmd, 255, 1);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_ACCEPTED);
+        assert!(messages
+            .iter()
+            .any(|m| matches!(m, MavMessage::HOME_POSITION(_))));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    #[allow(deprecated)]
+    fn test_get_home_position_no_home() {
+        let state = SystemState::new();
+        critical_section::with(|cs| {
+            *crate::autopilot::state::SYSTEM_STATE.borrow_ref_mut(cs) = state;
+        });
+        let mut handler = TestHandler::new();
+
+        let cmd = create_command_long(MavCmd::MAV_CMD_GET_HOME_POSITION, 0.0, 0.0);
+        let (ack, messages) = handler.handle_command_long(&cmd, 255, 1);
+        assert_eq!(ack.result, MavResult::MAV_RESULT_FAILED);
+        assert!(messages.is_empty());
     }
 }

@@ -13,6 +13,7 @@
   - [FR-00079-gps-course-over-ground](../requirements/FR-00079-gps-course-over-ground.md)
 - Dependent Requirements:
   - [NFR-00068-gps-telemetry-performance](../requirements/NFR-00068-gps-telemetry-performance.md)
+  - [FR-00177-global-position-int-relative-alt](FR-00177-global-position-int-relative-alt.md)
 - Related Tasks:
   - [T-00016-uart0-gps-integration](../tasks/T-00016-uart0-gps-integration/README.md)
   - [T-00017-gps-state-telemetry](../tasks/T-00017-gps-state-telemetry/README.md)

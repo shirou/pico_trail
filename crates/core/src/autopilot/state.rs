@@ -222,6 +222,25 @@ impl HomePosition {
             altitude: gps.altitude,
         }
     }
+
+    /// Convert to MAVLink HOME_POSITION_DATA message
+    ///
+    /// Converts lat/lon from degrees to degE7 and altitude from meters to mm.
+    pub fn to_mavlink_message(&self) -> mavlink::common::HOME_POSITION_DATA {
+        mavlink::common::HOME_POSITION_DATA {
+            latitude: (self.latitude * 1e7) as i32,
+            longitude: (self.longitude * 1e7) as i32,
+            altitude: (self.altitude * 1000.0) as i32,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            q: [f32::NAN, f32::NAN, f32::NAN, f32::NAN],
+            approach_x: 0.0,
+            approach_y: 0.0,
+            approach_z: 0.0,
+            time_usec: 0,
+        }
+    }
 }
 
 /// Attitude state from AHRS
@@ -369,6 +388,8 @@ pub struct SystemState {
     pub gps_timestamp_us: u64,
     /// Home position for RTL (None if not set)
     pub home_position: Option<HomePosition>,
+    /// Whether home position is locked (GCS-set home is protected from auto-update)
+    pub home_locked: bool,
     /// System uptime (microseconds since boot)
     pub uptime_us: u64,
     /// CPU load (percentage, 0.0-100.0)
@@ -398,6 +419,7 @@ impl Default for SystemState {
             gps_position: None,
             gps_timestamp_us: 0,
             home_position: None,
+            home_locked: false,
             uptime_us: 0,
             cpu_load: 0.0,
             arming_checks: 0xFFFF,
@@ -419,6 +441,7 @@ impl SystemState {
             gps_position: None,
             gps_timestamp_us: 0,
             home_position: None,
+            home_locked: false,
             uptime_us: 0,
             cpu_load: 0.0,
             arming_checks: 0xFFFF,
@@ -820,5 +843,29 @@ mod tests {
         attitude.timestamp_us = 900_000;
         assert!(attitude.is_fresh(1_000_000, 500_000));
         assert!(!attitude.is_fresh(2_000_000, 500_000));
+    }
+
+    #[test]
+    fn test_home_locked_default() {
+        let state = SystemState::default();
+        assert!(!state.home_locked);
+    }
+
+    #[test]
+    fn test_to_mavlink_message_conversion() {
+        let home = HomePosition::new(35.6812, 139.7671, 40.0);
+        let msg = home.to_mavlink_message();
+
+        // degE7 conversion (f32 precision aware)
+        assert_eq!(msg.latitude, (35.6812_f32 * 1e7) as i32);
+        assert_eq!(msg.longitude, (139.7671_f32 * 1e7) as i32);
+        // mm conversion: 40.0 * 1000 = 40000
+        assert_eq!(msg.altitude, 40_000);
+        // Quaternion should be NaN (unknown orientation)
+        assert!(msg.q[0].is_nan());
+        // Local frame position should be zero
+        assert_eq!(msg.x, 0.0);
+        assert_eq!(msg.y, 0.0);
+        assert_eq!(msg.z, 0.0);
     }
 }
