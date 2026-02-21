@@ -305,7 +305,10 @@ impl<V: VehicleType> TelemetryStreamer<V> {
             lat,
             lon,
             alt,
-            relative_alt: 0,
+            relative_alt: match (&state.home_position, &state.gps_position) {
+                (Some(home), Some(gps)) => ((gps.altitude - home.altitude) * 1000.0) as i32,
+                _ => 0,
+            },
             vx,
             vy,
             vz,
@@ -942,6 +945,113 @@ mod tests {
         let msg = streamer.build_global_position_int(&state).unwrap();
         if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
             assert_eq!(data.hdg, 27000);
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_relative_alt_with_home_and_gps() {
+        use crate::autopilot::state::HomePosition;
+        use crate::navigation::{GpsFixType as DGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
+        let mut state = SystemState::new();
+
+        state.home_position = Some(HomePosition::new(35.6812, 139.7671, 40.0));
+        state.update_gps(
+            GpsPosition {
+                latitude: 35.6812,
+                longitude: 139.7671,
+                altitude: 55.0,
+                speed: 0.0,
+                course_over_ground: None,
+                fix_type: DGpsFixType::Fix3D,
+                satellites: 10,
+            },
+            1000000,
+        );
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            // 55.0 - 40.0 = 15.0m = 15000mm
+            assert_eq!(data.relative_alt, 15000);
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_relative_alt_negative_difference() {
+        use crate::autopilot::state::HomePosition;
+        use crate::navigation::{GpsFixType as DGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
+        let mut state = SystemState::new();
+
+        state.home_position = Some(HomePosition::new(35.6812, 139.7671, 100.0));
+        state.update_gps(
+            GpsPosition {
+                latitude: 35.6812,
+                longitude: 139.7671,
+                altitude: 80.0,
+                speed: 0.0,
+                course_over_ground: None,
+                fix_type: DGpsFixType::Fix3D,
+                satellites: 10,
+            },
+            1000000,
+        );
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            // 80.0 - 100.0 = -20.0m = -20000mm
+            assert_eq!(data.relative_alt, -20000);
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_relative_alt_zero_when_no_home() {
+        use crate::navigation::{GpsFixType as DGpsFixType, GpsPosition};
+
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
+        let mut state = SystemState::new();
+
+        state.update_gps(
+            GpsPosition {
+                latitude: 35.6812,
+                longitude: 139.7671,
+                altitude: 55.0,
+                speed: 0.0,
+                course_over_ground: None,
+                fix_type: DGpsFixType::Fix3D,
+                satellites: 10,
+            },
+            1000000,
+        );
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            assert_eq!(data.relative_alt, 0);
+        } else {
+            panic!("Expected GLOBAL_POSITION_INT message");
+        }
+    }
+
+    #[test]
+    fn test_relative_alt_zero_when_no_gps() {
+        use crate::autopilot::state::HomePosition;
+
+        let streamer = TelemetryStreamer::<GroundRover>::new(1, 1);
+        let mut state = SystemState::new();
+
+        state.home_position = Some(HomePosition::new(35.6812, 139.7671, 40.0));
+
+        let msg = streamer.build_global_position_int(&state).unwrap();
+        if let MavMessage::GLOBAL_POSITION_INT(data) = msg {
+            assert_eq!(data.relative_alt, 0);
         } else {
             panic!("Expected GLOBAL_POSITION_INT message");
         }

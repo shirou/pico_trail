@@ -794,6 +794,9 @@ async fn rover_mavlink_task(
         pico_trail_core::autopilot::gcs_failsafe::GcsFailsafeConfig::from_params(&failsafe_params);
     let mut mavlink_runner = MavlinkLoopRunner::new(battery_failsafe_config, gcs_failsafe_config);
 
+    // Home update rate limiter: count 10 Hz ticks, trigger at 1 Hz (every 10 ticks)
+    let mut home_update_counter: u8 = 0;
+
     loop {
         // Non-blocking receive with timeout
         let read_result = embassy_futures::select::select(
@@ -1024,6 +1027,86 @@ async fn rover_mavlink_task(
                 });
             }
 
+            // Home position management (auto-set at 10 Hz, disarmed update at 1 Hz)
+            let (has_home, home_locked, is_armed_for_home, gps_info) =
+                critical_section::with(|cs| {
+                    let state = pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
+                        .borrow_ref(cs);
+                    let gps_info = state.gps_position.map(|g| (g, g.fix_type));
+                    (
+                        state.has_home(),
+                        state.home_locked,
+                        state.is_armed(),
+                        gps_info,
+                    )
+                });
+
+            let mut home_broadcast: Option<mavlink::common::HOME_POSITION_DATA> = None;
+
+            if let Some((gps, fix_type)) = gps_info {
+                // Auto-set home on first GPS 3D fix
+                if mavlink_runner.check_home_auto_set(has_home, Some(&gps), fix_type) {
+                    home_broadcast = critical_section::with(|cs| {
+                        let mut state =
+                            pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
+                                .borrow_ref_mut(cs);
+                        let _ = state.set_home_to_current();
+                        state.home_locked = false;
+                        state.home_position.as_ref().map(|h| h.to_mavlink_message())
+                    });
+                    if home_broadcast.is_some() {
+                        pico_trail_firmware::log_info!("Home auto-set on GPS fix");
+                    }
+                }
+
+                // Disarmed home update at 1 Hz (every 10 ticks of the 10 Hz loop)
+                if !is_armed_for_home {
+                    home_update_counter += 1;
+                    if home_update_counter >= 10 {
+                        home_update_counter = 0;
+                        let should_update = has_home && home_broadcast.is_none() && {
+                            let home = critical_section::with(|cs| {
+                                pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
+                                    .borrow_ref(cs)
+                                    .home_position
+                            });
+                            home.map_or(false, |h| {
+                                mavlink_runner.check_home_update(&h, &gps, home_locked)
+                            })
+                        };
+                        if should_update {
+                            home_broadcast = critical_section::with(|cs| {
+                                let mut state =
+                                    pico_trail_firmware::communication::mavlink::state::SYSTEM_STATE
+                                        .borrow_ref_mut(cs);
+                                let _ = state.set_home_to_current();
+                                state.home_position.as_ref().map(|h| h.to_mavlink_message())
+                            });
+                        }
+                    }
+                } else {
+                    home_update_counter = 0;
+                }
+            }
+
+            // Broadcast HOME_POSITION if home was set or updated
+            if let Some(msg) = home_broadcast {
+                let header = mavlink::MavHeader {
+                    system_id: 1,
+                    component_id: 1,
+                    sequence,
+                };
+                let mut msg_buf = [0u8; 280];
+                let mut cursor = &mut msg_buf[..];
+                let mav_msg = mavlink::common::MavMessage::HOME_POSITION(msg);
+                if mavlink::write_v2_msg(&mut cursor, header, &mav_msg).is_ok() {
+                    let len = 280 - cursor.len();
+                    if router.send_bytes(&msg_buf[..len]).await.is_ok() {
+                        sequence = sequence.wrapping_add(1);
+                    }
+                }
+            }
+
             last_battery_update = Instant::now();
         }
 
@@ -1070,23 +1153,39 @@ async fn motor_control_task(
             (state.mode, state.is_armed())
         });
 
+        // Read nav values before step for debug logging
+        let (nav_steer, nav_thr) = nav_provider();
+        let (rc_steer, rc_thr, rc_st) = rc_provider();
+
         let output = runner.step(mode, is_armed, rc_provider, nav_provider);
 
-        // Rate-limited motor log (every ~1s = 100 iterations at 100Hz)
+        // Rate-limited debug log (every ~2s = 200 iterations at 100Hz)
+        // Always logs regardless of output, to diagnose why motors don't move
         static mut MOTOR_LOG_CTR: u32 = 0;
         unsafe {
             MOTOR_LOG_CTR += 1;
-            if MOTOR_LOG_CTR >= 100 && !output.should_stop {
+            if MOTOR_LOG_CTR >= 200 {
+                MOTOR_LOG_CTR = 0;
                 let s = &output.motor_speeds;
-                if s[0].abs() > 0.05 || s[2].abs() > 0.05 {
-                    MOTOR_LOG_CTR = 0;
-                    pico_trail_firmware::log_debug!(
-                        "Motor: mode={:?}, L={}, R={}",
-                        mode,
-                        s[0],
-                        s[2]
-                    );
-                }
+                let rc_status_str = match rc_st {
+                    Some(pico_trail_core::rc::RcStatus::Active) => "Active",
+                    Some(pico_trail_core::rc::RcStatus::Lost) => "Lost",
+                    Some(pico_trail_core::rc::RcStatus::NeverConnected) => "Never",
+                    None => "N/A",
+                };
+                pico_trail_firmware::log_info!(
+                    "DBG Motor: mode={:?} armed={} stop={} | nav=({},{}) rc=({},{}) rc_st={} | out L={} R={}",
+                    mode,
+                    is_armed,
+                    output.should_stop,
+                    nav_steer,
+                    nav_thr,
+                    rc_steer,
+                    rc_thr,
+                    rc_status_str,
+                    s[0],
+                    s[2]
+                );
             }
         }
 
@@ -1242,10 +1341,49 @@ async fn navigation_task() {
         let should_navigate = mission_state == MissionState::Running
             && (mode == FlightMode::Guided || mode == FlightMode::Auto);
 
-        if should_navigate {
-            // Get navigation target from MISSION_STORAGE (unified source)
-            let target = get_current_target();
+        // Get navigation target from MISSION_STORAGE (unified source)
+        let target = get_current_target();
 
+        // Debug log every ~2s (100 iterations at 50Hz)
+        static mut NAV_DBG_CTR: u32 = 0;
+        unsafe {
+            NAV_DBG_CTR += 1;
+            if NAV_DBG_CTR >= 100 {
+                NAV_DBG_CTR = 0;
+                let has_gps = gps_position.is_some();
+                let has_target = target.is_some();
+                let mission_str = match mission_state {
+                    MissionState::Idle => "Idle",
+                    MissionState::Running => "Running",
+                    MissionState::Completed => "Completed",
+                };
+                pico_trail_firmware::log_info!(
+                    "DBG Nav: mode={:?} mission={} should_nav={} gps={} target={}",
+                    mode,
+                    mission_str,
+                    should_navigate,
+                    has_gps,
+                    has_target
+                );
+                if let Some(ref t) = target {
+                    pico_trail_firmware::log_info!(
+                        "DBG Nav target: lat={} lon={}",
+                        t.latitude,
+                        t.longitude
+                    );
+                }
+                if let Some(ref gps) = gps_position {
+                    pico_trail_firmware::log_info!(
+                        "DBG Nav gps: lat={} lon={} spd={}",
+                        gps.latitude,
+                        gps.longitude,
+                        gps.speed
+                    );
+                }
+            }
+        }
+
+        if should_navigate {
             if let (Some(current), Some(target)) = (gps_position, target) {
                 // Get heading from fused source (AHRS when stationary, GPS COG when moving)
                 let heading = heading_source

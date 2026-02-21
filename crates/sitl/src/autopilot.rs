@@ -135,6 +135,8 @@ pub struct VehicleAutopilot {
     nav_runner: NavigationRunner,
     /// Battery failsafe runner (reused from core)
     mavlink_runner: MavlinkLoopRunner,
+    /// Counter for 1 Hz home update rate limiting (increments at 10 Hz)
+    home_update_counter: u8,
 }
 
 impl VehicleAutopilot {
@@ -200,6 +202,7 @@ impl VehicleAutopilot {
             system_id,
             nav_runner: NavigationRunner::new(),
             mavlink_runner: MavlinkLoopRunner::new(battery_failsafe_config, gcs_failsafe_config),
+            home_update_counter: 0,
         }
     }
 
@@ -398,6 +401,73 @@ impl VehicleAutopilot {
                 let _ = SYSTEM_STATE.borrow_ref_mut(cs).set_mode(mode);
             });
         }
+    }
+
+    /// Check and manage home position: auto-set on GPS fix, update while disarmed at 1 Hz.
+    ///
+    /// Returns a HOME_POSITION message if home was set or updated (for broadcast).
+    /// Should be called at ~10 Hz from the main loop.
+    pub fn check_home_position(&mut self) -> Option<mavlink::common::MavMessage> {
+        let (has_home, home_locked, is_armed, gps_info) = critical_section::with(|cs| {
+            let state = SYSTEM_STATE.borrow_ref(cs);
+            let gps_info = state.gps_position.map(|g| (g, g.fix_type));
+            (
+                state.has_home(),
+                state.home_locked,
+                state.is_armed(),
+                gps_info,
+            )
+        });
+
+        let (gps, fix_type) = gps_info?;
+
+        // Auto-set home on first GPS 3D fix
+        if self
+            .mavlink_runner
+            .check_home_auto_set(has_home, Some(&gps), fix_type)
+        {
+            let home_msg = critical_section::with(|cs| {
+                let mut state = SYSTEM_STATE.borrow_ref_mut(cs);
+                let _ = state.set_home_to_current();
+                state.home_locked = false;
+                state.home_position.as_ref().map(|h| h.to_mavlink_message())
+            });
+            if let Some(msg) = home_msg {
+                eprintln!("  [Autopilot] Home auto-set on GPS fix");
+                return Some(mavlink::common::MavMessage::HOME_POSITION(msg));
+            }
+        }
+
+        // Disarmed home update at 1 Hz (every 10 ticks)
+        if !is_armed {
+            self.home_update_counter += 1;
+            if self.home_update_counter >= 10 {
+                self.home_update_counter = 0;
+                if has_home {
+                    let home =
+                        critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).home_position);
+                    if let Some(home) = home {
+                        if self
+                            .mavlink_runner
+                            .check_home_update(&home, &gps, home_locked)
+                        {
+                            let home_msg = critical_section::with(|cs| {
+                                let mut state = SYSTEM_STATE.borrow_ref_mut(cs);
+                                let _ = state.set_home_to_current();
+                                state.home_position.as_ref().map(|h| h.to_mavlink_message())
+                            });
+                            if let Some(msg) = home_msg {
+                                return Some(mavlink::common::MavMessage::HOME_POSITION(msg));
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            self.home_update_counter = 0;
+        }
+
+        None
     }
 
     /// Check for mission protocol timeouts and return an ACK if one expired.

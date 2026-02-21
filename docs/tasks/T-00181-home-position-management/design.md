@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Design
-- Status: Draft
+- Status: Done
 
 ## Links
 
@@ -16,13 +16,13 @@ Add home position lifecycle management to the pico_trail rover: auto-set on GPS 
 
 ## Success Metrics
 
-- [ ] Home is auto-set on first GPS 3D fix and broadcast to GCS
-- [ ] Home is refined at 1 Hz while disarmed (>0.5m movement, unlocked)
-- [ ] GCS-set home is locked and preserved from auto-update
-- [ ] Arming blocked with "waiting for home" when home is not set
-- [ ] GCS can request home via REQUEST_MESSAGE(242) and GET_HOME_POSITION(410)
-- [ ] GLOBAL_POSITION_INT `relative_alt` shows altitude above home
-- [ ] All tests pass, clippy clean, embedded build succeeds
+- [x] Home is auto-set on first GPS 3D fix and broadcast to GCS
+- [x] Home is refined at 1 Hz while disarmed (>0.5m movement, unlocked)
+- [x] GCS-set home is locked and preserved from auto-update
+- [x] Arming blocked with "waiting for home" when home is not set
+- [x] GCS can request home via REQUEST_MESSAGE(242) and GET_HOME_POSITION(410)
+- [x] GLOBAL_POSITION_INT `relative_alt` shows altitude above home
+- [x] All tests pass, clippy clean, embedded build succeeds
 
 ## Background and Current State
 

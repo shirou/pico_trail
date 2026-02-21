@@ -245,6 +245,11 @@ async fn main() {
                     last_battery_check = std::time::Instant::now();
                 }
 
+                // 5c. Home position management (~10 Hz, auto-set + 1 Hz disarmed update)
+                if let Some(home_msg) = autopilot.check_home_position() {
+                    let _ = gcs.send_message_as(args.system_id, &home_msg);
+                }
+
                 // 6. Send telemetry (core dispatcher handles HEARTBEAT, ATTITUDE, GPS, SYS_STATUS)
                 let telemetry = autopilot.update_telemetry(wall_us);
                 for msg in &telemetry {

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Type: Implementation Plan
-- Status: Draft
+- Status: Done
 
 ## Links
 
@@ -16,13 +16,13 @@ Implement home position management in 4 phases: core state + shared message buil
 
 ## Success Metrics
 
-- [ ] Home auto-set on first GPS 3D fix with HOME_POSITION broadcast
-- [ ] Home refined at 1 Hz while disarmed if moved >0.5m (skipped if locked)
-- [ ] GCS-set home locked from auto-update
-- [ ] Arming blocked with "waiting for home" if home not set
-- [ ] REQUEST_MESSAGE(242) and GET_HOME_POSITION(410) return HOME_POSITION
-- [ ] `relative_alt` computed from home altitude
-- [ ] All tests pass, clippy clean, embedded build succeeds
+- [x] Home auto-set on first GPS 3D fix with HOME_POSITION broadcast
+- [x] Home refined at 1 Hz while disarmed if moved >0.5m (skipped if locked)
+- [x] GCS-set home locked from auto-update
+- [x] Arming blocked with "waiting for home" if home not set
+- [x] REQUEST_MESSAGE(242) and GET_HOME_POSITION(410) return HOME_POSITION
+- [x] `relative_alt` computed from home altitude
+- [x] All tests pass, clippy clean, embedded build succeeds
 
 ## Scope
 
@@ -70,20 +70,20 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ### Tasks
 
-- [ ] **Add `home_locked: bool` to `SystemState`**
-  - [ ] Add field with default `false` in `Default` impl
-  - [ ] Add field in `init()` and `new()` constructors
-- [ ] **Add `HomePosition::to_mavlink_message()` method**
-  - [ ] Move message construction logic from `CommandHandler::build_home_position_message()`
-  - [ ] Return `HOME_POSITION_DATA`
-  - [ ] Add unit test for degE7/mm conversion accuracy
-- [ ] **Update `CommandHandler`**
-  - [ ] Change `build_home_position_message()` to delegate to `HomePosition::to_mavlink_message()`
-  - [ ] Verify all existing tests still pass
-- [ ] **Verification**
-  - [ ] `cargo test -p pico_trail_core --lib --quiet`
-  - [ ] `cargo clippy -p pico_trail_core --all-targets -- -D warnings`
-  - [ ] `./scripts/build-rp2350.sh pico_trail_rover`
+- [x] **Add `home_locked: bool` to `SystemState`**
+  - [x] Add field with default `false` in `Default` impl
+  - [x] Add field in `init()` and `new()` constructors
+- [x] **Add `HomePosition::to_mavlink_message()` method**
+  - [x] Move message construction logic from `CommandHandler::build_home_position_message()`
+  - [x] Return `HOME_POSITION_DATA`
+  - [x] Add unit test for degE7/mm conversion accuracy
+- [x] **Update `CommandHandler`**
+  - [x] Change `build_home_position_message()` to delegate to `HomePosition::to_mavlink_message()`
+  - [x] Verify all existing tests still pass
+- [x] **Verification**
+  - [x] `cargo test -p pico_trail_core --lib --quiet`
+  - [x] `cargo clippy -p pico_trail_core --all-targets -- -D warnings`
+  - [x] `./scripts/build-rp2350.sh pico_trail_rover`
 
 ### Deliverables
 
@@ -125,38 +125,38 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ### Tasks
 
-- [ ] **Add home management helpers to MavlinkLoopRunner**
-  - [ ] Add `check_home_auto_set(has_home, gps_position, gps_fix_type) -> bool`
-  - [ ] Add `check_home_update(home, gps, home_locked) -> bool` with 0.5m threshold
-  - [ ] Add distance calculation function (flat-earth approximation)
-  - [ ] Define `DISTANCE_HOME_MINCHANGE: f32 = 0.5`
-- [ ] **Unit tests for home management helpers**
-  - [ ] `check_home_auto_set`: true when no home + Fix3D, false when home exists, false when no GPS
-  - [ ] `check_home_update`: true when >0.5m and unlocked, false when locked, false when <0.5m
-  - [ ] Distance calculation: verify accuracy at equator and mid-latitudes
-  - [ ] Home persists through GPS loss: set home, clear GPS, verify home remains Some
-  - [ ] Auto-set fires only once: verify second call with home already set returns false
-- [ ] **Set `home_locked = true` in `handle_set_home()`**
-  - [ ] Both branches (use_current and specified location) set `home_locked = true`
-  - [ ] Add test: DO_SET_HOME sets `home_locked = true`
-- [ ] **Wire auto-set and disarmed update in firmware caller**
-  - [ ] In `pico_trail_rover.rs` control loop: check `check_home_auto_set()`, if true set home, set `home_locked = false`, and broadcast HOME_POSITION
-  - [ ] Implement 1 Hz rate limiter for disarmed update (counter or elapsed time check against control loop tick rate)
-  - [ ] At 1 Hz while disarmed: check `check_home_update()`, if true update home and broadcast
-  - [ ] Use `HomePosition::to_mavlink_message()` for broadcast message
-  - [ ] Log "Home set to {lat}, {lon}" on auto-set
-- [ ] **Wire auto-set and disarmed update in SITL caller**
-  - [ ] In SITL `autopilot.rs`: same logic as firmware caller (auto-set with `home_locked = false`, 1 Hz disarmed update)
-  - [ ] Add SITL integration test: auto-set on GPS fix
-- [ ] **NFR verification (NFR-00179, NFR-00180)**
-  - [ ] Verify auto-set operation has no heap allocations (code review: only struct copies)
-  - [ ] Verify HOME_POSITION is not added to any `StreamConfig` in TelemetryStreamer (negative check)
-  - [ ] Verify on-change-only pattern: no periodic timer for HOME_POSITION exists
-- [ ] **Verification**
-  - [ ] `cargo test -p pico_trail_core --lib --quiet`
-  - [ ] `cargo test -p pico_trail_core --features embassy --lib --quiet`
-  - [ ] `cargo clippy --all-targets -- -D warnings`
-  - [ ] `./scripts/build-rp2350.sh pico_trail_rover`
+- [x] **Add home management helpers to MavlinkLoopRunner**
+  - [x] Add `check_home_auto_set(has_home, gps_position, gps_fix_type) -> bool`
+  - [x] Add `check_home_update(home, gps, home_locked) -> bool` with 0.5m threshold
+  - [x] Add distance calculation function (flat-earth approximation)
+  - [x] Define `DISTANCE_HOME_MINCHANGE: f32 = 0.5`
+- [x] **Unit tests for home management helpers**
+  - [x] `check_home_auto_set`: true when no home + Fix3D, false when home exists, false when no GPS
+  - [x] `check_home_update`: true when >0.5m and unlocked, false when locked, false when <0.5m
+  - [x] Distance calculation: verify accuracy at equator and mid-latitudes
+  - [x] Home persists through GPS loss: set home, clear GPS, verify home remains Some
+  - [x] Auto-set fires only once: verify second call with home already set returns false
+- [x] **Set `home_locked = true` in `handle_set_home()`**
+  - [x] Both branches (use_current and specified location) set `home_locked = true`
+  - [x] Add test: DO_SET_HOME sets `home_locked = true`
+- [x] **Wire auto-set and disarmed update in firmware caller**
+  - [x] In `pico_trail_rover.rs` control loop: check `check_home_auto_set()`, if true set home, set `home_locked = false`, and broadcast HOME_POSITION
+  - [x] Implement 1 Hz rate limiter for disarmed update (counter or elapsed time check against control loop tick rate)
+  - [x] At 1 Hz while disarmed: check `check_home_update()`, if true update home and broadcast
+  - [x] Use `HomePosition::to_mavlink_message()` for broadcast message
+  - [x] Log "Home set to {lat}, {lon}" on auto-set
+- [x] **Wire auto-set and disarmed update in SITL caller**
+  - [x] In SITL `autopilot.rs`: same logic as firmware caller (auto-set with `home_locked = false`, 1 Hz disarmed update)
+  - [x] Add SITL integration test: auto-set on GPS fix
+- [x] **NFR verification (NFR-00179, NFR-00180)**
+  - [x] Verify auto-set operation has no heap allocations (code review: only struct copies)
+  - [x] Verify HOME_POSITION is not added to any `StreamConfig` in TelemetryStreamer (negative check)
+  - [x] Verify on-change-only pattern: no periodic timer for HOME_POSITION exists
+- [x] **Verification**
+  - [x] `cargo test -p pico_trail_core --lib --quiet`
+  - [x] `cargo test -p pico_trail_core --features embassy --lib --quiet`
+  - [x] `cargo clippy --all-targets -- -D warnings`
+  - [x] `./scripts/build-rp2350.sh pico_trail_rover`
 
 ### Deliverables
 
@@ -200,37 +200,37 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ### Tasks
 
-- [ ] **Add REQUEST_MESSAGE handling for message ID 242**
-  - [ ] Intercept `MavCmd::MAV_CMD_REQUEST_MESSAGE` at `handle_command_long` level for msg_id 242
-  - [ ] Return HOME_POSITION in extra_messages Vec when home is set
-  - [ ] Return `MAV_RESULT_ACCEPTED` when home set
-  - [ ] Return `MAV_RESULT_FAILED` when home is None
-  - [ ] Delegate all other message IDs to existing `handle_request_message()`
-- [ ] **Add MAV_CMD_GET_HOME_POSITION handler**
-  - [ ] Add `MavCmd::MAV_CMD_GET_HOME_POSITION` match arm in `handle_command_long`
-  - [ ] Return HOME_POSITION in extra_messages Vec when home is set
-  - [ ] Return `MAV_RESULT_ACCEPTED` when home set
-  - [ ] Return `MAV_RESULT_FAILED` when home is None
-- [ ] **Unit tests for command handlers**
-  - [ ] REQUEST_MESSAGE param1=242 returns HOME_POSITION when home set
-  - [ ] REQUEST_MESSAGE param1=242 returns FAILED when home not set
-  - [ ] REQUEST_MESSAGE param1=148 still works (regression test)
-  - [ ] GET_HOME_POSITION returns HOME_POSITION when home set
-  - [ ] GET_HOME_POSITION returns FAILED when home not set
-- [ ] **Add HomePositionCheck pre-arm check**
-  - [ ] Create `HomePositionCheck` struct implementing `PreArmCheck`
-  - [ ] Category: `CheckCategory::Gps`
-  - [ ] Fails with "waiting for home" when `state.home_position.is_none()`
-  - [ ] Register in `create_default_checker()`
-- [ ] **Unit tests for pre-arm check**
-  - [ ] Check passes when home_position is Some
-  - [ ] Check fails with "waiting for home" when home_position is None
-  - [ ] Check is skipped when GPS category is disabled in ARMING_CHECK
-- [ ] **Verification**
-  - [ ] `cargo test -p pico_trail_core --lib --quiet`
-  - [ ] `cargo test -p pico_trail_core --features embassy --lib --quiet`
-  - [ ] `cargo clippy --all-targets -- -D warnings`
-  - [ ] `./scripts/build-rp2350.sh pico_trail_rover`
+- [x] **Add REQUEST_MESSAGE handling for message ID 242**
+  - [x] Intercept `MavCmd::MAV_CMD_REQUEST_MESSAGE` at `handle_command_long` level for msg_id 242
+  - [x] Return HOME_POSITION in extra_messages Vec when home is set
+  - [x] Return `MAV_RESULT_ACCEPTED` when home set
+  - [x] Return `MAV_RESULT_FAILED` when home is None
+  - [x] Delegate all other message IDs to existing `handle_request_message()`
+- [x] **Add MAV_CMD_GET_HOME_POSITION handler**
+  - [x] Add `MavCmd::MAV_CMD_GET_HOME_POSITION` match arm in `handle_command_long`
+  - [x] Return HOME_POSITION in extra_messages Vec when home is set
+  - [x] Return `MAV_RESULT_ACCEPTED` when home set
+  - [x] Return `MAV_RESULT_FAILED` when home is None
+- [x] **Unit tests for command handlers**
+  - [x] REQUEST_MESSAGE param1=242 returns HOME_POSITION when home set
+  - [x] REQUEST_MESSAGE param1=242 returns FAILED when home not set
+  - [x] REQUEST_MESSAGE param1=148 still works (regression test)
+  - [x] GET_HOME_POSITION returns HOME_POSITION when home set
+  - [x] GET_HOME_POSITION returns FAILED when home not set
+- [x] **Add HomePositionCheck pre-arm check**
+  - [x] Create `HomePositionCheck` struct implementing `PreArmCheck`
+  - [x] Category: `CheckCategory::Gps`
+  - [x] Fails with "waiting for home" when `state.home_position.is_none()`
+  - [x] Register in `create_default_checker()`
+- [x] **Unit tests for pre-arm check**
+  - [x] Check passes when home_position is Some
+  - [x] Check fails with "waiting for home" when home_position is None
+  - [x] Check is skipped when GPS category is disabled in ARMING_CHECK
+- [x] **Verification**
+  - [x] `cargo test -p pico_trail_core --lib --quiet`
+  - [x] `cargo test -p pico_trail_core --features embassy --lib --quiet`
+  - [x] `cargo clippy --all-targets -- -D warnings`
+  - [x] `./scripts/build-rp2350.sh pico_trail_rover`
 
 ### Deliverables
 
@@ -267,18 +267,18 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ### Tasks
 
-- [ ] **Fix `relative_alt` computation**
-  - [ ] If home set and GPS available: `relative_alt = ((gps_alt - home_alt) * 1000.0) as i32`
-  - [ ] If home not set: `relative_alt = 0` (unchanged fallback)
-  - [ ] Update `build_global_position_int()` in telemetry handler
-- [ ] **Unit tests**
-  - [ ] `relative_alt` correct when home and GPS available (positive and negative altitude difference)
-  - [ ] `relative_alt` is 0 when home not set
-  - [ ] `relative_alt` is 0 when GPS not available
-- [ ] **Verification**
-  - [ ] `cargo test -p pico_trail_core --lib --quiet`
-  - [ ] `cargo clippy -p pico_trail_core --all-targets -- -D warnings`
-  - [ ] `./scripts/build-rp2350.sh pico_trail_rover`
+- [x] **Fix `relative_alt` computation**
+  - [x] If home set and GPS available: `relative_alt = ((gps_alt - home_alt) * 1000.0) as i32`
+  - [x] If home not set: `relative_alt = 0` (unchanged fallback)
+  - [x] Update `build_global_position_int()` in telemetry handler
+- [x] **Unit tests**
+  - [x] `relative_alt` correct when home and GPS available (positive and negative altitude difference)
+  - [x] `relative_alt` is 0 when home not set
+  - [x] `relative_alt` is 0 when GPS not available
+- [x] **Verification**
+  - [x] `cargo test -p pico_trail_core --lib --quiet`
+  - [x] `cargo clippy -p pico_trail_core --all-targets -- -D warnings`
+  - [x] `./scripts/build-rp2350.sh pico_trail_rover`
 
 ### Deliverables
 
@@ -298,21 +298,21 @@ Mark checkboxes (`[x]`) immediately after completing each task or subtask.
 
 ## Definition of Done
 
-- [ ] `home_locked` field added to SystemState with correct defaults
-- [ ] `HomePosition::to_mavlink_message()` shared method
-- [ ] Home auto-set on first GPS 3D fix with HOME_POSITION broadcast
-- [ ] Home refined at 1 Hz while disarmed (>0.5m threshold, skip if locked)
-- [ ] DO_SET_HOME sets `home_locked = true`
-- [ ] REQUEST_MESSAGE(242) returns HOME_POSITION
-- [ ] GET_HOME_POSITION(410) returns HOME_POSITION
-- [ ] HomePositionCheck pre-arm check registered in GPS category
-- [ ] `relative_alt` computed from home altitude
-- [ ] Firmware and SITL callers wired for auto-set and disarmed update
-- [ ] Core tests pass: `cargo test -p pico_trail_core --lib`
-- [ ] Core (embassy) passes: `cargo test -p pico_trail_core --features embassy --lib`
-- [ ] Embedded build: `./scripts/build-rp2350.sh pico_trail_rover`
-- [ ] Clippy clean: `cargo clippy --all-targets -- -D warnings`
-- [ ] Code formatted: `cargo fmt`
+- [x] `home_locked` field added to SystemState with correct defaults
+- [x] `HomePosition::to_mavlink_message()` shared method
+- [x] Home auto-set on first GPS 3D fix with HOME_POSITION broadcast
+- [x] Home refined at 1 Hz while disarmed (>0.5m threshold, skip if locked)
+- [x] DO_SET_HOME sets `home_locked = true`
+- [x] REQUEST_MESSAGE(242) returns HOME_POSITION
+- [x] GET_HOME_POSITION(410) returns HOME_POSITION
+- [x] HomePositionCheck pre-arm check registered in GPS category
+- [x] `relative_alt` computed from home altitude
+- [x] Firmware and SITL callers wired for auto-set and disarmed update
+- [x] Core tests pass: `cargo test -p pico_trail_core --lib`
+- [x] Core (embassy) passes: `cargo test -p pico_trail_core --features embassy --lib`
+- [x] Embedded build: `./scripts/build-rp2350.sh pico_trail_rover`
+- [x] Clippy clean: `cargo clippy --all-targets -- -D warnings`
+- [x] Code formatted: `cargo fmt`
 
 ## Open Questions
 

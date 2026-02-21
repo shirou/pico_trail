@@ -92,7 +92,8 @@
       "Bash(else)",
       "Bash(fi:*)",
       "Bash(gh run list:*)",
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "Bash(gh issue create:*)"
     ],
     "deny": [],
     "ask": []

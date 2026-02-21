@@ -570,3 +570,56 @@ async fn test_full_closed_loop_with_lightweight_adapter() {
 
     reset_system_state();
 }
+
+#[test]
+fn test_home_auto_set_on_gps_fix() {
+    reset_system_state();
+
+    // Ensure home is initially None
+    let has_home_before =
+        critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).home_position.is_some());
+    assert!(!has_home_before, "Home should be None at start");
+
+    let mut autopilot = VehicleAutopilot::new(1);
+
+    // Inject GPS 3D fix via sensor update
+    let sensors = SensorData {
+        gps: Some(GpsData {
+            lat_deg: 35.6812,
+            lon_deg: 139.7671,
+            alt_m: 40.0,
+            speed_ms: 0.0,
+            course_deg: 0.0,
+            fix_type: pico_trail_core::navigation::GpsFixType::Fix3D,
+            satellites: 12,
+            hdop: 1.0,
+        }),
+        timestamp_us: 1_000_000,
+        vehicle_id: VehicleId(1),
+        imu: None,
+        compass: None,
+        barometer: None,
+        attitude_quat: None,
+        battery_voltage: None,
+    };
+    autopilot.update_from_sensors(&sensors);
+
+    // Call check_home_position — should auto-set home and return HOME_POSITION
+    let result = autopilot.check_home_position();
+    assert!(result.is_some(), "Should return HOME_POSITION on auto-set");
+    assert!(
+        matches!(result.unwrap(), MavMessage::HOME_POSITION(_)),
+        "Message should be HOME_POSITION"
+    );
+
+    // Verify home is now set in SYSTEM_STATE
+    let has_home_after =
+        critical_section::with(|cs| SYSTEM_STATE.borrow_ref(cs).home_position.is_some());
+    assert!(has_home_after, "Home should be set after auto-set");
+
+    // Second call should NOT return HOME_POSITION (already set)
+    let result2 = autopilot.check_home_position();
+    assert!(result2.is_none(), "Should not re-set home on second call");
+
+    reset_system_state();
+}
