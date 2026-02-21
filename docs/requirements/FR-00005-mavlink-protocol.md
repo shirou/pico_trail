@@ -22,6 +22,9 @@
   - [FR-00128-fixed-mag-cal-yaw-handler](FR-00128-fixed-mag-cal-yaw-handler.md)
   - [FR-00010-udp-network-transport](FR-00010-udp-network-transport.md)
   - [FR-00041-gcs-loss-failsafe](FR-00041-gcs-loss-failsafe.md)
+  - [FR-00173-home-position-broadcast](FR-00173-home-position-broadcast.md)
+  - [FR-00174-request-message-home-position](FR-00174-request-message-home-position.md)
+  - [FR-00178-get-home-position-command](FR-00178-get-home-position-command.md)
 
 - Related Tasks: N/A - Tasks will be created after ADRs
 

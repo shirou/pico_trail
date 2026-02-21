@@ -649,19 +649,7 @@ impl<V: VehicleType> CommandHandler<V> {
         &self,
         home: &crate::autopilot::state::HomePosition,
     ) -> HOME_POSITION_DATA {
-        HOME_POSITION_DATA {
-            latitude: (home.latitude * 1e7) as i32,
-            longitude: (home.longitude * 1e7) as i32,
-            altitude: (home.altitude * 1000.0) as i32,
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-            q: [f32::NAN, f32::NAN, f32::NAN, f32::NAN],
-            approach_x: 0.0,
-            approach_y: 0.0,
-            approach_z: 0.0,
-            time_usec: 0,
-        }
+        home.to_mavlink_message()
     }
 
     pub fn create_protocol_version_message() -> PROTOCOL_VERSION_DATA {

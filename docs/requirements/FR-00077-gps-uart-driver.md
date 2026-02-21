@@ -17,6 +17,7 @@
   - [FR-00081-gps-navigation-state-access](FR-00081-gps-navigation-state-access.md)
   - [FR-00079-gps-course-over-ground](FR-00079-gps-course-over-ground.md)
   - [FR-00092-gps-initialization-separation](FR-00092-gps-initialization-separation.md)
+  - [FR-00171-home-auto-set-gps-fix](FR-00171-home-auto-set-gps-fix.md)
 - Related Tasks:
   - [T-00016-uart0-gps-integration](../tasks/T-00016-uart0-gps-integration/README.md)
 

@@ -24,6 +24,7 @@
   - [FR-00114-loiter-point-calculation](../requirements/FR-00114-loiter-point-calculation.md)
   - [FR-00117-position-drift-detection](../requirements/FR-00117-position-drift-detection.md)
   - [NFR-00067-gps-state-thread-safety](../requirements/NFR-00067-gps-state-thread-safety.md)
+  - [FR-00171-home-auto-set-gps-fix](FR-00171-home-auto-set-gps-fix.md)
 - Related Tasks:
   - [T-00017-gps-state-telemetry](../tasks/T-00017-gps-state-telemetry/README.md)
 
